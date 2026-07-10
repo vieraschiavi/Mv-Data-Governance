@@ -1,4 +1,4 @@
-; MV Data Governance · Instalador Windows (Inno Setup 6) — trilingüe ES/EN/PT
+; MV Data Governance - Instalador Windows (Inno Setup 6) - trilingue ES/EN/PT
 ; Envuelve el bundle standalone de PyInstaller (dist\MVDataGovernance) en un
 ; instalador MVDataGovernance_Setup_vX.exe con accesos directos.
 ;

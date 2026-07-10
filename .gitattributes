@@ -1,0 +1,16 @@
+# Los archivos de Windows deben viajar SIEMPRE con finales de linea CRLF:
+# un .bat con LF puede fallar en cmd.exe (la ventana "entra y sale").
+*.bat text eol=crlf
+*.iss text eol=crlf
+
+# El resto del codigo, con LF.
+*.py  text eol=lf
+*.md  text eol=lf
+*.sh  text eol=lf
+*.html text eol=lf
+*.txt text eol=lf
+
+# Binarios
+*.mp4 binary
+*.png binary
+*.ico binary
