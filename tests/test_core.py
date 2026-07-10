@@ -1,0 +1,192 @@
+"""
+MV Data Governance · Suite de pruebas del motor, i18n, exportadores y API.
+
+Ejecutar:  pytest tests/ -v
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
+from mvdg.demo_data import load_demo_tables
+from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
+                            to_excel_bytes, to_json_bytes)
+from mvdg.glossary import glossary_df, term_count
+from mvdg.i18n import LANGS, _T, all_keys, t
+from mvdg.lineage import EDGES, NODES, downstream, lineage_df, lineage_figure, upstream
+from mvdg.policies import policies_df
+from mvdg.profiler import profile_table, suggest_rules, summary
+from mvdg.quality import (DIMENSIONS, RULES, open_issues, overall_index,
+                          quality_by_dataset, quality_by_dimension,
+                          quality_matrix, quality_trend, run_rules)
+
+
+# ------------------------------------------------------------------- i18n
+def test_i18n_parity_all_languages():
+    """Cada clave existe en los 3 idiomas y no está vacía."""
+    for key, entry in _T.items():
+        for lang in LANGS:
+            assert entry.get(lang), f"Falta traducción {lang} para {key}"
+
+
+def test_i18n_fallback():
+    assert t("clave_inexistente", "en") == "clave_inexistente"
+    assert t("app_title", "xx") == t("app_title", "es")
+    assert len(all_keys()) > 80
+
+
+# -------------------------------------------------------------- demo data
+def test_demo_tables_deterministic():
+    a, b = load_demo_tables(), load_demo_tables()
+    for name in a:
+        pd.testing.assert_frame_equal(a[name], b[name])
+
+
+def test_demo_tables_have_injected_issues():
+    tables = load_demo_tables()
+    assert tables["dim_customers"]["email"].isna().sum() > 0
+    assert (tables["dim_products"]["unit_price"] <= 0).sum() > 0
+    assert tables["dim_customers"].duplicated(subset=["customer_id"]).sum() > 0
+
+
+# ---------------------------------------------------------------- catálogo
+@pytest.mark.parametrize("lang", LANGS)
+def test_catalog_and_dictionary(lang):
+    cat = catalog_df(lang)
+    dic = dictionary_df(lang)
+    assert set(cat["dataset"]) == set(dataset_names())
+    assert (cat["rows"] > 0).all()
+    assert dic["description"].str.len().gt(0).all()
+    for ds, col in pii_columns():
+        row = dic[(dic["dataset"] == ds) & (dic["column"] == col)]
+        assert bool(row["pii"].iloc[0])
+
+
+def test_catalog_translations_differ():
+    es = catalog_df("es")["description"].iloc[0]
+    en = catalog_df("en")["description"].iloc[0]
+    assert es != en
+
+
+# ----------------------------------------------------------------- calidad
+def test_rules_cover_all_dimensions():
+    assert {r.dimension for r in RULES} == set(DIMENSIONS)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_run_rules(lang):
+    res = run_rules(lang=lang)
+    assert len(res) == len(RULES)
+    assert res["score"].between(0, 100).all()
+    assert set(res["status"]) <= {"pass", "warn", "fail"}
+    assert (res.loc[res["status"] == "pass", "score"]
+            >= res.loc[res["status"] == "pass", "threshold"]).all()
+
+
+def test_quality_aggregations():
+    res = run_rules()
+    assert 0 < overall_index(res) <= 100
+    assert len(quality_by_dataset(res)) == len(dataset_names())
+    assert quality_matrix(res).shape[0] == len(dataset_names())
+    assert len(quality_by_dimension(res)) <= len(DIMENSIONS)
+    trend = quality_trend(res)
+    assert len(trend) == 12
+    assert trend["quality_index"].iloc[-1] == overall_index(res)
+    issues = open_issues(res)
+    assert (issues["severity"].isin(["media", "alta"])).all()
+
+
+# ------------------------------------------------------------------ linaje
+def test_lineage_graph_consistency():
+    ids = {n["id"] for n in NODES}
+    for a, b in EDGES:
+        assert a in ids and b in ids
+    assert "crm" in upstream("bi_dashboard")
+    assert "bi_dashboard" in downstream("crm")
+    assert upstream("crm") == set()
+    assert len(lineage_df()) == len(EDGES)
+    fig = lineage_figure("fct_sales", {"source": "Fuentes"})
+    assert len(fig.data) == len(EDGES) + 1  # aristas + capa de nodos
+
+
+# ---------------------------------------------------------------- glosario
+@pytest.mark.parametrize("lang", LANGS)
+def test_glossary(lang):
+    g = glossary_df(lang)
+    assert len(g) == term_count()
+    assert g["definition"].str.len().gt(10).all()
+    known = set(dataset_names())
+    for linked in g["linked_datasets"]:
+        assert set(linked.split(", ")) <= known
+
+
+# --------------------------------------------------------------- políticas
+@pytest.mark.parametrize("lang", LANGS)
+def test_policies(lang):
+    p = policies_df(lang)
+    assert len(p) == 6
+    assert set(p["status"]) <= {"compliant", "partial", "noncompliant"}
+    assert p["evidence"].str.len().gt(5).all()
+
+
+# --------------------------------------------------------------- perfilador
+def test_profiler_detects_issues_and_pii():
+    df = load_demo_tables()["dim_customers"]
+    prof = profile_table(df)
+    assert "email" in prof.loc[prof["possible_pii"], "column"].tolist()
+    info = summary(df)
+    assert info["duplicate_rows"] > 0 and info["pii_columns"] >= 2
+    for lang in LANGS:
+        sugs = suggest_rules(df, lang)
+        assert len(sugs) > 0
+
+
+def test_profiler_empty_frame():
+    empty = pd.DataFrame({"a": []})
+    assert summary(empty)["rows"] == 0
+    assert len(profile_table(empty)) == 1
+
+
+# ------------------------------------------------------------- exportadores
+@pytest.mark.parametrize("lang", LANGS)
+def test_governance_tables_complete(lang):
+    tabs = governance_tables(lang)
+    assert set(tabs) == {"catalog", "dictionary", "quality_results",
+                         "quality_by_dataset", "quality_by_dimension",
+                         "lineage", "glossary", "policies", "kpis"}
+    for name, df in tabs.items():
+        assert len(df) > 0, name
+
+
+def test_export_formats():
+    df = catalog_df("es")
+    assert to_csv_bytes(df).startswith("dataset".encode("utf-8-sig"))
+    assert to_excel_bytes(df)[:2] == b"PK"      # zip/xlsx
+    assert b"dim_customers" in to_json_bytes(df)
+    assert bi_bundle_xlsx("pt")[:2] == b"PK"
+
+
+# --------------------------------------------------------------------- API
+def test_api_all_tables_and_formats():
+    pytest.importorskip("fastapi")
+    try:
+        from fastapi.testclient import TestClient
+    except RuntimeError:
+        pytest.skip("httpx2 no disponible para TestClient")
+    from api.main import TABLES, app
+    c = TestClient(app)
+    assert c.get("/health").json() == {"status": "ok"}
+    for tbl in TABLES:
+        r = c.get(f"/api/{tbl}", params={"lang": "pt"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["rows"] == len(body["data"]) > 0
+    assert c.get("/api/catalog", params={"format": "csv"}).text.startswith("dataset")
+    assert c.get("/api/nope").status_code == 404
+    assert c.get("/api/catalog", params={"lang": "xx"}).status_code == 422
