@@ -21,6 +21,10 @@ import streamlit as st
 
 from mvdg import APP_NAME, BRAND, __version__
 from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
+from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
+                          data_dir, delete_client, load_clients,
+                          recommended_pack, save_client)
+from mvdg.help_center import automation_rows, speeches
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -86,10 +90,12 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi) = st.tabs([
+(tab_ov, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
+ tab_cl, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_catalog", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
+    t("tab_clients", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -340,3 +346,136 @@ with tab_bi:
     st.code("\n".join([f"GET {base}/api/{name}?lang={lang}" for name in gov]) +
             f"\nGET {base}/api/catalog?lang={lang}&format=csv", language="http")
     st.caption(t("bi_guide", lang))
+
+# ---------------------------------------------------------------- Empresas
+with tab_cl:
+    st.info(t("cl_intro", lang), icon="🏢")
+
+    _R_LABEL = {"exe_ok": t("cl_r_exe", lang),
+                "no_exe_python_ok": t("cl_r_noexe", lang),
+                "solo_web": t("cl_r_web", lang)}
+    _PACK_LABEL = {"A": t("cl_pack_a", lang), "B": t("cl_pack_b", lang),
+                   "Web": t("cl_pack_web", lang)}
+
+    existing = load_clients()
+    options = [t("cl_new_option", lang)] + [
+        f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})" for c in existing]
+    pick_cl = st.selectbox(t("cl_pick_edit", lang), options)
+    editing = None
+    if pick_cl != t("cl_new_option", lang):
+        editing = existing[options.index(pick_cl) - 1]
+
+    with st.form("client_form"):
+        c1, c2, c3 = st.columns(3)
+        company = c1.text_input(t("cl_company", lang),
+                                (editing or {}).get("company", ""))
+        country = c2.text_input(t("cl_country", lang),
+                                (editing or {}).get("country", ""))
+        industry = c3.text_input(t("cl_industry", lang),
+                                 (editing or {}).get("industry", ""))
+        c4, c5 = st.columns(2)
+        contact_name = c4.text_input(t("cl_contact", lang),
+                                     (editing or {}).get("contact_name", ""))
+        contact_email = c5.text_input(t("cl_email", lang),
+                                      (editing or {}).get("contact_email", ""))
+        bi_default = (editing or {}).get("bi_tools", [])
+        if isinstance(bi_default, str):
+            bi_default = [b for b in bi_default.split(", ") if b in BI_TOOLS]
+        bi_tools = st.multiselect(t("cl_bi", lang), BI_TOOLS, default=bi_default)
+        c6, c7, c8 = st.columns(3)
+        restr_current = (editing or {}).get("it_restriction", "no_exe_python_ok")
+        restriction = c6.selectbox(
+            t("cl_restriction", lang), IT_RESTRICTIONS,
+            index=IT_RESTRICTIONS.index(restr_current)
+            if restr_current in IT_RESTRICTIONS else 1,
+            format_func=lambda k: _R_LABEL[k])
+        maturity = c7.slider(t("cl_maturity", lang), 1, 5,
+                             int((editing or {}).get("maturity", 2)))
+        status_current = (editing or {}).get("status", "lead")
+        status = c8.selectbox(t("cl_status", lang), STATUSES,
+                              index=STATUSES.index(status_current)
+                              if status_current in STATUSES else 0)
+        notes = st.text_area(t("cl_notes", lang),
+                             (editing or {}).get("notes", ""))
+        submitted = st.form_submit_button(t("cl_save", lang))
+
+    if submitted:
+        if not company.strip():
+            st.error(t("cl_need_name", lang))
+        else:
+            pack = recommended_pack(restriction)
+            save_client({
+                "client_id": (editing or {}).get("client_id"),
+                "company": company.strip(), "country": country.strip(),
+                "industry": industry.strip(),
+                "contact_name": contact_name.strip(),
+                "contact_email": contact_email.strip(),
+                "bi_tools": ", ".join(bi_tools),
+                "it_restriction": restriction,
+                "recommended_pack": pack,
+                "maturity": maturity, "status": status,
+                "notes": notes.strip(),
+            })
+            st.success(f"{t('cl_saved', lang)} · {t('cl_pack', lang)}: "
+                       f"{_PACK_LABEL[pack]}")
+
+    if editing is not None:
+        if st.button(t("cl_delete", lang)):
+            delete_client(editing["client_id"])
+            st.success(t("cl_deleted", lang))
+
+    st.subheader(t("cl_list", lang))
+    cdf = clients_df()
+    if cdf.empty:
+        st.caption(t("cl_empty", lang))
+    else:
+        show_cl = cdf.copy()
+        show_cl["it_restriction"] = show_cl["it_restriction"].map(
+            lambda k: _R_LABEL.get(k, k))
+        show_cl["recommended_pack"] = show_cl["recommended_pack"].map(
+            lambda k: _PACK_LABEL.get(k, k))
+        st.dataframe(show_cl.rename(columns={
+            "company": t("cl_company", lang), "country": t("cl_country", lang),
+            "industry": t("cl_industry", lang),
+            "contact_name": t("cl_contact", lang),
+            "contact_email": t("cl_email", lang), "bi_tools": t("cl_bi", lang),
+            "it_restriction": t("cl_restriction", lang),
+            "recommended_pack": t("cl_pack", lang),
+            "maturity": t("cl_maturity", lang), "status": t("cl_status", lang),
+            "notes": t("cl_notes", lang),
+        }).drop(columns=["client_id"]), width="stretch", hide_index=True)
+        e1, e2 = st.columns(2)
+        e1.download_button(t("bi_download_csv", lang), to_csv_bytes(cdf),
+                           f"mvdg_empresas_{lang}.csv", "text/csv",
+                           width="stretch")
+        e2.download_button(t("bi_download_xlsx", lang),
+                           to_excel_bytes(cdf, "empresas"),
+                           f"mvdg_empresas_{lang}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+    st.caption(t("cl_where", lang).format(path=data_dir()))
+
+# ------------------------------------------------------------------- Ayuda
+with tab_h:
+    st.info(t("h_intro", lang), icon="❓")
+
+    st.subheader(t("h_matrix", lang))
+    st.markdown(t("h_matrix_note", lang))
+    _LEVEL_LABEL = {"auto": t("h_auto", lang), "partial": t("h_partial", lang),
+                    "human": t("h_human", lang)}
+    matrix_rows = automation_rows(lang)
+    st.dataframe(pd.DataFrame([{
+        t("h_area", lang): r["area"],
+        t("h_level", lang): _LEVEL_LABEL[r["level"]],
+        t("h_detail", lang): r["detail"],
+    } for r in matrix_rows]), width="stretch", hide_index=True)
+
+    st.subheader(t("h_speeches", lang))
+    st.markdown(t("h_speeches_note", lang))
+    for sp in speeches(lang):
+        with st.expander(f"🎙️ {sp['title']}"):
+            st.caption(f"{t('h_audience', lang)}: {sp['audience']}")
+            st.markdown(sp["text"].replace("\n", "  \n"))
+
+    st.subheader(t("h_packs", lang))
+    st.markdown(t("h_packs_note", lang))

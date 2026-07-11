@@ -49,6 +49,8 @@ _T: dict[str, dict[str, str]] = {
     "tab_policies": {"es": "🛡️ Políticas", "en": "🛡️ Policies", "pt": "🛡️ Políticas"},
     "tab_profiler": {"es": "🔎 Mis datos", "en": "🔎 My data", "pt": "🔎 Meus dados"},
     "tab_bi": {"es": "📤 BI & API", "en": "📤 BI & API", "pt": "📤 BI & API"},
+    "tab_clients": {"es": "🏢 Empresas", "en": "🏢 Companies", "pt": "🏢 Empresas"},
+    "tab_help": {"es": "❓ Ayuda", "en": "❓ Help", "pt": "❓ Ajuda"},
     # ------------------------------------------------------------- overview
     "kpi_datasets": {"es": "Datasets gobernados", "en": "Governed datasets", "pt": "Datasets governados"},
     "kpi_columns": {"es": "Columnas documentadas", "en": "Documented columns", "pt": "Colunas documentadas"},
@@ -242,6 +244,107 @@ _T: dict[str, dict[str, str]] = {
         "es": "Guía paso a paso por herramienta en `docs/BI_INTEGRATION.md`.",
         "en": "Step-by-step guide per tool in `docs/BI_INTEGRATION.md`.",
         "pt": "Guia passo a passo por ferramenta em `docs/BI_INTEGRATION.md`.",
+    },
+    # -------------------------------------------------------------- clients
+    "cl_intro": {
+        "es": "Fichas de empresas clientes: contacto, BI que usan, restricciones "
+              "de TI y madurez. Se guardan en tu equipo y persisten entre sesiones.",
+        "en": "Client company records: contact, BI tools, IT restrictions and "
+              "maturity. Stored on your machine and persisted across sessions.",
+        "pt": "Fichas de empresas clientes: contato, BI usado, restrições de TI "
+              "e maturidade. Salvas no seu computador e persistentes entre sessões.",
+    },
+    "cl_new": {"es": "➕ Nueva ficha / editar", "en": "➕ New record / edit", "pt": "➕ Nova ficha / editar"},
+    "cl_pick_edit": {"es": "Editar ficha existente", "en": "Edit existing record", "pt": "Editar ficha existente"},
+    "cl_new_option": {"es": "(nueva empresa)", "en": "(new company)", "pt": "(nova empresa)"},
+    "cl_company": {"es": "Empresa", "en": "Company", "pt": "Empresa"},
+    "cl_country": {"es": "País", "en": "Country", "pt": "País"},
+    "cl_industry": {"es": "Rubro", "en": "Industry", "pt": "Setor"},
+    "cl_contact": {"es": "Contacto", "en": "Contact", "pt": "Contato"},
+    "cl_email": {"es": "Email", "en": "Email", "pt": "E-mail"},
+    "cl_bi": {"es": "Herramientas de BI", "en": "BI tools", "pt": "Ferramentas de BI"},
+    "cl_restriction": {"es": "Restricción de TI", "en": "IT restriction", "pt": "Restrição de TI"},
+    "cl_r_exe": {"es": "Permite instalar .exe", "en": "Allows installing .exe", "pt": "Permite instalar .exe"},
+    "cl_r_noexe": {"es": "No permite .exe (pero sí Python)", "en": "No .exe allowed (Python OK)", "pt": "Não permite .exe (mas Python sim)"},
+    "cl_r_web": {"es": "Solo web / servidor", "en": "Web/server only", "pt": "Somente web / servidor"},
+    "cl_pack": {"es": "Paquete recomendado", "en": "Recommended package", "pt": "Pacote recomendado"},
+    "cl_pack_a": {"es": "Opción A · Instalador .exe", "en": "Option A · .exe installer", "pt": "Opção A · Instalador .exe"},
+    "cl_pack_b": {"es": "Opción B · Portable .bat", "en": "Option B · Portable .bat", "pt": "Opção B · Portátil .bat"},
+    "cl_pack_web": {"es": "Despliegue web (servidor)", "en": "Web deployment (server)", "pt": "Implantação web (servidor)"},
+    "cl_maturity": {"es": "Madurez de gobierno (1–5)", "en": "Governance maturity (1–5)", "pt": "Maturidade de governança (1–5)"},
+    "cl_status": {"es": "Estado", "en": "Status", "pt": "Status"},
+    "cl_notes": {"es": "Notas", "en": "Notes", "pt": "Notas"},
+    "cl_save": {"es": "💾 Guardar ficha", "en": "💾 Save record", "pt": "💾 Salvar ficha"},
+    "cl_saved": {"es": "Ficha guardada.", "en": "Record saved.", "pt": "Ficha salva."},
+    "cl_need_name": {"es": "Poné al menos el nombre de la empresa.", "en": "Enter at least the company name.", "pt": "Informe pelo menos o nome da empresa."},
+    "cl_delete": {"es": "🗑️ Eliminar ficha", "en": "🗑️ Delete record", "pt": "🗑️ Excluir ficha"},
+    "cl_deleted": {"es": "Ficha eliminada.", "en": "Record deleted.", "pt": "Ficha excluída."},
+    "cl_list": {"es": "Fichas guardadas", "en": "Saved records", "pt": "Fichas salvas"},
+    "cl_empty": {"es": "Todavía no hay fichas: creá la primera acá arriba.", "en": "No records yet: create the first one above.", "pt": "Ainda não há fichas: crie a primeira acima."},
+    "cl_where": {
+        "es": "Se guardan en {path} (JSON). Podés respaldarlas copiando ese archivo.",
+        "en": "Stored at {path} (JSON). Back them up by copying that file.",
+        "pt": "Salvas em {path} (JSON). Faça backup copiando esse arquivo.",
+    },
+    # ----------------------------------------------------------------- help
+    "h_intro": {
+        "es": "Qué automatiza esta plataforma, qué requiere personas, y los "
+              "speeches listos para lograr la parte humana y cerrar el círculo.",
+        "en": "What this platform automates, what requires people, and the "
+              "ready-made speeches to achieve the human part and close the loop.",
+        "pt": "O que esta plataforma automatiza, o que requer pessoas, e os "
+              "speeches prontos para alcançar a parte humana e fechar o ciclo.",
+    },
+    "h_matrix": {"es": "¿Qué se automatiza y qué no?", "en": "What is automated and what is not?", "pt": "O que é automatizado e o que não é?"},
+    "h_matrix_note": {
+        "es": "La mitad técnica del gobierno de datos es 100% automática en esta "
+              "plataforma. La mitad organizacional (dueños, definiciones, "
+              "correcciones en origen, adopción) NO la puede automatizar ningún "
+              "software: se logra con las conversaciones de abajo.",
+        "en": "The technical half of data governance is 100% automatic in this "
+              "platform. The organizational half (owners, definitions, fixes at "
+              "the source, adoption) CANNOT be automated by any software: it is "
+              "achieved with the conversations below.",
+        "pt": "A metade técnica da governança de dados é 100% automática nesta "
+              "plataforma. A metade organizacional (donos, definições, correções "
+              "na origem, adoção) NÃO pode ser automatizada por nenhum software: "
+              "consegue-se com as conversas abaixo.",
+    },
+    "h_area": {"es": "Área", "en": "Area", "pt": "Área"},
+    "h_level": {"es": "Automatización", "en": "Automation", "pt": "Automação"},
+    "h_detail": {"es": "Detalle", "en": "Detail", "pt": "Detalhe"},
+    "h_auto": {"es": "✅ Automático", "en": "✅ Automatic", "pt": "✅ Automático"},
+    "h_partial": {"es": "🟡 Parcial", "en": "🟡 Partial", "pt": "🟡 Parcial"},
+    "h_human": {"es": "🧑 Requiere personas", "en": "🧑 Requires people", "pt": "🧑 Requer pessoas"},
+    "h_speeches": {"es": "Speeches IA para la parte no automatizable", "en": "AI speeches for the non-automatable part", "pt": "Speeches IA para a parte não automatizável"},
+    "h_speeches_note": {
+        "es": "Guiones listos para copiar o decir, uno por conversación crítica. "
+              "Con estos cinco, cualquier empresa cierra el círculo completo del "
+              "gobierno de datos.",
+        "en": "Ready-to-copy scripts, one per critical conversation. With these "
+              "five, any company closes the full data-governance loop.",
+        "pt": "Roteiros prontos para copiar ou falar, um por conversa crítica. "
+              "Com estes cinco, qualquer empresa fecha o ciclo completo da "
+              "governança de dados.",
+    },
+    "h_audience": {"es": "Audiencia", "en": "Audience", "pt": "Audiência"},
+    "h_packs": {"es": "Dos formas de instalar (según restricciones de TI)", "en": "Two ways to install (per IT restrictions)", "pt": "Duas formas de instalar (conforme restrições de TI)"},
+    "h_packs_note": {
+        "es": "Opción A — instalador .exe (no requiere Python; para empresas que "
+              "permiten instalar software). Opción B — portable .bat "
+              "autoinstalable con Streamlit (no instala nada en el sistema; para "
+              "empresas que bloquean .exe pero permiten Python). Mismas "
+              "funcionalidades en ambas. Detalles en la carpeta distribucion/.",
+        "en": "Option A — .exe installer (no Python required; for companies that "
+              "allow installing software). Option B — self-installing portable "
+              ".bat with Streamlit (installs nothing system-wide; for companies "
+              "that block .exe but allow Python). Same features in both. Details "
+              "in the distribucion/ folder.",
+        "pt": "Opção A — instalador .exe (não requer Python; para empresas que "
+              "permitem instalar software). Opção B — .bat portátil "
+              "autoinstalável com Streamlit (não instala nada no sistema; para "
+              "empresas que bloqueiam .exe mas permitem Python). Mesmas "
+              "funcionalidades em ambas. Detalhes na pasta distribucion/.",
     },
     # ------------------------------------------------------------- tables
     "tbl_catalog": {"es": "Catálogo de datasets", "en": "Dataset catalog", "pt": "Catálogo de datasets"},

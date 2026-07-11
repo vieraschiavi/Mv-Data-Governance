@@ -47,6 +47,16 @@ cd landing && python -m http.server 8080   # → http://localhost:8080
 
 Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
 
+### 📦 Dos paquetes según las restricciones de TI de cada empresa
+
+| Carpeta | Cuándo | Cómo se genera |
+|---|---|---|
+| [`distribucion/opcion_A_instalador_exe/`](distribucion/opcion_A_instalador_exe/LEEME.md) | La empresa **permite instalar .exe** (no requiere Python) | `packaging\build_exe.bat` en Windows |
+| [`distribucion/opcion_B_portable_bat/`](distribucion/opcion_B_portable_bat/LEEME.md) | La empresa **bloquea .exe pero permite Python** (no instala nada en el sistema) | `python packaging/build_release.py` → ZIP portable |
+
+Mismas funcionalidades en ambas. La ficha de cada empresa (pestaña 🏢) guarda
+su restricción y recomienda el paquete automáticamente.
+
 ## 🧩 Módulos
 
 | Módulo | Qué resuelve |
@@ -59,6 +69,8 @@ Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA
 | 🛡️ **Políticas** | Cumplimiento verificado automáticamente contra catálogo y reglas (evidencia, no checkboxes) |
 | 🔎 **Mis datos** | Subí tu CSV/Excel: perfil por columna, duplicados, PII detectada y reglas sugeridas |
 | 📤 **BI & API** | Exportación CSV/Excel/JSON/Parquet + paquete Excel multi-hoja + API REST |
+| 🏢 **Empresas** | Fichas de empresas clientes **que se guardan en disco** (contacto, BI, restricción de TI → recomienda Opción A o B, madurez, notas) con exportación |
+| ❓ **Ayuda** | Qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |
 
 ## 📊 Compatibilidad BI
 

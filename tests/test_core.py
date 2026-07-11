@@ -172,6 +172,94 @@ def test_export_formats():
     assert bi_bundle_xlsx("pt")[:2] == b"PK"
 
 
+# ------------------------------------------------------------ fichas clientes
+def test_clients_crud_persistence(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import clients
+    assert clients.load_clients() == []
+    rec = clients.save_client({"company": "ACME", "country": "UY",
+                               "it_restriction": "no_exe_python_ok",
+                               "recommended_pack": clients.recommended_pack("no_exe_python_ok"),
+                               "maturity": 3, "status": "demo"})
+    assert rec["client_id"] and rec["created_at"]
+    assert rec["recommended_pack"] == "B"
+    # actualizar conserva id y created_at
+    rec2 = clients.save_client({**rec, "status": "piloto"})
+    assert rec2["client_id"] == rec["client_id"]
+    assert rec2["created_at"] == rec["created_at"]
+    assert len(clients.load_clients()) == 1
+    # persiste en disco (relectura fría)
+    df = clients.clients_df()
+    assert df.iloc[0]["company"] == "ACME" and df.iloc[0]["status"] == "piloto"
+    # borrar
+    assert clients.delete_client(rec["client_id"]) is True
+    assert clients.delete_client("nope") is False
+    assert clients.clients_df().empty
+
+
+def test_clients_recommended_pack():
+    from mvdg.clients import recommended_pack
+    assert recommended_pack("exe_ok") == "A"
+    assert recommended_pack("no_exe_python_ok") == "B"
+    assert recommended_pack("solo_web") == "Web"
+    assert recommended_pack("???") == "B"
+
+
+def test_clients_corrupt_file_is_safe(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import clients
+    with open(tmp_path / "clientes.json", "w") as fh:
+        fh.write("{esto no es json valido")
+    assert clients.load_clients() == []
+
+
+# ------------------------------------------------------------- centro de ayuda
+@pytest.mark.parametrize("lang", LANGS)
+def test_help_center(lang):
+    from mvdg.help_center import AUTOMATION, SPEECHES, automation_rows, speeches
+    rows = automation_rows(lang)
+    assert len(rows) == len(AUTOMATION) >= 6
+    assert {r["level"] for r in rows} == {"auto", "partial", "human"}
+    sps = speeches(lang)
+    assert len(sps) == len(SPEECHES) == 5
+    for sp in sps:
+        assert len(sp["text"]) > 200 and sp["title"] and sp["audience"]
+    # cada área no automática apunta a un speech existente (círculo cerrado)
+    ids = {s["speech_id"] for s in sps}
+    for r in rows:
+        if r["level"] != "auto":
+            assert r["speech_id"] in ids
+
+
+def test_help_center_translations_differ():
+    from mvdg.help_center import speeches
+    assert speeches("es")[0]["text"] != speeches("en")[0]["text"]
+    assert speeches("pt")[0]["text"] != speeches("en")[0]["text"]
+
+
+# ---------------------------------------------------------------- release zip
+def test_build_release_option_b(tmp_path, monkeypatch):
+    # la carpeta packaging/ del repo queda tapada por la librería 'packaging'
+    # de PyPI, asi que se carga el modulo directamente por ruta
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "mvdg_build_release",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "packaging", "build_release.py"))
+    br = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(br)
+    monkeypatch.setattr(br, "DIST", str(tmp_path))
+    out = br.build_option_b()
+    assert os.path.exists(out)
+    import zipfile
+    names = zipfile.ZipFile(out).namelist()
+    assert "MVDataGovernance/MV_DataGovernance.bat" in names
+    assert "MVDataGovernance/app/app.py" in names
+    assert "MVDataGovernance/requirements.txt" in names
+    assert not any(".venv" in n or "__pycache__" in n for n in names)
+    assert br.build_option_a() is None  # sin Setup.exe construido
+
+
 # --------------------------------------------------------------------- API
 def test_api_all_tables_and_formats():
     pytest.importorskip("fastapi")
