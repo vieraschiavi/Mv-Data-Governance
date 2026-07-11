@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/landing/index.html" },
+    { "source": "/mv_icon.png", "destination": "/landing/mv_icon.png" },
+    { "source": "/video/:path*", "destination": "/landing/video/:path*" }
+  ],
+  "headers": [
+    {
+      "source": "/video/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    }
+  ]
+}
