@@ -1,0 +1,510 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MV Data Governance · Gobierno de datos claro y listo para BI</title>
+<link rel="icon" type="image/png" href="mv_icon.png">
+<style>
+:root{
+  --navy:#081527; --navy2:#0c2137; --hero-a:#0d2440; --hero-b:#081324;
+  --amber:#f2b441; --amber2:#e39a2e; --amber-ink:#1c1305;
+  --ink:#eaf1fb; --muted:#9db0c8; --faint:#6c7f99;
+  --line:#1d3149; --line2:#2a4160;
+  --paper:#ffffff; --ink-d:#122238; --muted-d:#586a80; --line-d:#e6ebf2; --tint:#f4f7fb;
+  --blue:#2f74c0; --green:#00c896; --red:#e05c5c;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--navy);color:var(--ink);font-family:var(--sans);line-height:1.55;
+  -webkit-font-smoothing:antialiased;padding:14px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 26px}
+h1,h2,h3{margin:0;line-height:1.08;text-wrap:balance;letter-spacing:-.02em}
+.am{color:var(--amber)}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800}
+.mk{width:30px;height:30px;border-radius:8px;display:block}
+.brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+.nlinks{display:flex;gap:4px;margin-left:14px}
+.nlinks a{color:var(--muted);font-size:13.5px;font-weight:600;padding:7px 11px;border-radius:8px}
+.nlinks a:hover{color:#fff;background:rgba(255,255,255,.06)}
+@media(max-width:900px){.nlinks{display:none}}
+.right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
+.lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
+  border-radius:6px;cursor:pointer;font-family:inherit;letter-spacing:.03em}
+.lang button.on{background:var(--amber);color:var(--amber-ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:750;font-size:14px;
+  border-radius:9px;padding:10px 17px;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:transform .12s}
+.btn:hover{transform:translateY(-1px)}
+.btn-a{background:var(--amber);color:var(--amber-ink);box-shadow:0 6px 18px rgba(242,180,65,.28)}
+.btn-a:hover{background:var(--amber2)}
+.btn-o{background:transparent;color:#fff;border-color:var(--line2)}
+.btn-o:hover{border-color:var(--amber);color:var(--amber)}
+@media(max-width:560px){.btn-nav{display:none}}
+
+/* HERO */
+.hero{background:
+   radial-gradient(760px 420px at 80% -10%,rgba(242,180,65,.13),transparent 60%),
+   radial-gradient(680px 460px at 6% 8%,rgba(47,116,192,.22),transparent 60%),
+   linear-gradient(160deg,var(--hero-a),var(--hero-b));
+  border:1px solid var(--line);border-radius:26px;margin-top:14px;overflow:hidden}
+.hero .hgrid{display:grid;grid-template-columns:1.08fr .92fr;gap:40px;align-items:center;padding:56px}
+@media(max-width:920px){.hero .hgrid{grid-template-columns:1fr;padding:38px 30px;gap:30px}}
+.kick{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.05em;
+  color:var(--amber);background:rgba(242,180,65,.1);border:1px solid rgba(242,180,65,.28);
+  padding:6px 13px;border-radius:30px;margin-bottom:20px;text-transform:uppercase}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 9px var(--green);animation:p 2s infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.dot{animation:none}}
+.hero h1{font-size:clamp(33px,5.2vw,54px);font-weight:850;color:#fff}
+.hero .lead{font-size:clamp(15.5px,1.8vw,18px);color:var(--muted);max-width:48ch;margin:20px 0 26px}
+.hcta{display:flex;flex-wrap:wrap;gap:12px}
+.metrics{display:flex;flex-wrap:wrap;gap:14px 28px;margin-top:34px}
+.metric{min-width:96px}
+.metric .v{font-size:26px;font-weight:850;color:#fff;letter-spacing:-.01em}
+.metric .v .am{color:var(--amber)}
+.metric .l{color:var(--faint);font-size:11.5px;margin-top:4px;max-width:16ch;line-height:1.3}
+
+/* mock panel (light) */
+.mock{background:#fbfdff;border:1px solid #dfe7f1;border-radius:20px;padding:18px;
+  box-shadow:0 30px 70px rgba(0,0,0,.45);color:#0f1e30}
+.mock .mh{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid #eef2f7;margin-bottom:12px}
+.mock .mh .av{width:36px;height:36px;border-radius:9px;background:#0f2135;color:#f2b441;display:flex;align-items:center;
+  justify-content:center;font-weight:800;font-size:12px;flex:none}
+.mock .mh b{font-size:13.5px;display:block}
+.mock .mh span{font-size:11px;color:#159a6b;display:flex;align-items:center;gap:5px}
+.mock .mh span::before{content:"";width:6px;height:6px;border-radius:50%;background:#22c55e}
+.mrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:10px}
+.mkpi{background:#f2f6fb;border:1px solid #e3eaf3;border-radius:11px;padding:10px 12px}
+.mkpi .k{font-size:10px;color:#7787a0;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.mkpi .n{font-size:19px;font-weight:850;color:#122238;margin-top:2px}
+.mkpi .n.g{color:#0b9e71}.mkpi .n.a{color:#c98a12}
+.mbar{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#40536b;margin:7px 0}
+.mbar b{width:104px;font-size:11px;flex:none}
+.mbar .tr{flex:1;height:8px;background:#e9eef5;border-radius:6px;overflow:hidden}
+.mbar .tr i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#f2b441,#00c896)}
+.mbar em{font-style:normal;font-weight:800;width:38px;text-align:right;font-size:11px}
+.mfoot{margin-top:10px;background:#eafaf1;color:#0b6b46;border-radius:10px;font-size:12px;
+  font-weight:700;text-align:center;padding:8px}
+
+/* VIDEO */
+.vsec{background:linear-gradient(170deg,var(--navy2),#0a1a30);border:1px solid var(--line);
+  border-radius:26px;margin-top:14px;padding:58px 0;text-align:center}
+.vsec .wrap{padding:0 44px}
+@media(max-width:600px){.vsec .wrap{padding:0 26px}}
+.vbox{max-width:880px;margin:30px auto 0;border-radius:18px;overflow:hidden;
+  border:1px solid var(--line2);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.vbox video{width:100%;display:block;background:#0E1117}
+
+/* WHITE panels */
+.panel{background:var(--paper);color:var(--ink-d);border-radius:26px;margin-top:14px;padding:60px 0}
+.panel .wrap{padding:0 44px}
+@media(max-width:600px){.panel .wrap{padding:0 26px}}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--blue)}
+.h2{font-size:clamp(24px,3.6vw,38px);font-weight:850;color:var(--ink-d);margin:12px 0 12px}
+.h2w{color:#fff}
+.lead-d{color:var(--muted-d);max-width:62ch;font-size:16.5px;margin-bottom:34px}
+.lead-w{color:var(--muted);max-width:62ch;font-size:16px;margin:0 auto}
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:860px){.fgrid{grid-template-columns:1fr}}
+.feat{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;padding:24px}
+.feat .ic{width:44px;height:44px;border-radius:11px;background:#fff;border:1px solid var(--line-d);
+  display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;
+  box-shadow:0 2px 8px rgba(18,34,56,.05)}
+.feat h3{font-size:17.5px;color:var(--ink-d);margin-bottom:7px}
+.feat p{color:var(--muted-d);font-size:14px;margin:0}
+
+/* BI badges */
+.bigrid{display:flex;flex-wrap:wrap;gap:10px;margin:26px 0 8px}
+.bib{background:#fff;border:1px solid var(--line-d);border-radius:12px;padding:12px 18px;
+  font-weight:800;font-size:14px;color:var(--ink-d);display:flex;align-items:center;gap:8px}
+.bib i{font-style:normal;font-size:17px}
+.code{background:#0f2135;color:#cfe3ff;border-radius:12px;padding:16px 18px;font-family:var(--mono);
+  font-size:12.5px;line-height:1.7;overflow-x:auto;margin-top:18px}
+.code .c{color:#7fd4a8}
+
+/* DOWNLOADS (dark) */
+.dsec{background:linear-gradient(170deg,var(--hero-a),var(--hero-b));border:1px solid var(--line);
+  border-radius:26px;margin-top:14px;padding:58px 0}
+.dsec .wrap{padding:0 44px}
+@media(max-width:600px){.dsec .wrap{padding:0 26px}}
+.dgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:30px}
+@media(max-width:860px){.dgrid{grid-template-columns:1fr}}
+.dcard{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:18px;padding:26px;
+  display:flex;flex-direction:column}
+.dcard .ic{font-size:30px;margin-bottom:12px}
+.dcard h3{color:#fff;font-size:18px;margin-bottom:8px}
+.dcard p{color:var(--muted);font-size:13.5px;margin:0 0 16px;flex:1}
+.dcard .mono{font-family:var(--mono);font-size:11.5px;color:var(--amber);background:rgba(242,180,65,.08);
+  border:1px solid rgba(242,180,65,.25);border-radius:8px;padding:8px 10px;margin-bottom:14px;overflow-x:auto;white-space:nowrap}
+
+/* PRICING */
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch}
+@media(max-width:860px){.pgrid{grid-template-columns:1fr}}
+.plan{background:var(--paper);border:1px solid var(--line-d);border-radius:18px;padding:26px;display:flex;flex-direction:column}
+.plan.pop{border-color:var(--amber);box-shadow:0 20px 46px rgba(242,180,65,.16);position:relative}
+.plan.pop .tag{position:absolute;top:-11px;left:24px;background:var(--amber);color:var(--amber-ink);font-size:11px;
+  font-weight:800;padding:4px 12px;border-radius:20px;letter-spacing:.02em}
+.plan h3{font-size:19px;color:var(--ink-d)}
+.plan .who{color:var(--muted-d);font-size:13px;margin:5px 0 16px;min-height:34px}
+.plan .amt{font-size:38px;font-weight:850;color:var(--ink-d);line-height:1;letter-spacing:-.02em}
+.plan .amt small{font-size:15px;color:var(--muted-d);font-weight:600}
+.plan .per{color:var(--muted-d);font-size:12.5px;margin-top:4px}
+.plan ul{list-style:none;padding:0;margin:18px 0 22px;flex:1}
+.plan li{font-size:13px;color:var(--muted-d);padding:7px 0 7px 20px;position:relative;border-bottom:1px solid var(--line-d)}
+.plan li:last-child{border-bottom:0}.plan li::before{content:"→";position:absolute;left:0;color:var(--amber2)}
+.plan .btn{width:100%}
+.btn-d{background:var(--ink-d);color:#fff}.btn-d:hover{background:#0a1626}
+.btn-od{background:#fff;color:var(--ink-d);border-color:var(--line-d)}.btn-od:hover{border-color:var(--amber);color:var(--amber2)}
+
+/* CONTACT */
+.cform{max-width:640px;display:grid;gap:14px}
+.cform .frow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.cform .frow{grid-template-columns:1fr}}
+.cform label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted-d)}
+.cform input,.cform textarea{font-family:inherit;font-size:15px;color:var(--ink-d);background:#fff;
+  border:1px solid var(--line-d);border-radius:10px;padding:11px 13px;width:100%;font-weight:400}
+.cform input:focus,.cform textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(242,180,65,.18)}
+.cform textarea{min-height:118px;resize:vertical}
+
+/* FOOTER */
+footer{padding:36px 0 22px;color:var(--faint);font-size:12.5px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justify-content:space-between}
+</style>
+
+<nav><div class="wrap">
+  <a class="brand" href="#top">
+    <img class="mk" src="mv_icon.png" alt="MV">
+    <span><b>MV Data Governance</b> <small data-i="nav_sub">· Gobierno de datos</small></span>
+  </a>
+  <div class="nlinks">
+    <a href="#video" data-i="nav_video">Video</a>
+    <a href="#plataforma" data-i="nav_platform">Plataforma</a>
+    <a href="#bi" data-i="nav_bi">BI</a>
+    <a href="#descargas" data-i="nav_downloads">Descargas</a>
+    <a href="#precios" data-i="nav_pricing">Precios</a>
+    <a href="#contacto" data-i="nav_contact">Contacto</a>
+  </div>
+  <div class="right">
+    <div class="lang">
+      <button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button>
+    </div>
+    <a class="btn btn-a btn-nav" href="#descargas" data-i="nav_cta">Descargar</a>
+  </div>
+</div></nav>
+
+<!-- HERO -->
+<section class="hero" id="top"><div class="hgrid">
+  <div>
+    <span class="kick"><span class="dot"></span><span data-i="kick">100% Web + Programa PC · ES / EN / PT</span></span>
+    <h1 data-i="h1_a">Tus datos, gobernados.<br>Tus decisiones, <span class="am">confiables</span>.</h1>
+    <p class="lead" data-i="lead">Catálogo, calidad, linaje, glosario y políticas en una sola plataforma —
+      con exportación directa a Power BI, Tableau, Looker, MicroStrategy y cualquier otra herramienta de BI.</p>
+    <div class="hcta">
+      <a class="btn btn-a" href="#video" data-i="cta_video">▶ Ver la demo</a>
+      <a class="btn btn-o" href="#descargas" data-i="cta_dl">Descargar para Windows</a>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="v tnum">6</div><div class="l" data-i="m1">dimensiones de calidad medidas</div></div>
+      <div class="metric"><div class="v tnum">3</div><div class="l" data-i="m2">idiomas: español · inglés · portugués</div></div>
+      <div class="metric"><div class="v tnum"><span class="am">∞</span></div><div class="l" data-i="m3">herramientas de BI compatibles</div></div>
+      <div class="metric"><div class="v tnum">100<span class="am">%</span></div><div class="l" data-i="m4">web + escritorio, sin APK</div></div>
+    </div>
+  </div>
+  <div class="mock">
+    <div class="mh">
+      <span class="av">MV</span>
+      <div><b>MV Data Governance</b><span data-i="mock_live">Monitoreo en vivo</span></div>
+    </div>
+    <div class="mrow">
+      <div class="mkpi"><div class="k" data-i="mock_k1">Índice calidad</div><div class="n g tnum">99.1</div></div>
+      <div class="mkpi"><div class="k" data-i="mock_k2">Datasets</div><div class="n tnum">4</div></div>
+      <div class="mkpi"><div class="k" data-i="mock_k3">Reglas</div><div class="n a tnum">15/17</div></div>
+    </div>
+    <div class="mbar"><b data-i="mb1">Completitud</b><div class="tr"><i style="width:98%"></i></div><em>98.6</em></div>
+    <div class="mbar"><b data-i="mb2">Unicidad</b><div class="tr"><i style="width:99%"></i></div><em>99.8</em></div>
+    <div class="mbar"><b data-i="mb3">Validez</b><div class="tr"><i style="width:98%"></i></div><em>98.6</em></div>
+    <div class="mbar"><b data-i="mb4">Consistencia</b><div class="tr"><i style="width:99%"></i></div><em>99.3</em></div>
+    <div class="mbar"><b data-i="mb5">Puntualidad</b><div class="tr"><i style="width:99%"></i></div><em>99.7</em></div>
+    <div class="mbar"><b data-i="mb6">Exactitud</b><div class="tr"><i style="width:98%"></i></div><em>98.0</em></div>
+    <div class="mfoot" data-i="mock_foot">✓ Catálogo actualizado · 2 alertas de calidad asignadas al steward</div>
+  </div>
+</div></section>
+
+<!-- VIDEO -->
+<section class="vsec" id="video"><div class="wrap">
+  <div class="eyebrow" data-i="v_eye">Demo en video</div>
+  <h2 class="h2 h2w" data-i="v_h2">Mirá MV Data Governance en acción</h2>
+  <p class="lead-w" data-i="v_lead">Del catálogo al tablero de BI: calidad medida en 6 dimensiones,
+    linaje de punta a punta y exportación en un clic — en tu idioma.</p>
+  <div class="vbox">
+    <video controls preload="metadata" playsinline poster="">
+      <source src="video/MVDataGovernance_Demo.mp4" type="video/mp4">
+      <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
+    </video>
+  </div>
+</div></section>
+
+<!-- PLATAFORMA -->
+<section class="panel" id="plataforma"><div class="wrap">
+  <div class="eyebrow" data-i="p_eye">La plataforma</div>
+  <h2 class="h2" data-i="p_h2">Todo el gobierno de datos, sin fricción</h2>
+  <p class="lead-d" data-i="p_lead">Seis módulos que trabajan juntos sobre los mismos metadatos,
+    disponibles en la web y en el programa de escritorio.</p>
+  <div class="fgrid">
+    <div class="feat"><div class="ic">📚</div><h3 data-i="f1t">Catálogo de datos</h3>
+      <p data-i="f1p">Inventario único con dueño, steward, dominio, clasificación (PII incluida), frescura y diccionario de columnas.</p></div>
+    <div class="feat"><div class="ic">✅</div><h3 data-i="f2t">Calidad en 6 dimensiones</h3>
+      <p data-i="f2p">Motor de reglas: completitud, unicidad, validez, consistencia, puntualidad y exactitud, con umbrales y alertas.</p></div>
+    <div class="feat"><div class="ic">🧬</div><h3 data-i="f3t">Linaje de punta a punta</h3>
+      <p data-i="f3p">De la fuente al dashboard: grafo interactivo con recorrido aguas arriba y aguas abajo por cada activo.</p></div>
+    <div class="feat"><div class="ic">📖</div><h3 data-i="f4t">Glosario de negocio</h3>
+      <p data-i="f4p">Una definición oficial por término — en español, inglés y portugués — vinculada a los datasets que la usan.</p></div>
+    <div class="feat"><div class="ic">🛡️</div><h3 data-i="f5t">Políticas y cumplimiento</h3>
+      <p data-i="f5p">Cada política se verifica automáticamente contra el catálogo y las reglas: evidencia, no casillas marcadas a mano.</p></div>
+    <div class="feat"><div class="ic">🔎</div><h3 data-i="f6t">Perfilador de tus datos</h3>
+      <p data-i="f6p">Subí un CSV o Excel y obtené al instante esquema, nulos, duplicados, PII detectada y reglas sugeridas.</p></div>
+  </div>
+</div></section>
+
+<!-- BI -->
+<section class="panel" id="bi"><div class="wrap">
+  <div class="eyebrow" data-i="bi_eye">Compatible con tu BI</div>
+  <h2 class="h2" data-i="bi_h2">Conectá cualquier herramienta de BI</h2>
+  <p class="lead-d" data-i="bi_lead">Todas las tablas de gobierno (catálogo, calidad, linaje, glosario, políticas y KPIs)
+    se exportan como CSV, Excel, JSON o Parquet, y también se sirven por API REST — el formato lo elige tu herramienta, no nosotros.</p>
+  <div class="bigrid">
+    <span class="bib"><i>📊</i>Power BI</span>
+    <span class="bib"><i>📈</i>Tableau</span>
+    <span class="bib"><i>👁️</i>Looker / Looker Studio</span>
+    <span class="bib"><i>🧠</i>MicroStrategy</span>
+    <span class="bib"><i>🟩</i>Qlik</span>
+    <span class="bib"><i>📗</i>Excel</span>
+  </div>
+  <div class="code">
+<span class="c"># API REST · JSON o CSV / REST API · JSON or CSV</span><br>
+GET http://127.0.0.1:8600/api/catalog?lang=es<br>
+GET http://127.0.0.1:8600/api/quality_results?lang=en&amp;format=csv<br>
+GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
+<span class="c"># Power BI → Obtener datos → Web · Tableau → Data → Web Data Connector</span>
+  </div>
+  <p class="lead-d" style="margin-top:18px;margin-bottom:0" data-i="bi_guide">
+    Guía paso a paso por herramienta en <b>docs/BI_INTEGRATION.md</b>.</p>
+</div></section>
+
+<!-- DESCARGAS -->
+<section class="dsec" id="descargas"><div class="wrap">
+  <div class="eyebrow" style="color:var(--amber)" data-i="d_eye">Descargas</div>
+  <h2 class="h2 h2w" data-i="d_h2">De la web al escritorio en un clic</h2>
+  <p class="lead-w" style="margin:0 0 6px" data-i="d_lead">Tres maneras de usar MV Data Governance. Sin APK: 100% web y PC.</p>
+  <div class="dgrid">
+    <div class="dcard"><div class="ic">🪟</div>
+      <h3 data-i="d1t">Instalador Windows (.exe)</h3>
+      <p data-i="d1p">Programa standalone: no requiere Python. Doble clic, acceso directo en el escritorio y listo. Se construye con <b>packaging/build_exe.bat</b> (PyInstaller + Inno Setup).</p>
+      <div class="mono">packaging\build_exe.bat</div>
+      <a class="btn btn-a" href="#contacto" data-i="d1b">Pedir el instalador</a></div>
+    <div class="dcard"><div class="ic">⚡</div>
+      <h3 data-i="d2t">Versión portable (.bat)</h3>
+      <p data-i="d2p">Con Python instalado alcanza un doble clic: crea el entorno, instala dependencias la primera vez y abre el programa en tu navegador.</p>
+      <div class="mono">MV_DataGovernance.bat</div>
+      <a class="btn btn-o" href="https://github.com/vieraschiavi/Mv-Data-Governance" data-i="d2b">Ver en GitHub</a></div>
+    <div class="dcard"><div class="ic">🌐</div>
+      <h3 data-i="d3t">100% Web</h3>
+      <p data-i="d3p">La misma plataforma corriendo en tu servidor o en la nube (Docker/Streamlit). Esta landing y la app comparten el mismo motor.</p>
+      <div class="mono">streamlit run app/app.py</div>
+      <a class="btn btn-o" href="#contacto" data-i="d3b">Solicitar acceso</a></div>
+  </div>
+</div></section>
+
+<!-- PRECIOS -->
+<section class="panel" id="precios"><div class="wrap">
+  <div class="eyebrow" data-i="pr_eye">Precios</div>
+  <h2 class="h2" data-i="pr_h2">Planes simples, sin sorpresas</h2>
+  <p class="lead-d" data-i="pr_lead">Empezá con la demo gratuita con datos sintéticos y escalá cuando tu equipo lo necesite.</p>
+  <div class="pgrid">
+    <div class="plan">
+      <h3 data-i="pl1t">Starter</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
+      <div class="amt">US$ 0<small data-i="pl_mo">/mes</small></div><div class="per" data-i="pl1per">Gratis para siempre</div>
+      <ul>
+        <li data-i="pl1a">Demo completa con datos sintéticos</li>
+        <li data-i="pl1b">3 idiomas incluidos</li>
+        <li data-i="pl1c">Exportación CSV / Excel / JSON</li>
+        <li data-i="pl1d">Programa Windows (.bat)</li>
+      </ul>
+      <a class="btn btn-od" href="#descargas" data-i="pl1btn">Descargar demo</a>
+    </div>
+    <div class="plan pop"><span class="tag" data-i="pl2tag">Más elegido</span>
+      <h3 data-i="pl2t">Professional</h3><div class="who" data-i="pl2w">Para equipos de datos que gobiernan en serio.</div>
+      <div class="amt">US$ 490<small data-i="pl_mo2">/mes</small></div><div class="per" data-i="pl2per">Hasta 25 usuarios</div>
+      <ul>
+        <li data-i="pl2a">Conexión a tus fuentes reales</li>
+        <li data-i="pl2b">API REST para BI ilimitada</li>
+        <li data-i="pl2c">Instalador Windows (.exe)</li>
+        <li data-i="pl2d">Alertas de calidad y SLA</li>
+        <li data-i="pl2e">Soporte prioritario</li>
+      </ul>
+      <a class="btn btn-a" href="#contacto" data-i="pl2btn">Hablar con ventas</a>
+    </div>
+    <div class="plan">
+      <h3 data-i="pl3t">Enterprise</h3><div class="who" data-i="pl3w">Para organizaciones con requisitos regulatorios.</div>
+      <div class="amt" data-i="pl3amt">A medida</div><div class="per" data-i="pl3per">Usuarios ilimitados</div>
+      <ul>
+        <li data-i="pl3a">Despliegue on-premise o nube privada</li>
+        <li data-i="pl3b">SSO y auditoría completa</li>
+        <li data-i="pl3c">Cumplimiento (GDPR / LGPD / Ley 18.331)</li>
+        <li data-i="pl3d">Integraciones a medida</li>
+      </ul>
+      <a class="btn btn-d" href="#contacto" data-i="pl3btn">Contactar</a>
+    </div>
+  </div>
+</div></section>
+
+<!-- CONTACTO -->
+<section class="panel" id="contacto"><div class="wrap">
+  <div class="eyebrow" data-i="c_eye">Contacto</div>
+  <h2 class="h2" data-i="c_h2">Hablemos de tus datos</h2>
+  <p class="lead-d" data-i="c_lead">Contanos qué necesitás gobernar y te respondemos con una propuesta concreta.</p>
+  <form class="cform" id="cform">
+    <div class="frow">
+      <label><span data-i="c_name">Nombre</span><input name="name" required></label>
+      <label><span data-i="c_mail">Email</span><input name="email" type="email" required></label>
+    </div>
+    <label><span data-i="c_msg">Mensaje</span><textarea name="msg" required></textarea></label>
+    <div><button class="btn btn-a" type="submit" data-i="c_send">Enviar</button></div>
+  </form>
+</div></section>
+
+<footer><div class="wrap">
+  <span>© 2026 MV Data Governance · <span data-i="ft_a">Hecho con el mismo ADN que MV Kobra AI</span></span>
+  <span data-i="ft_b">Español · English · Português — sin APK, 100% web y PC</span>
+</div></footer>
+
+<script>
+var I18N={
+en:{
+  nav_sub:"· Data governance",nav_video:"Video",nav_platform:"Platform",nav_bi:"BI",
+  nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
+  kick:"100% Web + Desktop app · ES / EN / PT",
+  h1_a:"Your data, governed.\nYour decisions, trustworthy.",
+  lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
+  cta_video:"▶ Watch the demo",cta_dl:"Download for Windows",
+  m1:"quality dimensions measured",m2:"languages: Spanish · English · Portuguese",
+  m3:"compatible BI tools",m4:"web + desktop, no APK",
+  mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
+  mb1:"Completeness",mb2:"Uniqueness",mb3:"Validity",mb4:"Consistency",mb5:"Timeliness",mb6:"Accuracy",
+  mock_foot:"✓ Catalog up to date · 2 quality alerts assigned to the steward",
+  v_eye:"Video demo",v_h2:"Watch MV Data Governance in action",
+  v_lead:"From catalog to BI dashboard: quality measured across 6 dimensions, end-to-end lineage and one-click export — in your language.",
+  v_fallback:"Your browser does not support HTML5 video playback.",
+  p_eye:"The platform",p_h2:"All of data governance, without friction",
+  p_lead:"Six modules working together on the same metadata, available on the web and in the desktop app.",
+  f1t:"Data catalog",f1p:"Single inventory with owner, steward, domain, classification (PII included), freshness and column dictionary.",
+  f2t:"Quality across 6 dimensions",f2p:"Rule engine: completeness, uniqueness, validity, consistency, timeliness and accuracy, with thresholds and alerts.",
+  f3t:"End-to-end lineage",f3p:"From source to dashboard: interactive graph with upstream and downstream traversal for every asset.",
+  f4t:"Business glossary",f4p:"One official definition per term — in Spanish, English and Portuguese — linked to the datasets that use it.",
+  f5t:"Policies & compliance",f5p:"Every policy is automatically verified against the catalog and the rules: evidence, not hand-ticked boxes.",
+  f6t:"Profile your own data",f6p:"Upload a CSV or Excel file and instantly get schema, nulls, duplicates, detected PII and suggested rules.",
+  bi_eye:"Works with your BI",bi_h2:"Connect any BI tool",
+  bi_lead:"Every governance table (catalog, quality, lineage, glossary, policies and KPIs) exports as CSV, Excel, JSON or Parquet, and is also served over a REST API — your tool picks the format, not us.",
+  bi_guide:"Step-by-step guide per tool in docs/BI_INTEGRATION.md.",
+  d_eye:"Downloads",d_h2:"From the web to the desktop in one click",
+  d_lead:"Three ways to use MV Data Governance. No APK: 100% web and PC.",
+  d1t:"Windows installer (.exe)",d1p:"Standalone program: no Python required. Double-click, desktop shortcut, done. Built with packaging/build_exe.bat (PyInstaller + Inno Setup).",
+  d1b:"Request the installer",
+  d2t:"Portable version (.bat)",d2p:"With Python installed, a double-click is enough: it creates the environment, installs dependencies on first run and opens the program in your browser.",
+  d2b:"View on GitHub",
+  d3t:"100% Web",d3p:"The same platform running on your server or in the cloud (Docker/Streamlit). This landing and the app share the same engine.",
+  d3b:"Request access",
+  pr_eye:"Pricing",pr_h2:"Simple plans, no surprises",
+  pr_lead:"Start with the free demo on synthetic data and scale when your team needs it.",
+  pl1t:"Starter",pl1w:"To explore the platform with demo data.",pl_mo:"/mo",pl1per:"Free forever",
+  pl1a:"Full demo with synthetic data",pl1b:"3 languages included",pl1c:"CSV / Excel / JSON export",pl1d:"Windows program (.bat)",pl1btn:"Download demo",
+  pl2tag:"Most popular",pl2t:"Professional",pl2w:"For data teams governing for real.",pl_mo2:"/mo",pl2per:"Up to 25 users",
+  pl2a:"Connect your real sources",pl2b:"Unlimited BI REST API",pl2c:"Windows installer (.exe)",pl2d:"Quality alerts and SLA",pl2e:"Priority support",pl2btn:"Talk to sales",
+  pl3t:"Enterprise",pl3w:"For organizations with regulatory requirements.",pl3amt:"Custom",pl3per:"Unlimited users",
+  pl3a:"On-premise or private cloud deployment",pl3b:"SSO and full audit",pl3c:"Compliance (GDPR / LGPD / local laws)",pl3d:"Custom integrations",pl3btn:"Contact us",
+  c_eye:"Contact",c_h2:"Let's talk about your data",
+  c_lead:"Tell us what you need to govern and we'll reply with a concrete proposal.",
+  c_name:"Name",c_mail:"Email",c_msg:"Message",c_send:"Send",
+  ft_a:"Built with the same DNA as MV Kobra AI",ft_b:"Español · English · Português — no APK, 100% web and PC"
+},
+pt:{
+  nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_platform:"Plataforma",nav_bi:"BI",
+  nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
+  kick:"100% Web + Programa PC · ES / EN / PT",
+  h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
+  lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
+  cta_video:"▶ Ver a demo",cta_dl:"Baixar para Windows",
+  m1:"dimensões de qualidade medidas",m2:"idiomas: espanhol · inglês · português",
+  m3:"ferramentas de BI compatíveis",m4:"web + desktop, sem APK",
+  mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
+  mb1:"Completude",mb2:"Unicidade",mb3:"Validade",mb4:"Consistência",mb5:"Pontualidade",mb6:"Exatidão",
+  mock_foot:"✓ Catálogo atualizado · 2 alertas de qualidade atribuídos ao steward",
+  v_eye:"Demo em vídeo",v_h2:"Veja o MV Data Governance em ação",
+  v_lead:"Do catálogo ao painel de BI: qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique — no seu idioma.",
+  v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
+  p_eye:"A plataforma",p_h2:"Toda a governança de dados, sem atrito",
+  p_lead:"Seis módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
+  f1t:"Catálogo de dados",f1p:"Inventário único com dono, steward, domínio, classificação (PII incluída), atualidade e dicionário de colunas.",
+  f2t:"Qualidade em 6 dimensões",f2p:"Motor de regras: completude, unicidade, validade, consistência, pontualidade e exatidão, com limites e alertas.",
+  f3t:"Linhagem de ponta a ponta",f3p:"Da fonte ao dashboard: grafo interativo com navegação a montante e a jusante para cada ativo.",
+  f4t:"Glossário de negócio",f4p:"Uma definição oficial por termo — em espanhol, inglês e português — vinculada aos datasets que a usam.",
+  f5t:"Políticas e conformidade",f5p:"Cada política é verificada automaticamente contra o catálogo e as regras: evidência, não caixas marcadas à mão.",
+  f6t:"Perfile seus próprios dados",f6p:"Envie um CSV ou Excel e obtenha na hora esquema, nulos, duplicados, PII detectada e regras sugeridas.",
+  bi_eye:"Compatível com seu BI",bi_h2:"Conecte qualquer ferramenta de BI",
+  bi_lead:"Todas as tabelas de governança (catálogo, qualidade, linhagem, glossário, políticas e KPIs) são exportadas como CSV, Excel, JSON ou Parquet, e também servidas por API REST — o formato quem escolhe é a sua ferramenta.",
+  bi_guide:"Guia passo a passo por ferramenta em docs/BI_INTEGRATION.md.",
+  d_eye:"Downloads",d_h2:"Da web ao desktop em um clique",
+  d_lead:"Três maneiras de usar o MV Data Governance. Sem APK: 100% web e PC.",
+  d1t:"Instalador Windows (.exe)",d1p:"Programa standalone: não requer Python. Duplo clique, atalho na área de trabalho e pronto. Construído com packaging/build_exe.bat (PyInstaller + Inno Setup).",
+  d1b:"Solicitar o instalador",
+  d2t:"Versão portátil (.bat)",d2p:"Com Python instalado, basta um duplo clique: cria o ambiente, instala as dependências na primeira execução e abre o programa no navegador.",
+  d2b:"Ver no GitHub",
+  d3t:"100% Web",d3p:"A mesma plataforma rodando no seu servidor ou na nuvem (Docker/Streamlit). Esta landing e o app compartilham o mesmo motor.",
+  d3b:"Solicitar acesso",
+  pr_eye:"Preços",pr_h2:"Planos simples, sem surpresas",
+  pr_lead:"Comece com a demo gratuita com dados sintéticos e escale quando sua equipe precisar.",
+  pl1t:"Starter",pl1w:"Para conhecer a plataforma com dados de demo.",pl_mo:"/mês",pl1per:"Grátis para sempre",
+  pl1a:"Demo completa com dados sintéticos",pl1b:"3 idiomas incluídos",pl1c:"Exportação CSV / Excel / JSON",pl1d:"Programa Windows (.bat)",pl1btn:"Baixar demo",
+  pl2tag:"Mais escolhido",pl2t:"Professional",pl2w:"Para equipes de dados que governam de verdade.",pl_mo2:"/mês",pl2per:"Até 25 usuários",
+  pl2a:"Conexão às suas fontes reais",pl2b:"API REST para BI ilimitada",pl2c:"Instalador Windows (.exe)",pl2d:"Alertas de qualidade e SLA",pl2e:"Suporte prioritário",pl2btn:"Falar com vendas",
+  pl3t:"Enterprise",pl3w:"Para organizações com requisitos regulatórios.",pl3amt:"Sob medida",pl3per:"Usuários ilimitados",
+  pl3a:"Implantação on-premise ou nuvem privada",pl3b:"SSO e auditoria completa",pl3c:"Conformidade (GDPR / LGPD / leis locais)",pl3d:"Integrações sob medida",pl3btn:"Entrar em contato",
+  c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
+  c_lead:"Conte o que você precisa governar e responderemos com uma proposta concreta.",
+  c_name:"Nome",c_mail:"E-mail",c_msg:"Mensagem",c_send:"Enviar",
+  ft_a:"Feito com o mesmo DNA do MV Kobra AI",ft_b:"Español · English · Português — sem APK, 100% web e PC"
+}};
+var ES={};
+document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+function setLang(lang){
+  var dict=lang==='es'?null:I18N[lang];
+  document.querySelectorAll('[data-i]').forEach(function(el){
+    var k=el.getAttribute('data-i');
+    if(dict&&dict[k]!==undefined){
+      if(k==='h1_a'){el.innerHTML=dict[k].replace('\n','<br>').replace(/confiáveis|trustworthy/,'<span class="am">$&</span>');}
+      else{el.textContent=dict[k];}
+    }else{el.innerHTML=ES[k];}
+  });
+  document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
+  document.documentElement.lang=lang;
+  try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+}
+document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+try{
+  var saved=localStorage.getItem('mvdg_lang');
+  if(saved&&saved!=='es')setLang(saved);
+}catch(e){}
+document.getElementById('cform').addEventListener('submit',function(ev){
+  ev.preventDefault();
+  var f=ev.target;
+  var body='Nombre: '+f.name.value+'%0D%0AEmail: '+f.email.value+'%0D%0A%0D%0A'+encodeURIComponent(f.msg.value);
+  location.href='mailto:vieraschiavi@gmail.com?subject=MV%20Data%20Governance&body='+body;
+});
+</script>
