@@ -1,0 +1,222 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MV Data Governance · Descargar la demo (gratis, sin registro)</title>
+<link rel="icon" type="image/png" href="mv_icon.png">
+<style>
+:root{
+  --navy:#081527;--navy2:#0c2137;--hero-a:#0d2440;--hero-b:#081324;
+  --amber:#f2b441;--amber2:#e39a2e;--amber-ink:#1c1305;
+  --ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
+  --paper:#fff;--ink-d:#122238;--muted-d:#586a80;--line-d:#e6ebf2;--tint:#f4f7fb;
+  --blue:#2f74c0;--green:#00c896;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--navy);color:var(--ink);font-family:var(--sans);line-height:1.55;
+  -webkit-font-smoothing:antialiased;padding:14px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 26px}
+h1,h2,h3{margin:0;line-height:1.1;letter-spacing:-.02em}
+.am{color:var(--amber)}
+nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800}
+.mk{width:30px;height:30px;border-radius:8px;display:block}
+.brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+.right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
+.lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
+  border-radius:6px;cursor:pointer;font-family:inherit;letter-spacing:.03em}
+.lang button.on{background:var(--amber);color:var(--amber-ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:750;font-size:14px;
+  border-radius:9px;padding:11px 18px;cursor:pointer;border:1px solid transparent;font-family:inherit}
+.btn-a{background:var(--amber);color:var(--amber-ink)}
+.btn-o{background:transparent;color:#fff;border-color:var(--line2)}
+.btn-o:hover{border-color:var(--amber);color:var(--amber)}
+.hero{background:radial-gradient(680px 420px at 80% -10%,rgba(242,180,65,.13),transparent 60%),
+  linear-gradient(160deg,var(--hero-a),var(--hero-b));border:1px solid var(--line);border-radius:24px;
+  margin-top:14px;padding:48px 40px;text-align:center}
+@media(max-width:600px){.hero{padding:34px 22px}}
+.kick{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.05em;
+  color:var(--amber);background:rgba(242,180,65,.1);border:1px solid rgba(242,180,65,.28);
+  padding:6px 13px;border-radius:30px;margin-bottom:18px;text-transform:uppercase}
+.hero h1{font-size:clamp(28px,4.4vw,44px);font-weight:850;color:#fff}
+.hero p{font-size:clamp(15px,1.8vw,17.5px);color:var(--muted);max-width:60ch;margin:16px auto 0}
+.free{display:flex;gap:10px 22px;flex-wrap:wrap;justify-content:center;margin-top:22px;color:var(--muted);font-size:13.5px}
+.free span{display:inline-flex;align-items:center;gap:6px}
+.free span::before{content:"✓";color:var(--green);font-weight:800}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:14px}
+@media(max-width:820px){.cards{grid-template-columns:1fr}}
+.card{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:18px;padding:26px;display:flex;flex-direction:column}
+.card.pop{border-color:var(--amber);box-shadow:0 20px 46px rgba(242,180,65,.14);position:relative}
+.card.pop .tag{position:absolute;top:-11px;left:24px;background:var(--amber);color:var(--amber-ink);font-size:11px;
+  font-weight:800;padding:4px 12px;border-radius:20px}
+.card .ic{font-size:30px;margin-bottom:12px}
+.card h3{color:#fff;font-size:19px;margin-bottom:6px}
+.card .who{color:var(--faint);font-size:12.5px;margin-bottom:14px;min-height:32px}
+.card ul{list-style:none;padding:0;margin:0 0 18px;flex:1}
+.card li{color:var(--muted);font-size:13px;padding:6px 0 6px 20px;position:relative}
+.card li::before{content:"→";position:absolute;left:0;color:var(--amber2)}
+.card .btn{width:100%}
+.card .req{color:var(--faint);font-size:11.5px;margin-top:10px;text-align:center}
+.steps{background:var(--paper);color:var(--ink-d);border-radius:24px;margin-top:14px;padding:44px 0}
+.steps .wrap{padding:0 40px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.steps h2{font-size:clamp(22px,3.2vw,32px);font-weight:850;color:var(--ink-d);margin:10px 0 26px}
+.slist{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:760px){.slist{grid-template-columns:1fr}}
+.st{background:var(--tint);border:1px solid var(--line-d);border-radius:14px;padding:20px}
+.st .n{width:30px;height:30px;border-radius:50%;background:var(--ink-d);color:#fff;font-weight:850;
+  display:flex;align-items:center;justify-content:center;margin-bottom:10px;font-size:14px}
+.st h4{margin:0 0 6px;color:var(--ink-d);font-size:15.5px}
+.st p{margin:0;color:var(--muted-d);font-size:13.5px}
+.st code{font-family:var(--mono);font-size:12px;background:#0f2135;color:#cfe3ff;padding:2px 7px;border-radius:6px}
+.note{max-width:900px;margin:22px auto 0;color:var(--faint);font-size:12.5px;text-align:center;line-height:1.6}
+footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center}
+</style>
+
+<nav><div class="wrap">
+  <a class="brand" href="index.html">
+    <img class="mk" src="mv_icon.png" alt="MV">
+    <span><b>MV Data Governance</b> <small data-i="sub">· Descargas</small></span>
+  </a>
+  <div class="right">
+    <div class="lang">
+      <button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button>
+    </div>
+    <a class="btn btn-o" href="index.html" data-i="back">← Volver</a>
+  </div>
+</div></nav>
+
+<section class="hero">
+  <span class="kick"><span data-i="kick">Demo gratis · sin registro · sin mail</span></span>
+  <h1 data-i="h1">Descargá MV Data Governance <span class="am">ahora</span></h1>
+  <p data-i="lead">La demo es 100% operativa con datos sintéticos: catálogo, calidad, linaje, glosario,
+    políticas, fichas de empresas y exportación a BI. Elegí uno de los 3 medios — descarga directa, sin dejar tu correo.</p>
+  <div class="free">
+    <span data-i="f1">Gratis para siempre</span>
+    <span data-i="f2">Sin registro ni email</span>
+    <span data-i="f3">Tus datos nunca salen de tu PC</span>
+    <span data-i="f4">Español · inglés · portugués</span>
+  </div>
+</section>
+
+<section class="wrap" style="padding:0;margin-top:14px">
+  <div class="cards">
+    <div class="card pop"><span class="tag" data-i="tag">Recomendado</span>
+      <div class="ic">⚡</div>
+      <h3 data-i="c1t">Portable (.bat)</h3>
+      <div class="who" data-i="c1w">Para probar ya, sin instalar nada en el sistema.</div>
+      <ul>
+        <li data-i="c1a">Descomprimís y doble clic</li>
+        <li data-i="c1b">Se autoinstala la 1ª vez</li>
+        <li data-i="c1c">Abre en tu navegador</li>
+      </ul>
+      <a class="btn btn-a" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download data-i="c1btn">⬇ Descargar demo (ZIP)</a>
+      <div class="req" data-i="c1req">Requiere Python 3.10+ · ~160 KB</div>
+    </div>
+    <div class="card">
+      <div class="ic">🪟</div>
+      <h3 data-i="c2t">Instalador (.exe)</h3>
+      <div class="who" data-i="c2w">Para empresas que permiten instalar software (no requiere Python).</div>
+      <ul>
+        <li data-i="c2a">Incluye el generador del .exe</li>
+        <li data-i="c2b">Doble clic en build_exe.bat</li>
+        <li data-i="c2c">Instalador con accesos directos</li>
+      </ul>
+      <a class="btn btn-o" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download data-i="c2btn">⬇ Descargar paquete (ZIP)</a>
+      <div class="req" data-i="c2req">El .exe se genera en tu PC Windows</div>
+    </div>
+    <div class="card">
+      <div class="ic">🌐</div>
+      <h3 data-i="c3t">Web (servidor)</h3>
+      <div class="who" data-i="c3w">Para correrlo en un servidor de tu empresa, sin instalar en las PCs.</div>
+      <ul>
+        <li data-i="c3a">Mismo paquete, modo web</li>
+        <li data-i="c3b">streamlit run app/app.py</li>
+        <li data-i="c3c">100% en tu infraestructura</li>
+      </ul>
+      <a class="btn btn-o" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download data-i="c3btn">⬇ Descargar paquete (ZIP)</a>
+      <div class="req" data-i="c3req">Docker / Streamlit · Linux, macOS o Windows</div>
+    </div>
+  </div>
+  <p class="note" data-i="note">Los 3 medios vienen en el mismo paquete de 160 KB (el programa completo). La 1ª ejecución
+    descarga las librerías (2–5 min, una sola vez). ¿Querés el paquete completo con esta web y el video incluidos?
+    <a class="am" href="https://github.com/vieraschiavi/Mv-Data-Governance/archive/refs/heads/main.zip">Descargá el repositorio entero</a>.</p>
+</section>
+
+<section class="steps">
+  <div class="wrap">
+    <div class="eyebrow" data-i="s_eye">3 pasos</div>
+    <h2 data-i="s_h2">De la descarga al programa andando</h2>
+    <div class="slist">
+      <div class="st"><div class="n">1</div><h4 data-i="s1t">Descomprimí el ZIP</h4>
+        <p data-i="s1p">Donde quieras: Documentos, Escritorio o un pendrive. No toca el sistema.</p></div>
+      <div class="st"><div class="n">2</div><h4 data-i="s2t">Abrí el programa</h4>
+        <p data-i="s2p">Windows: doble clic en <code>MV_DataGovernance.bat</code>. Linux/Mac: <code>./run.sh</code>.</p></div>
+      <div class="st"><div class="n">3</div><h4 data-i="s3t">Explorá la demo</h4>
+        <p data-i="s3p">Se abre en el navegador con datos de ejemplo. Subí tu propio CSV/Excel en «Mis datos».</p></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  © 2026 MV Data Governance · <span data-i="ft">Sin APK · 100% web y PC · Español · English · Português</span>
+</div></footer>
+
+<script>
+var I18N={
+en:{sub:"· Downloads",back:"← Back",kick:"Free demo · no signup · no email",
+  h1:'Download MV Data Governance <span class="am">now</span>',
+  lead:"The demo is 100% operational with synthetic data: catalog, quality, lineage, glossary, policies, company records and BI export. Pick one of the 3 ways — direct download, no email required.",
+  f1:"Free forever",f2:"No signup or email",f3:"Your data never leaves your PC",f4:"Spanish · English · Portuguese",
+  tag:"Recommended",c1t:"Portable (.bat)",c1w:"To try it now, installing nothing system-wide.",
+  c1a:"Unzip and double-click",c1b:"Self-installs on first run",c1c:"Opens in your browser",
+  c1btn:"⬇ Download demo (ZIP)",c1req:"Requires Python 3.10+ · ~160 KB",
+  c2t:"Installer (.exe)",c2w:"For companies that allow installing software (no Python needed).",
+  c2a:"Includes the .exe builder",c2b:"Double-click build_exe.bat",c2c:"Installer with shortcuts",
+  c2btn:"⬇ Download package (ZIP)",c2req:"The .exe is built on your Windows PC",
+  c3t:"Web (server)",c3w:"To run it on your company server, nothing installed on PCs.",
+  c3a:"Same package, web mode",c3b:"streamlit run app/app.py",c3c:"100% on your infrastructure",
+  c3btn:"⬇ Download package (ZIP)",c3req:"Docker / Streamlit · Linux, macOS or Windows",
+  note:'All 3 ways come in the same 160 KB package (the full program). First run downloads the libraries (2–5 min, once). Want the full package with this website and the video included? <a class="am" href="https://github.com/vieraschiavi/Mv-Data-Governance/archive/refs/heads/main.zip">Download the whole repository</a>.',
+  s_eye:"3 steps",s_h2:"From download to a running program",
+  s1t:"Unzip it",s1p:"Anywhere: Documents, Desktop or a USB drive. It doesn't touch the system.",
+  s2t:"Open the program",s2p:'Windows: double-click <code>MV_DataGovernance.bat</code>. Linux/Mac: <code>./run.sh</code>.',
+  s3t:"Explore the demo",s3p:'It opens in the browser with sample data. Upload your own CSV/Excel in "My data".',
+  ft:"No APK · 100% web and PC · Español · English · Português"},
+pt:{sub:"· Downloads",back:"← Voltar",kick:"Demo grátis · sem cadastro · sem e-mail",
+  h1:'Baixe o MV Data Governance <span class="am">agora</span>',
+  lead:"A demo é 100% operacional com dados sintéticos: catálogo, qualidade, linhagem, glossário, políticas, fichas de empresas e exportação para BI. Escolha um dos 3 meios — download direto, sem deixar seu e-mail.",
+  f1:"Grátis para sempre",f2:"Sem cadastro ou e-mail",f3:"Seus dados nunca saem do seu PC",f4:"Espanhol · inglês · português",
+  tag:"Recomendado",c1t:"Portátil (.bat)",c1w:"Para testar já, sem instalar nada no sistema.",
+  c1a:"Descompacta e duplo clique",c1b:"Autoinstala na 1ª vez",c1c:"Abre no navegador",
+  c1btn:"⬇ Baixar demo (ZIP)",c1req:"Requer Python 3.10+ · ~160 KB",
+  c2t:"Instalador (.exe)",c2w:"Para empresas que permitem instalar software (não requer Python).",
+  c2a:"Inclui o gerador do .exe",c2b:"Duplo clique em build_exe.bat",c2c:"Instalador com atalhos",
+  c2btn:"⬇ Baixar pacote (ZIP)",c2req:"O .exe é gerado no seu PC Windows",
+  c3t:"Web (servidor)",c3w:"Para rodar num servidor da sua empresa, sem instalar nos PCs.",
+  c3a:"Mesmo pacote, modo web",c3b:"streamlit run app/app.py",c3c:"100% na sua infraestrutura",
+  c3btn:"⬇ Baixar pacote (ZIP)",c3req:"Docker / Streamlit · Linux, macOS ou Windows",
+  note:'Os 3 meios vêm no mesmo pacote de 160 KB (o programa completo). A 1ª execução baixa as bibliotecas (2–5 min, uma vez). Quer o pacote completo com este site e o vídeo incluídos? <a class="am" href="https://github.com/vieraschiavi/Mv-Data-Governance/archive/refs/heads/main.zip">Baixe o repositório inteiro</a>.',
+  s_eye:"3 passos",s_h2:"Do download ao programa funcionando",
+  s1t:"Descompacte o ZIP",s1p:"Onde quiser: Documentos, Área de trabalho ou pendrive. Não toca no sistema.",
+  s2t:"Abra o programa",s2p:'Windows: duplo clique em <code>MV_DataGovernance.bat</code>. Linux/Mac: <code>./run.sh</code>.',
+  s3t:"Explore a demo",s3p:'Abre no navegador com dados de exemplo. Envie seu próprio CSV/Excel em "Meus dados".',
+  ft:"Sem APK · 100% web e PC · Español · English · Português"}};
+var ES={};
+document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+function setLang(lang){
+  var dict=lang==='es'?null:I18N[lang];
+  document.querySelectorAll('[data-i]').forEach(function(el){
+    var k=el.getAttribute('data-i');
+    el.innerHTML=(dict&&dict[k]!==undefined)?dict[k]:ES[k];
+  });
+  document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
+  document.documentElement.lang=lang;
+  try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+}
+document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+try{var s=localStorage.getItem('mvdg_lang');if(s&&s!=='es')setLang(s);}catch(e){}
+</script>
