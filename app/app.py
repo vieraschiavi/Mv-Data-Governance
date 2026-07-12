@@ -24,6 +24,9 @@ from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
 from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
                           recommended_pack, save_client)
+from mvdg.connectors import (ENGINES, delete_connection, list_tables,
+                             load_connections, load_table, run_query,
+                             save_connection, stored_password, test_connection)
 from mvdg.help_center import automation_rows, speeches
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
@@ -270,36 +273,125 @@ with tab_p:
     }), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Mis datos
+def _render_profile(user_df):
+    """Perfila y muestra un DataFrame (venga de archivo o de base de datos)."""
+    if user_df is None or not len(user_df):
+        return
+    info = summary(user_df)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(t("col_rows", lang), f"{info['rows']:,}")
+    c2.metric(t("col_column", lang), info["columns"])
+    c3.metric(t("pr_dupes", lang), info["duplicate_rows"])
+    c4.metric(t("pr_nulls", lang), f"{info['null_cells_pct']}%")
+    st.subheader(t("pr_col_profile", lang))
+    st.dataframe(profile_table(user_df).rename(columns={
+        "column": t("col_column", lang), "dtype": t("col_type", lang),
+        "null_pct": t("pr_nulls", lang), "unique_values": t("pr_unique", lang),
+        "possible_pii": t("col_pii", lang),
+    }), width="stretch", hide_index=True)
+    if info["pii_columns"]:
+        st.warning(t("pr_pii_hint", lang), icon="🔐")
+    st.subheader(t("pr_suggestions", lang))
+    for s in suggest_rules(user_df, lang):
+        st.markdown(f"- {s}")
+
+
 with tab_pr:
     st.info(t("pr_intro", lang), icon="🔎")
-    up = st.file_uploader(t("pr_upload", lang), type=["csv", "xlsx", "xls"])
-    if up is not None:
-        try:
-            user_df = (pd.read_csv(up) if up.name.lower().endswith(".csv")
-                       else pd.read_excel(up))
-        except Exception as exc:  # archivo corrupto / formato raro
-            st.error(f"⚠️ {exc}")
-            user_df = None
-        if user_df is not None and len(user_df):
-            info = summary(user_df)
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric(t("col_rows", lang), f"{info['rows']:,}")
-            c2.metric(t("col_column", lang), info["columns"])
-            c3.metric(t("pr_dupes", lang), info["duplicate_rows"])
-            c4.metric(t("pr_nulls", lang), f"{info['null_cells_pct']}%")
-            st.subheader(t("pr_col_profile", lang))
-            prof = profile_table(user_df)
-            st.dataframe(prof.rename(columns={
-                "column": t("col_column", lang), "dtype": t("col_type", lang),
-                "null_pct": t("pr_nulls", lang),
-                "unique_values": t("pr_unique", lang),
-                "possible_pii": t("col_pii", lang),
-            }), width="stretch", hide_index=True)
-            if info["pii_columns"]:
-                st.warning(t("pr_pii_hint", lang), icon="🔐")
-            st.subheader(t("pr_suggestions", lang))
-            for s in suggest_rules(user_df, lang):
-                st.markdown(f"- {s}")
+    source = st.radio(t("pr_source", lang),
+                      ["file", "db"], horizontal=True, key="pr_source",
+                      format_func=lambda k: t("pr_src_file", lang) if k == "file"
+                      else t("pr_src_db", lang))
+
+    if source == "file":
+        up = st.file_uploader(t("pr_upload", lang), type=["csv", "xlsx", "xls"])
+        if up is not None:
+            try:
+                user_df = (pd.read_csv(up) if up.name.lower().endswith(".csv")
+                           else pd.read_excel(up))
+            except Exception as exc:  # archivo corrupto / formato raro
+                st.error(f"⚠️ {exc}")
+                user_df = None
+            _render_profile(user_df)
+    else:
+        st.markdown(t("db_intro", lang))
+        existing = load_connections()
+        opts = [t("db_new_conn", lang)] + [
+            f"{c.get('name') or c.get('host')} ({ENGINES.get(c.get('engine'), {}).get('label', c.get('engine'))})"
+            for c in existing]
+        pick = st.selectbox(t("db_saved_conns", lang), opts)
+        editing = existing[opts.index(pick) - 1] if pick != t("db_new_conn", lang) else None
+
+        engine_keys = list(ENGINES.keys())
+        e1, e2, e3 = st.columns(3)
+        engine = e1.selectbox(t("db_engine", lang), engine_keys,
+                              index=engine_keys.index((editing or {}).get("engine", "postgresql"))
+                              if (editing or {}).get("engine") in engine_keys else 0,
+                              format_func=lambda k: ENGINES[k]["label"])
+        conn_name = e2.text_input(t("db_name", lang), (editing or {}).get("name", ""))
+        is_sqlite = engine == "sqlite"
+        if is_sqlite:
+            database = st.text_input(t("db_sqlite_path", lang), (editing or {}).get("database", ""))
+            host = ""; port = None; user = ""; pwd = ""
+        else:
+            port = e3.text_input(t("db_port", lang),
+                                 str((editing or {}).get("port") or ENGINES[engine]["port"]))
+            h1, h2 = st.columns([2, 1])
+            host = h1.text_input(t("db_host", lang), (editing or {}).get("host", ""))
+            database = h2.text_input(t("db_database", lang), (editing or {}).get("database", ""))
+            u1, u2 = st.columns(2)
+            user = u1.text_input(t("db_user", lang), (editing or {}).get("user", ""))
+            _has_pwd = bool((editing or {}).get("save_password"))
+            pwd = u2.text_input(t("db_password", lang),
+                                value=stored_password(editing) if editing else "",
+                                type="password")
+        save_pwd = st.checkbox(t("db_save_pwd", lang), value=bool((editing or {}).get("save_password", True)))
+
+        profile = {"conn_id": (editing or {}).get("conn_id"), "name": conn_name,
+                   "engine": engine, "host": host,
+                   "port": (port if not is_sqlite else None),
+                   "database": database, "user": user, "password": pwd}
+
+        b1, b2, b3 = st.columns(3)
+        if b1.button(t("db_test", lang)):
+            ok, msg = test_connection(profile, password=pwd)
+            (st.success if ok else st.error)(msg)
+        if b2.button(t("db_save", lang)):
+            if not conn_name.strip():
+                st.error(t("db_need_name", lang))
+            else:
+                save_connection(profile, save_password=save_pwd)
+                st.success(t("db_saved_ok", lang))
+        if editing is not None and b3.button(t("db_delete", lang)):
+            delete_connection(editing["conn_id"])
+            st.success(t("cl_deleted", lang))
+        st.caption(t("db_local_note", lang))
+
+        # Traer tablas: usa la conexión guardada (o la que se está probando)
+        active = editing or (profile if (database or host) else None)
+        if active is not None:
+            try:
+                tables = list_tables(active, password=pwd or None)
+            except Exception as exc:  # noqa: BLE001
+                tables = []
+                st.warning(f"⚠️ {exc}")
+            if tables:
+                lim = st.number_input(t("db_limit", lang), 100, 100000, 10000, step=100)
+                p1, p2 = st.columns([2, 1])
+                table = p1.selectbox(t("db_pick_table", lang), tables)
+                if p2.button(t("db_load", lang)):
+                    try:
+                        _render_profile(load_table(active, table, int(lim), password=pwd or None))
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"⚠️ {exc}")
+                sql = st.text_area(t("db_query", lang), "")
+                if sql.strip() and st.button(t("db_run_query", lang)):
+                    try:
+                        _render_profile(run_query(active, sql, int(lim), password=pwd or None))
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"⚠️ {exc}")
+            else:
+                st.caption(t("db_connect_first", lang))
 
 # ---------------------------------------------------------------- BI & API
 with tab_bi:

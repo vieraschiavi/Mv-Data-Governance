@@ -67,7 +67,7 @@ su restricción y recomienda el paquete automáticamente.
 | 🧬 **Linaje** | Grafo interactivo fuente → cruda → curada → mart → BI, con foco aguas arriba/abajo |
 | 📖 **Glosario** | Términos de negocio con definición oficial en 3 idiomas y datasets vinculados |
 | 🛡️ **Políticas** | Cumplimiento verificado automáticamente contra catálogo y reglas (evidencia, no checkboxes) |
-| 🔎 **Mis datos** | Subí tu CSV/Excel: perfil por columna, duplicados, PII detectada y reglas sugeridas |
+| 🔎 **Mis datos** | Subí tu CSV/Excel **o conectate directo a tu base de datos** (PostgreSQL, MySQL, SQL Server, Oracle, SQLite): perfil por columna, duplicados, PII detectada y reglas sugeridas |
 | 📤 **BI & API** | Exportación CSV/Excel/JSON/Parquet + paquete Excel multi-hoja + API REST |
 | 🏢 **Empresas** | Fichas de empresas clientes **que se guardan en disco** (contacto, BI, restricción de TI → recomienda Opción A o B, madurez, notas) con exportación |
 | ❓ **Ayuda** | Qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |

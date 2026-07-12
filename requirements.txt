@@ -8,3 +8,12 @@ uvicorn>=0.27
 openpyxl>=3.1
 xlsxwriter>=3.1
 pyarrow>=14.0
+sqlalchemy>=2.0
+
+# --- Drivers de base de datos (opcionales, instalá el que uses) ---
+# Database drivers (optional — install the one you use):
+#   PostgreSQL:  pip install psycopg2-binary
+#   MySQL/MariaDB: pip install pymysql
+#   SQL Server:  pip install pyodbc
+#   Oracle:      pip install oracledb
+#   SQLite:      incluido en Python (no requiere driver)
