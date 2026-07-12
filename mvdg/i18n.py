@@ -186,15 +186,15 @@ _T: dict[str, dict[str, str]] = {
     "p_noncompliant": {"es": "🔴 No cumple", "en": "🔴 Non-compliant", "pt": "🔴 Não conforme"},
     # ------------------------------------------------------------- profiler
     "pr_intro": {
-        "es": "Subí tu propio archivo (CSV o Excel) y MV Data Governance lo "
-              "perfila al instante: esquema, nulos, duplicados, calidad por "
-              "columna y sugerencias de reglas.",
-        "en": "Upload your own file (CSV or Excel) and MV Data Governance "
-              "profiles it instantly: schema, nulls, duplicates, per-column "
-              "quality and rule suggestions.",
-        "pt": "Envie seu próprio arquivo (CSV ou Excel) e o MV Data Governance "
-              "o perfila na hora: esquema, nulos, duplicados, qualidade por "
-              "coluna e sugestões de regras.",
+        "es": "Subí un archivo (CSV o Excel) o conectate directo a tu base de "
+              "datos, y MV Data Governance lo perfila al instante: esquema, "
+              "nulos, duplicados, calidad por columna y sugerencias de reglas.",
+        "en": "Upload a file (CSV or Excel) or connect directly to your "
+              "database, and MV Data Governance profiles it instantly: schema, "
+              "nulls, duplicates, per-column quality and rule suggestions.",
+        "pt": "Envie um arquivo (CSV ou Excel) ou conecte-se direto ao seu "
+              "banco de dados, e o MV Data Governance o perfila na hora: "
+              "esquema, nulos, duplicados, qualidade por coluna e sugestões.",
     },
     "pr_upload": {"es": "Archivo CSV o Excel", "en": "CSV or Excel file", "pt": "Arquivo CSV ou Excel"},
     "pr_overview": {"es": "Resumen del archivo", "en": "File summary", "pt": "Resumo do arquivo"},
@@ -207,6 +207,56 @@ _T: dict[str, dict[str, str]] = {
         "es": "Posible PII detectada — revisá clasificación y enmascaramiento.",
         "en": "Possible PII detected — review classification and masking.",
         "pt": "Possível PII detectada — revise classificação e mascaramento.",
+    },
+    "pr_source": {"es": "Fuente de datos", "en": "Data source", "pt": "Fonte de dados"},
+    "pr_src_file": {"es": "📄 Archivo (CSV/Excel)", "en": "📄 File (CSV/Excel)", "pt": "📄 Arquivo (CSV/Excel)"},
+    "pr_src_db": {"es": "🗄️ Base de datos", "en": "🗄️ Database", "pt": "🗄️ Banco de dados"},
+    # ------------------------------------------------------------- connectors
+    "db_intro": {
+        "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "
+              "Server, Oracle, SQLite). Cargás servidor, usuario y contraseña, "
+              "los guardás y traés tus tablas al gobierno — igual que un CSV.",
+        "en": "Connect directly to your database (PostgreSQL, MySQL, SQL "
+              "Server, Oracle, SQLite). Enter host, user and password, save "
+              "them and bring your tables into governance — just like a CSV.",
+        "pt": "Conecte-se direto ao seu banco de dados (PostgreSQL, MySQL, SQL "
+              "Server, Oracle, SQLite). Informe host, usuário e senha, salve-os "
+              "e traga suas tabelas para a governança — como um CSV.",
+    },
+    "db_saved_conns": {"es": "Conexiones guardadas", "en": "Saved connections", "pt": "Conexões salvas"},
+    "db_new_conn": {"es": "(nueva conexión)", "en": "(new connection)", "pt": "(nova conexão)"},
+    "db_engine": {"es": "Motor", "en": "Engine", "pt": "Motor"},
+    "db_name": {"es": "Nombre de la conexión", "en": "Connection name", "pt": "Nome da conexão"},
+    "db_host": {"es": "Servidor / host", "en": "Server / host", "pt": "Servidor / host"},
+    "db_port": {"es": "Puerto", "en": "Port", "pt": "Porta"},
+    "db_database": {"es": "Base de datos", "en": "Database", "pt": "Banco de dados"},
+    "db_sqlite_path": {"es": "Ruta del archivo .db/.sqlite", "en": "Path to .db/.sqlite file", "pt": "Caminho do arquivo .db/.sqlite"},
+    "db_user": {"es": "Usuario", "en": "User", "pt": "Usuário"},
+    "db_password": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
+    "db_save_pwd": {"es": "Guardar contraseña (local, ofuscada)", "en": "Save password (local, obfuscated)", "pt": "Salvar senha (local, ofuscada)"},
+    "db_test": {"es": "🔌 Probar conexión", "en": "🔌 Test connection", "pt": "🔌 Testar conexão"},
+    "db_save": {"es": "💾 Guardar conexión", "en": "💾 Save connection", "pt": "💾 Salvar conexão"},
+    "db_saved_ok": {"es": "Conexión guardada.", "en": "Connection saved.", "pt": "Conexão salva."},
+    "db_delete": {"es": "🗑️ Eliminar conexión", "en": "🗑️ Delete connection", "pt": "🗑️ Excluir conexão"},
+    "db_need_name": {"es": "Poné un nombre para la conexión.", "en": "Enter a name for the connection.", "pt": "Informe um nome para a conexão."},
+    "db_pick_table": {"es": "Tabla a traer", "en": "Table to load", "pt": "Tabela para trazer"},
+    "db_limit": {"es": "Máximo de filas", "en": "Max rows", "pt": "Máximo de linhas"},
+    "db_load": {"es": "⬇️ Traer y perfilar tabla", "en": "⬇️ Load and profile table", "pt": "⬇️ Trazer e perfilar tabela"},
+    "db_query": {"es": "…o una consulta SQL (SELECT)", "en": "…or a SQL query (SELECT)", "pt": "…ou uma consulta SQL (SELECT)"},
+    "db_run_query": {"es": "▶️ Ejecutar consulta y perfilar", "en": "▶️ Run query and profile", "pt": "▶️ Executar consulta e perfilar"},
+    "db_connect_first": {"es": "Probá y guardá una conexión para ver sus tablas.", "en": "Test and save a connection to see its tables.", "pt": "Teste e salve uma conexão para ver suas tabelas."},
+    "db_local_note": {
+        "es": "Las conexiones se guardan solo en tu equipo. La contraseña queda "
+              "ofuscada; podés no guardarla y escribirla al conectar.",
+        "en": "Connections are stored only on your machine. The password is "
+              "obfuscated; you can choose not to save it and type it on connect.",
+        "pt": "As conexões são salvas apenas no seu equipamento. A senha fica "
+              "ofuscada; você pode não salvá-la e digitá-la ao conectar.",
+    },
+    "db_no_driver": {
+        "es": "Falta el driver de este motor. Instalalo con: pip install {pip}",
+        "en": "The driver for this engine is missing. Install it with: pip install {pip}",
+        "pt": "Falta o driver deste motor. Instale com: pip install {pip}",
     },
     # ------------------------------------------------------------------- bi
     "bi_intro": {

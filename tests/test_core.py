@@ -260,6 +260,54 @@ def test_build_release_option_b(tmp_path, monkeypatch):
     assert br.build_option_a() is None  # sin Setup.exe construido
 
 
+# ---------------------------------------------------- conectores a base de datos
+def test_connectors_sqlite_end_to_end(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    pytest.importorskip("sqlalchemy")
+    import sqlite3
+    from mvdg import connectors as C
+
+    db = str(tmp_path / "empresa.db")
+    con = sqlite3.connect(db)
+    pd.DataFrame({"id": [1, 2, 3], "email": ["a@x.com", None, "mal"],
+                 "monto": [10, -5, 20]}).to_sql("ventas", con, index=False)
+    con.close()
+
+    prof = {"name": "demo", "engine": "sqlite", "database": db,
+            "user": "", "password": "clave"}
+    saved = C.save_connection(prof, save_password=True)
+    assert saved["conn_id"]
+    # contraseña no queda en texto plano pero es recuperable
+    assert "clave" not in open(C._file(), encoding="utf-8").read()
+    assert C.stored_password(C.load_connections()[0]) == "clave"
+
+    ok, msg = C.test_connection(saved)
+    assert ok, msg
+    assert "ventas" in C.list_tables(saved)
+    df = C.load_table(saved, "ventas", limit=100)
+    assert len(df) == 3 and "email" in df.columns
+    q = C.run_query(saved, "SELECT id FROM ventas WHERE monto > 0")
+    assert len(q) == 2
+    assert C.delete_connection(saved["conn_id"]) is True
+    assert C.load_connections() == []
+
+
+def test_connectors_guards():
+    from mvdg import connectors as C
+    # motor desconocido
+    with pytest.raises(ValueError):
+        C.build_url({"engine": "no-existe"})
+    # solo lectura en run_query
+    with pytest.raises(ValueError):
+        C.run_query({"engine": "sqlite", "database": ":memory:"},
+                    "DELETE FROM x")
+    # driver ausente -> mensaje legible, no excepción
+    ok, msg = C.test_connection({"engine": "postgresql", "host": "localhost",
+                                 "port": 5432, "database": "x",
+                                 "user": "u", "password": "p"})
+    assert ok is False and "driver" in msg.lower()
+
+
 # ------------------------------------------------------------- auto-diagnostico
 def test_selfcheck_all_pass():
     from mvdg.selfcheck import run_checks

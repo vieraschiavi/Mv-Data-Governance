@@ -98,6 +98,14 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert recommended_pack("exe_ok") == "A"
         return "CRM de clientes operativo"
 
+    @check("Conectores a base de datos")
+    def _():
+        from .connectors import ENGINES, test_connection
+        assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite"} <= set(ENGINES)
+        ok, _msg = test_connection({"engine": "sqlite", "database": ":memory:"})
+        assert ok
+        return f"{len(ENGINES)} motores (SQLite verificado)"
+
     @check("Centro de ayuda (speeches IA)")
     def _():
         from .help_center import SPEECHES, automation_rows
