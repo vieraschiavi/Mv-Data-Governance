@@ -1,0 +1,17 @@
+app
+mvdg
+api
+tests
+data
+dist
+packaging
+distribucion
+docs
+assets
+.venv
+.pytest_cache
+*.md
+*.bat
+requirements.txt
+run.sh
+.gitattributes
