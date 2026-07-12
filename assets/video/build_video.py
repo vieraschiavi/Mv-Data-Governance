@@ -1,18 +1,29 @@
 """
-MV Data Governance · Generador del video de demo (sin dependencias externas
-de video: PIL + imageio-ffmpeg).
+MV Data Governance · Generador del video de demo (PIL + imageio-ffmpeg)
+con narración en voz rioplatense (Piper TTS, voz es_AR "daniela").
 
-Produce ``assets/video/MVDataGovernance_Demo.mp4`` (1280×720, ~40 s) con las
-escenas del recorrido del producto en los tres idiomas, y lo copia a
-``landing/video/`` para que la landing lo sirva.
+Produce ``assets/video/MVDataGovernance_Demo.mp4`` (1280×720) con las escenas
+del recorrido del producto y la voz en off sincronizada escena por escena
+(la duración de cada escena se ajusta a su narración: sin desfases), y lo
+copia a ``landing/video/`` para que la landing lo sirva.
 
 Ejecutar desde la raíz del repo:
     python assets/video/build_video.py
+
+Voz (opcional pero recomendada): descargar el modelo una vez y exportar
+MVDG_VOICE_ONNX con su ruta; si no está, el video sale sin narración.
+    pip install piper-tts
+    curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_AR/daniela/high/es_AR-daniela-high.onnx
+    curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_AR/daniela/high/es_AR-daniela-high.onnx.json
+    MVDG_VOICE_ONNX=./es_AR-daniela-high.onnx python assets/video/build_video.py
 """
 from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import tempfile
+import wave
 
 import imageio.v2 as imageio
 import numpy as np
@@ -260,24 +271,105 @@ def scene_outro(p: float) -> Image.Image:
     return img
 
 
+# (escena, duración mínima visual, narración rioplatense)
 SCENES = [
-    (scene_intro, 6.0),
-    (scene_quality, 8.0),
-    (scene_catalog, 8.0),
-    (scene_lineage, 8.0),
-    (scene_bi, 7.0),
-    (scene_outro, 5.0),
+    (scene_intro, 6.0,
+     "MV Data Governance: gobierno de datos claro, medible y listo para BI. "
+     "Cien por ciento web y PC, en español, inglés y portugués."),
+    (scene_quality, 8.0,
+     "La calidad de tus datos, medida en seis dimensiones: completitud, "
+     "unicidad, validez, consistencia, puntualidad y exactitud. Diecisiete "
+     "reglas corren solas y te muestran exactamente dónde está el problema "
+     "y cuántas filas afecta."),
+    (scene_catalog, 8.0,
+     "Un catálogo único para toda la empresa: cada dataset con su dueño, su "
+     "steward y su clasificación. Los datos personales quedan identificados "
+     "y protegidos desde el primer día."),
+    (scene_lineage, 8.0,
+     "Linaje de punta a punta: seguí el recorrido del dato desde la fuente "
+     "hasta el tablero de BI, aguas arriba y aguas abajo, con un clic."),
+    (scene_bi, 7.0,
+     "Y todo se conecta con la herramienta que ya usás: Power BI, Tableau, "
+     "Looker, MicroStrategy, Qlik o Excel. Por archivo o por API: el formato "
+     "lo elegís vos."),
+    (scene_outro, 5.0,
+     "MV Data Governance. Tus datos gobernados, tus decisiones confiables. "
+     "Descargalo hoy: sin APK, y sin que tus datos salgan de tu empresa."),
 ]
-FADE = 0.5  # segundos de fundido entre escenas
+FADE = 0.5        # segundos de fundido entre escenas
+VOICE_LEAD = 0.4  # la voz entra apenas después del corte de escena
+VOICE_TAIL = 0.9  # aire después de cada frase
+
+
+def _synth_narrations(tmpdir: str) -> list[str] | None:
+    """Genera un WAV por escena con Piper (voz es_AR). None si no hay modelo."""
+    model = os.environ.get("MVDG_VOICE_ONNX", "")
+    if not model or not os.path.exists(model):
+        return None
+    try:
+        from piper import PiperVoice
+    except ImportError:
+        return None
+    voice = PiperVoice.load(model)
+    paths = []
+    for i, (_, _, text) in enumerate(SCENES):
+        path = os.path.join(tmpdir, f"nar_{i}.wav")
+        with wave.open(path, "wb") as w:
+            voice.synthesize_wav(text, w)
+        paths.append(path)
+    return paths
+
+
+def _wav_duration(path: str) -> float:
+    with wave.open(path) as w:
+        return w.getnframes() / w.getframerate()
+
+
+def _scene_seconds(narrations: list[str] | None) -> list[float]:
+    """Duración final de cada escena: la visual mínima o la narración + aire."""
+    secs = []
+    for i, (_, min_secs, _) in enumerate(SCENES):
+        if narrations:
+            secs.append(max(min_secs,
+                            VOICE_LEAD + _wav_duration(narrations[i]) + VOICE_TAIL))
+        else:
+            secs.append(min_secs)
+    return secs
+
+
+def _mix_audio_track(narrations: list[str], secs: list[float],
+                     out_wav: str) -> None:
+    """Arma la pista completa: cada narración en el arranque de su escena."""
+    with wave.open(narrations[0]) as w:
+        rate, width, channels = w.getframerate(), w.getsampwidth(), w.getnchannels()
+    total = np.zeros(int(sum(secs) * rate) + rate, dtype=np.int16)
+    start = 0.0
+    for i, nar in enumerate(narrations):
+        with wave.open(nar) as w:
+            data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+        at = int((start + VOICE_LEAD) * rate)
+        total[at:at + len(data)] = data
+        start += secs[i]
+    total = total[:int(sum(secs) * rate)]
+    with wave.open(out_wav, "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(total.tobytes())
 
 
 def build() -> str:
-    writer = imageio.get_writer(OUT, fps=FPS, codec="libx264",
+    tmpdir = tempfile.mkdtemp(prefix="mvdg_video_")
+    narrations = _synth_narrations(tmpdir)
+    secs_list = _scene_seconds(narrations)
+
+    video_only = os.path.join(tmpdir, "video_sin_audio.mp4") if narrations else OUT
+    writer = imageio.get_writer(video_only, fps=FPS, codec="libx264",
                                 quality=7, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
     black = Image.new("RGB", (W, H), (0, 0, 0))
-    for scene, secs in SCENES:
-        n = int(secs * FPS)
+    for (scene, _, _), secs in zip(SCENES, secs_list):
+        n = int(round(secs * FPS))
         for f_i in range(n):
             p = f_i / max(1, n - 1)
             frame = scene(p)
@@ -287,15 +379,28 @@ def build() -> str:
             if t < FADE:
                 frame = Image.blend(black, frame, ease(t / FADE))
             elif rem < FADE:
-                frame = Image.blend(black, frame, ease(rem / FADE))
+                frame = Image.blend(black, frame, ease(max(0.0, rem) / FADE))
             writer.append_data(np.asarray(frame))
     writer.close()
+
+    if narrations:
+        # pista de voz alineada a los cortes de escena + mux con ffmpeg
+        track = os.path.join(tmpdir, "narracion.wav")
+        _mix_audio_track(narrations, secs_list, track)
+        from imageio_ffmpeg import get_ffmpeg_exe
+        subprocess.run([get_ffmpeg_exe(), "-y", "-i", video_only, "-i", track,
+                        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+                        "-shortest", OUT],
+                       check=True, capture_output=True)
+
     os.makedirs(os.path.dirname(LANDING_COPY), exist_ok=True)
     shutil.copyfile(OUT, LANDING_COPY)
+    shutil.rmtree(tmpdir, ignore_errors=True)
     return OUT
 
 
 if __name__ == "__main__":
     path = build()
     size_mb = os.path.getsize(path) / 1e6
-    print(f"Video generado: {path} ({size_mb:.1f} MB) · copiado a landing/video/")
+    voz = "con voz es_AR" if os.environ.get("MVDG_VOICE_ONNX") else "sin voz"
+    print(f"Video generado ({voz}): {path} ({size_mb:.1f} MB) · copiado a landing/video/")

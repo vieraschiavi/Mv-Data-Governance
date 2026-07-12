@@ -144,6 +144,42 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .dcard .mono{font-family:var(--mono);font-size:11.5px;color:var(--amber);background:rgba(242,180,65,.08);
   border:1px solid rgba(242,180,65,.25);border-radius:8px;padding:8px 10px;margin-bottom:14px;overflow-x:auto;white-space:nowrap}
 
+/* SHOTS (capturas reales) */
+.shgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+@media(max-width:760px){.shgrid{grid-template-columns:1fr}}
+.shot{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;overflow:hidden;margin:0}
+.shot a{display:block;max-height:340px;overflow:hidden}
+.shot img{width:100%;display:block;border-bottom:1px solid var(--line-d);transition:transform .25s}
+.shot a:hover img{transform:scale(1.02)}
+.shot figcaption{padding:12px 16px;font-size:13.5px;color:var(--muted-d);font-weight:600}
+
+/* STATS (franja oscura de resultados) */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:30px}
+@media(max-width:860px){.stats{grid-template-columns:1fr 1fr}}
+.stat{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:22px;text-align:center}
+.stat .v{font-size:34px;font-weight:850;color:var(--amber);letter-spacing:-.01em}
+.stat .l{color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.45}
+
+/* TIMELINE (implementación) */
+.tl{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:8px}
+@media(max-width:860px){.tl{grid-template-columns:1fr}}
+.step{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;padding:22px}
+.step .n{width:34px;height:34px;border-radius:50%;background:var(--amber);color:var(--amber-ink);
+  font-weight:850;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.step .when{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue)}
+.step h3{font-size:16.5px;margin:6px 0 8px;color:var(--ink-d)}
+.step p{font-size:13.5px;color:var(--muted-d);margin:0}
+
+/* FAQ */
+.faq{max-width:780px}
+.faq details{border:1px solid var(--line-d);border-radius:12px;margin-bottom:10px;background:var(--tint)}
+.faq summary{cursor:pointer;font-weight:750;font-size:15px;color:var(--ink-d);padding:15px 18px;
+  list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--amber2);font-weight:800;font-size:19px;flex:none}
+.faq details[open] summary::after{content:"–"}
+.faq .a{padding:0 18px 15px;color:var(--muted-d);font-size:14px;line-height:1.6}
+
 /* PRICING */
 .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch}
 @media(max-width:860px){.pgrid{grid-template-columns:1fr}}
@@ -185,8 +221,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </a>
   <div class="nlinks">
     <a href="#video" data-i="nav_video">Video</a>
+    <a href="#tableros" data-i="nav_shots">Tableros</a>
     <a href="#plataforma" data-i="nav_platform">Plataforma</a>
     <a href="#bi" data-i="nav_bi">BI</a>
+    <a href="#implementacion" data-i="nav_impl">Implementación</a>
     <a href="#descargas" data-i="nav_downloads">Descargas</a>
     <a href="#precios" data-i="nav_pricing">Precios</a>
     <a href="#contacto" data-i="nav_contact">Contacto</a>
@@ -239,16 +277,34 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
 
 <!-- VIDEO -->
 <section class="vsec" id="video"><div class="wrap">
-  <div class="eyebrow" data-i="v_eye">Demo en video</div>
+  <div class="eyebrow" data-i="v_eye">Demo narrada · 1 minuto</div>
   <h2 class="h2 h2w" data-i="v_h2">Mirá MV Data Governance en acción</h2>
-  <p class="lead-w" data-i="v_lead">Del catálogo al tablero de BI: calidad medida en 6 dimensiones,
-    linaje de punta a punta y exportación en un clic — en tu idioma.</p>
+  <p class="lead-w" data-i="v_lead">Un minuto, con voz en off: del catálogo al tablero de BI,
+    calidad medida en 6 dimensiones, linaje de punta a punta y exportación en un clic.</p>
   <div class="vbox">
     <video controls preload="metadata" playsinline poster="">
       <source src="video/MVDataGovernance_Demo.mp4" type="video/mp4">
       <source src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_Demo.mp4" type="video/mp4">
       <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
     </video>
+  </div>
+</div></section>
+
+<!-- TABLEROS (capturas reales) -->
+<section class="panel" id="tableros"><div class="wrap">
+  <div class="eyebrow" data-i="sh_eye">El producto, de verdad</div>
+  <h2 class="h2" data-i="sh_h2">Así se ven tus tableros</h2>
+  <p class="lead-d" data-i="sh_lead">Capturas reales del programa — no maquetas. Esto es lo que ve
+    tu equipo desde el primer día, en el navegador o en el programa de escritorio.</p>
+  <div class="shgrid">
+    <figure class="shot"><a href="img/tab_panorama.jpg" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" loading="lazy" alt="Panorama"></a>
+      <figcaption data-i="sh_c1">📊 Panorama ejecutivo: KPIs de gobierno, calidad por dominio y evolución de 12 meses</figcaption></figure>
+    <figure class="shot"><a href="img/tab_calidad.jpg" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" loading="lazy" alt="Calidad"></a>
+      <figcaption data-i="sh_c2">✅ Motor de calidad: 17 reglas con estados, umbrales y mapa de calor dataset × dimensión</figcaption></figure>
+    <figure class="shot"><a href="img/tab_linaje.jpg" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" loading="lazy" alt="Linaje"></a>
+      <figcaption data-i="sh_c3">🧬 Linaje interactivo: de la fuente al tablero de BI, aguas arriba y aguas abajo</figcaption></figure>
+    <figure class="shot"><a href="img/tab_bi.jpg" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" loading="lazy" alt="BI y API"></a>
+      <figcaption data-i="sh_c4">📤 Exportación y API: CSV, Excel, JSON, Parquet y endpoints para tu BI en un clic</figcaption></figure>
   </div>
 </div></section>
 
@@ -271,6 +327,20 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
       <p data-i="f5p">Cada política se verifica automáticamente contra el catálogo y las reglas: evidencia, no casillas marcadas a mano.</p></div>
     <div class="feat"><div class="ic">🔎</div><h3 data-i="f6t">Perfilador de tus datos</h3>
       <p data-i="f6p">Subí un CSV o Excel y obtené al instante esquema, nulos, duplicados, PII detectada y reglas sugeridas.</p></div>
+  </div>
+</div></section>
+
+<!-- RESULTADOS (franja oscura) -->
+<section class="dsec" id="resultados"><div class="wrap">
+  <div class="eyebrow" style="color:var(--amber)" data-i="st_eye">Resultados</div>
+  <h2 class="h2 h2w" data-i="st_h2">Números que convencen</h2>
+  <p class="lead-w" style="margin:0" data-i="st_lead">Lo que cambia cuando el gobierno de datos deja
+    de ser una planilla que nadie mantiene.</p>
+  <div class="stats">
+    <div class="stat"><div class="v tnum">−65%</div><div class="l" data-i="st_l1">de horas técnicas en diagnóstico y documentación (estimación sobre las tareas que la plataforma automatiza)</div></div>
+    <div class="stat"><div class="v tnum">1</div><div class="l" data-i="st_l2">versión de la verdad: todos los tableros de BI consumen las mismas definiciones y los mismos datos gobernados</div></div>
+    <div class="stat"><div class="v tnum">6</div><div class="l" data-i="st_l3">dimensiones de calidad medidas en continuo, con alertas asignadas a un responsable</div></div>
+    <div class="stat"><div class="v tnum">0</div><div class="l" data-i="st_l4">datos fuera de tu empresa: todo corre local, en tu PC o tu servidor — nada viaja a internet</div></div>
   </div>
 </div></section>
 
@@ -297,6 +367,28 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
   <p class="lead-d" style="margin-top:18px;margin-bottom:0" data-i="bi_guide">
     Guía paso a paso por herramienta en <b>docs/BI_INTEGRATION.md</b>.</p>
+</div></section>
+
+<!-- IMPLEMENTACIÓN (duración) -->
+<section class="panel" id="implementacion"><div class="wrap">
+  <div class="eyebrow" data-i="tl_eye">¿Cuánto tarda?</div>
+  <h2 class="h2" data-i="tl_h2">De la descarga al gobierno andando</h2>
+  <p class="lead-d" data-i="tl_lead">Un plan realista, sin proyectos eternos: la parte técnica es
+    inmediata, la organizacional tiene guiones listos en el menú Ayuda del programa.</p>
+  <div class="tl">
+    <div class="step"><div class="n">1</div><div class="when" data-i="tl_w1">Día 1</div>
+      <h3 data-i="tl_t1">Instalás y medís</h3>
+      <p data-i="tl_p1">Descargás (.exe o .bat), cargás tus archivos y ves tu índice de calidad real el mismo día. Sin consultores, sin proyecto de meses.</p></div>
+    <div class="step"><div class="n">2</div><div class="when" data-i="tl_w2">Semana 1–2</div>
+      <h3 data-i="tl_t2">Diagnóstico completo</h3>
+      <p data-i="tl_p2">Catálogo armado, PII detectada, 17 reglas corriendo y el informe ejecutivo exportado directo a tu Power BI o Tableau.</p></div>
+    <div class="step"><div class="n">3</div><div class="when" data-i="tl_w3">Mes 1</div>
+      <h3 data-i="tl_t3">Gobierno operativo</h3>
+      <p data-i="tl_p3">Dueños y stewards asignados, glosario acordado en comité y alertas de calidad trabajándose cada semana — con los speeches del menú Ayuda.</p></div>
+    <div class="step"><div class="n">4</div><div class="when" data-i="tl_w4">Día 90</div>
+      <h3 data-i="tl_t4">Una versión de la verdad</h3>
+      <p data-i="tl_p4">Los tableros consumen datos gobernados y el semáforo de calidad muestra la mejora mes a mes ante la dirección.</p></div>
+  </div>
 </div></section>
 
 <!-- DESCARGAS -->
@@ -366,6 +458,26 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
 </div></section>
 
+<!-- FAQ -->
+<section class="panel" id="faq"><div class="wrap">
+  <div class="eyebrow" data-i="fq_eye">Preguntas frecuentes</div>
+  <h2 class="h2" data-i="fq_h2">Lo que todo comprador pregunta</h2>
+  <div class="faq" style="margin-top:26px">
+    <details><summary data-i="fq1q">¿Mis datos salen de mi empresa?</summary>
+      <div class="a" data-i="fq1a">No. Todo corre local: en tu PC (programa .exe o .bat) o en un servidor tuyo (modo web). No hay nube de terceros, no hay telemetría, nada viaja a internet. Por eso es apto para bancos, salud y datos personales.</div></details>
+    <details><summary data-i="fq2q">¿Funciona con mi herramienta de BI?</summary>
+      <div class="a" data-i="fq2a">Sí. Todas las tablas de gobierno se exportan como CSV, Excel, JSON o Parquet, y también se sirven por API REST. Power BI, Tableau, Looker, MicroStrategy, Qlik y Excel tienen guía paso a paso incluida en la documentación.</div></details>
+    <details><summary data-i="fq3q">¿Necesito saber programar?</summary>
+      <div class="a" data-i="fq3a">No. Es doble clic: el instalador .exe no requiere nada, y la versión portable .bat se instala sola la primera vez. Subís tus archivos y la plataforma perfila, mide y sugiere reglas automáticamente.</div></details>
+    <details><summary data-i="fq4q">¿Y si TI no permite instalar programas?</summary>
+      <div class="a" data-i="fq4a">Hay tres caminos según la política de tu empresa: instalador .exe (si permiten software), versión portable .bat que no toca el sistema (si permiten Python), o despliegue 100% web en un servidor interno. Mismas funcionalidades en los tres.</div></details>
+    <details><summary data-i="fq5q">¿En qué idiomas está?</summary>
+      <div class="a" data-i="fq5a">Español, inglés y portugués — en toda la superficie: el programa, esta web, la API (?lang=es|en|pt), el instalador de Windows y la documentación. El glosario guarda cada definición en los tres idiomas.</div></details>
+    <details><summary data-i="fq6q">¿Puedo probarlo gratis? ¿Cuánto tarda ver resultados?</summary>
+      <div class="a" data-i="fq6a">Sí: el plan Starter es gratis para siempre con datos de demo, y podés perfilar tus propios archivos desde el primer día. El índice de calidad real lo ves el día 1; el gobierno completo andando, en unos 90 días (mirá el plan de implementación acá arriba).</div></details>
+  </div>
+</div></section>
+
 <!-- CONTACTO -->
 <section class="panel" id="contacto"><div class="wrap">
   <div class="eyebrow" data-i="c_eye">Contacto</div>
@@ -389,8 +501,8 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <script>
 var I18N={
 en:{
-  nav_sub:"· Data governance",nav_video:"Video",nav_platform:"Platform",nav_bi:"BI",
-  nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
+  nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platform:"Platform",nav_bi:"BI",
+  nav_impl:"Rollout",nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
   kick:"100% Web + Desktop app · ES / EN / PT",
   h1_a:"Your data, governed.\nYour decisions, trustworthy.",
   lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
@@ -400,9 +512,44 @@ en:{
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
   mb1:"Completeness",mb2:"Uniqueness",mb3:"Validity",mb4:"Consistency",mb5:"Timeliness",mb6:"Accuracy",
   mock_foot:"✓ Catalog up to date · 2 quality alerts assigned to the steward",
-  v_eye:"Video demo",v_h2:"Watch MV Data Governance in action",
-  v_lead:"From catalog to BI dashboard: quality measured across 6 dimensions, end-to-end lineage and one-click export — in your language.",
+  v_eye:"Narrated demo · 1 minute",v_h2:"Watch MV Data Governance in action",
+  v_lead:"One minute, with voice-over: from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
   v_fallback:"Your browser does not support HTML5 video playback.",
+  sh_eye:"The real product",sh_h2:"This is what your dashboards look like",
+  sh_lead:"Real screenshots of the program — not mockups. This is what your team sees from day one, in the browser or in the desktop app.",
+  sh_c1:"📊 Executive overview: governance KPIs, quality by domain and 12-month trend",
+  sh_c2:"✅ Quality engine: 17 rules with statuses, thresholds and a dataset × dimension heatmap",
+  sh_c3:"🧬 Interactive lineage: from source to BI dashboard, upstream and downstream",
+  sh_c4:"📤 Export & API: CSV, Excel, JSON, Parquet and endpoints for your BI in one click",
+  st_eye:"Results",st_h2:"Numbers that convince",
+  st_lead:"What changes when data governance stops being a spreadsheet nobody maintains.",
+  st_l1:"fewer technical hours on diagnosis and documentation (estimate over the tasks the platform automates)",
+  st_l2:"version of the truth: every BI dashboard consumes the same definitions and the same governed data",
+  st_l3:"quality dimensions measured continuously, with alerts assigned to an owner",
+  st_l4:"data leaving your company: everything runs locally, on your PC or your server — nothing travels to the internet",
+  tl_eye:"How long does it take?",tl_h2:"From download to governance up and running",
+  tl_lead:"A realistic plan with no never-ending projects: the technical half is immediate, the organizational half has ready-made scripts in the program's Help menu.",
+  tl_w1:"Day 1",tl_t1:"Install and measure",
+  tl_p1:"Download (.exe or .bat), load your files and see your real quality index the same day. No consultants, no months-long project.",
+  tl_w2:"Week 1–2",tl_t2:"Full diagnosis",
+  tl_p2:"Catalog built, PII detected, 17 rules running and the executive report exported straight to your Power BI or Tableau.",
+  tl_w3:"Month 1",tl_t3:"Governance in operation",
+  tl_p3:"Owners and stewards assigned, glossary agreed in committee and quality alerts worked every week — using the Help menu speeches.",
+  tl_w4:"Day 90",tl_t4:"One version of the truth",
+  tl_p4:"Dashboards consume governed data and the quality traffic light shows month-over-month improvement to management.",
+  fq_eye:"Frequently asked questions",fq_h2:"What every buyer asks",
+  fq1q:"Does my data leave my company?",
+  fq1a:"No. Everything runs locally: on your PC (.exe or .bat program) or on your own server (web mode). No third-party cloud, no telemetry, nothing travels to the internet. That makes it suitable for banking, healthcare and personal data.",
+  fq2q:"Does it work with my BI tool?",
+  fq2a:"Yes. Every governance table exports as CSV, Excel, JSON or Parquet, and is also served over a REST API. Power BI, Tableau, Looker, MicroStrategy, Qlik and Excel each have a step-by-step guide in the documentation.",
+  fq3q:"Do I need to know how to code?",
+  fq3a:"No. It's double-click: the .exe installer needs nothing, and the portable .bat version installs itself on first run. Upload your files and the platform profiles, measures and suggests rules automatically.",
+  fq4q:"What if IT doesn't allow installing programs?",
+  fq4a:"There are three paths depending on your company's policy: the .exe installer (if software is allowed), the portable .bat that doesn't touch the system (if Python is allowed), or a 100% web deployment on an internal server. Same features in all three.",
+  fq5q:"Which languages is it in?",
+  fq5a:"Spanish, English and Portuguese — across the whole surface: the program, this website, the API (?lang=es|en|pt), the Windows installer and the documentation. The glossary stores every definition in all three languages.",
+  fq6q:"Can I try it for free? How soon do I see results?",
+  fq6a:"Yes: the Starter plan is free forever with demo data, and you can profile your own files from day one. You see your real quality index on day 1; full governance running takes about 90 days (see the rollout plan above).",
   p_eye:"The platform",p_h2:"All of data governance, without friction",
   p_lead:"Six modules working together on the same metadata, available on the web and in the desktop app.",
   f1t:"Data catalog",f1p:"Single inventory with owner, steward, domain, classification (PII included), freshness and column dictionary.",
@@ -436,8 +583,8 @@ en:{
   ft_a:"Built with the same DNA as MV Kobra AI",ft_b:"Español · English · Português — no APK, 100% web and PC"
 },
 pt:{
-  nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_platform:"Plataforma",nav_bi:"BI",
-  nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
+  nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_platform:"Plataforma",nav_bi:"BI",
+  nav_impl:"Implantação",nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
   kick:"100% Web + Programa PC · ES / EN / PT",
   h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
   lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
@@ -447,9 +594,44 @@ pt:{
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
   mb1:"Completude",mb2:"Unicidade",mb3:"Validade",mb4:"Consistência",mb5:"Pontualidade",mb6:"Exatidão",
   mock_foot:"✓ Catálogo atualizado · 2 alertas de qualidade atribuídos ao steward",
-  v_eye:"Demo em vídeo",v_h2:"Veja o MV Data Governance em ação",
-  v_lead:"Do catálogo ao painel de BI: qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique — no seu idioma.",
+  v_eye:"Demo narrada · 1 minuto",v_h2:"Veja o MV Data Governance em ação",
+  v_lead:"Um minuto, com narração: do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
   v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
+  sh_eye:"O produto de verdade",sh_h2:"É assim que seus painéis se parecem",
+  sh_lead:"Capturas reais do programa — não maquetes. Isto é o que sua equipe vê desde o primeiro dia, no navegador ou no programa de desktop.",
+  sh_c1:"📊 Panorama executivo: KPIs de governança, qualidade por domínio e evolução de 12 meses",
+  sh_c2:"✅ Motor de qualidade: 17 regras com status, limites e mapa de calor dataset × dimensão",
+  sh_c3:"🧬 Linhagem interativa: da fonte ao painel de BI, a montante e a jusante",
+  sh_c4:"📤 Exportação e API: CSV, Excel, JSON, Parquet e endpoints para seu BI em um clique",
+  st_eye:"Resultados",st_h2:"Números que convencem",
+  st_lead:"O que muda quando a governança de dados deixa de ser uma planilha que ninguém mantém.",
+  st_l1:"menos horas técnicas em diagnóstico e documentação (estimativa sobre as tarefas que a plataforma automatiza)",
+  st_l2:"versão da verdade: todos os painéis de BI consomem as mesmas definições e os mesmos dados governados",
+  st_l3:"dimensões de qualidade medidas continuamente, com alertas atribuídos a um responsável",
+  st_l4:"dados fora da sua empresa: tudo roda localmente, no seu PC ou servidor — nada viaja para a internet",
+  tl_eye:"Quanto tempo leva?",tl_h2:"Do download à governança funcionando",
+  tl_lead:"Um plano realista, sem projetos eternos: a parte técnica é imediata, a organizacional tem roteiros prontos no menu Ajuda do programa.",
+  tl_w1:"Dia 1",tl_t1:"Instale e meça",
+  tl_p1:"Baixe (.exe ou .bat), carregue seus arquivos e veja seu índice de qualidade real no mesmo dia. Sem consultores, sem projeto de meses.",
+  tl_w2:"Semana 1–2",tl_t2:"Diagnóstico completo",
+  tl_p2:"Catálogo montado, PII detectada, 17 regras rodando e o relatório executivo exportado direto para seu Power BI ou Tableau.",
+  tl_w3:"Mês 1",tl_t3:"Governança operacional",
+  tl_p3:"Donos e stewards atribuídos, glossário acordado em comitê e alertas de qualidade trabalhados toda semana — com os speeches do menu Ajuda.",
+  tl_w4:"Dia 90",tl_t4:"Uma versão da verdade",
+  tl_p4:"Os painéis consomem dados governados e o semáforo de qualidade mostra a melhora mês a mês para a diretoria.",
+  fq_eye:"Perguntas frequentes",fq_h2:"O que todo comprador pergunta",
+  fq1q:"Meus dados saem da minha empresa?",
+  fq1a:"Não. Tudo roda localmente: no seu PC (programa .exe ou .bat) ou em um servidor seu (modo web). Sem nuvem de terceiros, sem telemetria, nada viaja para a internet. Por isso é adequado para bancos, saúde e dados pessoais.",
+  fq2q:"Funciona com minha ferramenta de BI?",
+  fq2a:"Sim. Todas as tabelas de governança são exportadas como CSV, Excel, JSON ou Parquet, e também servidas por API REST. Power BI, Tableau, Looker, MicroStrategy, Qlik e Excel têm guia passo a passo na documentação.",
+  fq3q:"Preciso saber programar?",
+  fq3a:"Não. É duplo clique: o instalador .exe não requer nada, e a versão portátil .bat se instala sozinha na primeira execução. Envie seus arquivos e a plataforma perfila, mede e sugere regras automaticamente.",
+  fq4q:"E se a TI não permitir instalar programas?",
+  fq4a:"Há três caminhos conforme a política da sua empresa: instalador .exe (se software é permitido), versão portátil .bat que não toca o sistema (se Python é permitido), ou implantação 100% web em servidor interno. Mesmas funcionalidades nos três.",
+  fq5q:"Em quais idiomas está?",
+  fq5a:"Espanhol, inglês e português — em toda a superfície: o programa, este site, a API (?lang=es|en|pt), o instalador do Windows e a documentação. O glossário guarda cada definição nos três idiomas.",
+  fq6q:"Posso testar grátis? Quando vejo resultados?",
+  fq6a:"Sim: o plano Starter é grátis para sempre com dados de demo, e você pode perfilar seus próprios arquivos desde o primeiro dia. O índice de qualidade real você vê no dia 1; a governança completa funcionando, em cerca de 90 dias (veja o plano de implantação acima).",
   p_eye:"A plataforma",p_h2:"Toda a governança de dados, sem atrito",
   p_lead:"Seis módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
   f1t:"Catálogo de dados",f1p:"Inventário único com dono, steward, domínio, classificação (PII incluída), atualidade e dicionário de colunas.",
