@@ -220,6 +220,8 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 @media(max-width:860px){.pgrid{grid-template-columns:1fr}}
 @media(max-width:560px){.pgrid.four{grid-template-columns:1fr}}
 .paynote{color:var(--muted-d);font-size:13px;margin:20px 0 0;text-align:center}
+.uyu{color:var(--faint);font-size:12px;font-weight:600;margin-top:3px}
+.crcard .uyu{margin:-2px 0 8px}
 .crgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px}
 @media(max-width:760px){.crgrid{grid-template-columns:1fr}}
 .crcard{background:var(--tint);border:1px solid var(--line-d);border-radius:18px;padding:24px;text-align:center;display:flex;flex-direction:column;position:relative}
@@ -525,7 +527,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     </div>
     <div class="plan pop"><span class="tag" data-i="pl2tag">Mejor valor</span>
       <h3 data-i="pl2t">Licencia PC</h3><div class="who" data-i="pl2w">Pago único, tuya para siempre. Descarga por MercadoPago.</div>
-      <div class="amt">US$ <span id="priceLic">149</span></div><div class="per" data-i="pl2per">Pago único · 1 equipo</div>
+      <div class="amt">US$ <span id="priceLic">149</span></div><div class="uyu" id="uyuLic"></div><div class="per" data-i="pl2per">Pago único · 1 equipo</div>
       <ul>
         <li data-i="pl2a">Todo el programa sin límite de tiempo</li>
         <li data-i="pl2b">Conectores a bases de datos</li>
@@ -536,7 +538,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     </div>
     <div class="plan">
       <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (mensual).</div>
-      <div class="amt">US$ <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
+      <div class="amt">US$ <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
       <ul>
         <li data-i="pl3a">API REST para BI ilimitada</li>
         <li data-i="pl3b">Instalador Windows (.exe)</li>
@@ -566,19 +568,19 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   <div class="crgrid">
     <div class="crcard">
       <div class="crn"><span id="cr100c">100</span> <span data-i="cr_credits">créditos</span></div>
-      <div class="cramt">US$ <span id="cr100p">9</span></div>
+      <div class="cramt">US$ <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
       <div class="crx" data-i="cr100x">Para probar la IA y bajar un pack de ejemplo.</div>
       <a class="btn btn-o" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
     </div>
     <div class="crcard pop"><span class="crtag" data-i="cr_best">+10% bonus</span>
       <div class="crn"><span id="cr550c">550</span> <span data-i="cr_credits2">créditos</span></div>
-      <div class="cramt">US$ <span id="cr550p">39</span></div>
+      <div class="cramt">US$ <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
       <div class="crx" data-i="cr550x">El más elegido para uso regular.</div>
       <a class="btn btn-a" data-mp="cred550" href="#" data-i="cr_buy2">Comprar</a>
     </div>
     <div class="crcard">
       <div class="crn"><span id="cr2500c">2.500</span> <span data-i="cr_credits3">créditos</span></div>
-      <div class="cramt">US$ <span id="cr2500p">149</span></div>
+      <div class="cramt">US$ <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
       <div class="crx" data-i="cr2500x">Mejor precio por crédito, para equipos.</div>
       <a class="btn btn-o" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
     </div>
@@ -920,11 +922,18 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   var P=window.MVDG_PAY||{links:{},prices:{}};
   function setTxt(id,v){var e=document.getElementById(id);if(e&&v!=null)e.textContent=v;}
   var pr=P.prices||{};
-  if(pr.licencia)setTxt('priceLic',pr.licencia.amount);
-  if(pr.pro)setTxt('pricePro',pr.pro.amount);
-  if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);}
-  if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);}
-  if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es'));}
+  var rate=+P.uyuRate||0;
+  function uyu(id,usd,unit){
+    var e=document.getElementById(id);if(!e)return;
+    if(!rate||!usd){e.textContent='';return;}
+    var v=Math.round(usd*rate).toLocaleString('es-UY');
+    e.textContent='≈ $ '+v+' UYU'+(unit||'');
+  }
+  if(pr.licencia){setTxt('priceLic',pr.licencia.amount);uyu('uyuLic',pr.licencia.amount);}
+  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount,'/mes');}
+  if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
+  if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
+  if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}
   var names={licencia:'Licencia PC',pro:'Professional (mensual)',cred100:'100 créditos',cred550:'550 créditos',cred2500:'2500 créditos'};
   document.querySelectorAll('[data-mp]').forEach(function(a){
     var key=a.getAttribute('data-mp');

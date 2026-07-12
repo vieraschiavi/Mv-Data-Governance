@@ -17,6 +17,10 @@ window.MVDG_PAY = {
   // Email de contacto para el fallback (mientras no haya link de MP)
   contactEmail: "vieraschiavi@gmail.com",
 
+  // Tasa USD -> UYU para mostrar el precio en pesos al lado (ajustala a la
+  // cotizacion del dia; poné 0 para ocultar el precio en UYU).
+  uyuRate: 40,
+
   // --- Links de pago de MercadoPago (pegá los tuyos) ---
   links: {
     licencia:  "",   // Licencia PC (pago único)
