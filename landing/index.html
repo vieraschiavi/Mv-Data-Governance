@@ -215,7 +215,22 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 
 /* PRICING */
 .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch}
+.pgrid.four{grid-template-columns:repeat(4,1fr)}
+@media(max-width:980px){.pgrid.four{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:860px){.pgrid{grid-template-columns:1fr}}
+@media(max-width:560px){.pgrid.four{grid-template-columns:1fr}}
+.paynote{color:var(--muted-d);font-size:13px;margin:20px 0 0;text-align:center}
+.uyu{color:var(--faint);font-size:12px;font-weight:600;margin-top:3px}
+.crcard .uyu{margin:-2px 0 8px}
+.crgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px}
+@media(max-width:760px){.crgrid{grid-template-columns:1fr}}
+.crcard{background:var(--tint);border:1px solid var(--line-d);border-radius:18px;padding:24px;text-align:center;display:flex;flex-direction:column;position:relative}
+.crcard.pop{border-color:var(--amber);box-shadow:0 16px 40px rgba(242,180,65,.14)}
+.crcard .crtag{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--amber);color:var(--amber-ink);font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;white-space:nowrap}
+.crcard .crn{font-size:20px;font-weight:850;color:var(--ink-d)}
+.crcard .cramt{font-size:32px;font-weight:850;color:var(--ink-d);margin:8px 0 4px}
+.crcard .crx{color:var(--muted-d);font-size:13px;margin-bottom:16px;flex:1}
+.crcard .btn{width:100%}
 .plan{background:var(--paper);border:1px solid var(--line-d);border-radius:18px;padding:26px;display:flex;flex-direction:column}
 .plan.pop{border-color:var(--amber);box-shadow:0 20px 46px rgba(242,180,65,.16);position:relative}
 .plan.pop .tag{position:absolute;top:-11px;left:24px;background:var(--amber);color:var(--amber-ink);font-size:11px;
@@ -481,7 +496,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <th data-i="cmp_c4">BI cloud<br><small>(Purview, Atlan)</small></th>
     </tr></thead>
     <tbody>
-      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis → US$490/mes</td><td class="no" data-i="cmp_r1b">US$60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">US$40k+/año</td></tr>
+      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia US$149 · US$390/mes</td><td class="no" data-i="cmp_r1b">US$60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">US$40k+/año</td></tr>
       <tr><td data-i="cmp_r2">Datos 100% locales</td><td class="yes">✓</td><td>Parcial</td><td class="yes">✓</td><td class="no">✗ (nube)</td></tr>
       <tr><td data-i="cmp_r3">Listo para usar sin equipo técnico</td><td class="yes">✓</td><td>Parcial</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td data-i="cmp_r4">Trilingüe ES/EN/PT</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
@@ -497,43 +512,80 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <section class="panel" id="precios"><div class="wrap">
   <div class="eyebrow" data-i="pr_eye">Precios</div>
   <h2 class="h2" data-i="pr_h2">Planes simples, sin sorpresas</h2>
-  <p class="lead-d" data-i="pr_lead">Empezá con la demo gratuita con datos sintéticos y escalá cuando tu equipo lo necesite.</p>
-  <div class="pgrid">
+  <p class="lead-d" data-i="pr_lead">Probá gratis con datos sintéticos. Comprá la licencia de PC con un pago único por MercadoPago, o escalá al plan mensual para equipos.</p>
+  <div class="pgrid four">
     <div class="plan">
-      <h3 data-i="pl1t">Starter</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
-      <div class="amt">US$ 0<small data-i="pl_mo">/mes</small></div><div class="per" data-i="pl1per">Gratis para siempre</div>
+      <h3 data-i="pl1t">Gratis</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
+      <div class="amt">US$ 0</div><div class="per" data-i="pl1per">Para siempre</div>
       <ul>
         <li data-i="pl1a">Demo completa con datos sintéticos</li>
         <li data-i="pl1b">3 idiomas incluidos</li>
         <li data-i="pl1c">Exportación CSV / Excel / JSON</li>
         <li data-i="pl1d">Programa Windows (.bat)</li>
       </ul>
-      <a class="btn btn-od" href="#descargas" data-i="pl1btn">Descargar demo</a>
+      <a class="btn btn-od" href="descargas.html" data-i="pl1btn">Descargar demo</a>
     </div>
-    <div class="plan pop"><span class="tag" data-i="pl2tag">Más elegido</span>
-      <h3 data-i="pl2t">Professional</h3><div class="who" data-i="pl2w">Para equipos de datos que gobiernan en serio.</div>
-      <div class="amt">US$ 490<small data-i="pl_mo2">/mes</small></div><div class="per" data-i="pl2per">Hasta 25 usuarios</div>
+    <div class="plan pop"><span class="tag" data-i="pl2tag">Mejor valor</span>
+      <h3 data-i="pl2t">Licencia PC</h3><div class="who" data-i="pl2w">Pago único, tuya para siempre. Descarga por MercadoPago.</div>
+      <div class="amt">US$ <span id="priceLic">149</span></div><div class="uyu" id="uyuLic"></div><div class="per" data-i="pl2per">Pago único · 1 equipo</div>
       <ul>
-        <li data-i="pl2a">Conexión a tus fuentes reales</li>
-        <li data-i="pl2b">API REST para BI ilimitada</li>
-        <li data-i="pl2c">Instalador Windows (.exe)</li>
-        <li data-i="pl2d">Alertas de calidad y SLA</li>
-        <li data-i="pl2e">Soporte prioritario</li>
+        <li data-i="pl2a">Todo el programa sin límite de tiempo</li>
+        <li data-i="pl2b">Conectores a bases de datos</li>
+        <li data-i="pl2c">Fichas de empresas y exportación a BI</li>
+        <li data-i="pl2d">Actualizaciones menores incluidas</li>
       </ul>
-      <a class="btn btn-a" href="#contacto" data-i="pl2btn">Hablar con ventas</a>
+      <a class="btn btn-a" data-mp="licencia" href="#" data-i="pl2btn">Comprar con MercadoPago</a>
     </div>
     <div class="plan">
-      <h3 data-i="pl3t">Enterprise</h3><div class="who" data-i="pl3w">Para organizaciones con requisitos regulatorios.</div>
-      <div class="amt" data-i="pl3amt">A medida</div><div class="per" data-i="pl3per">Usuarios ilimitados</div>
+      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (mensual).</div>
+      <div class="amt">US$ <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
       <ul>
-        <li data-i="pl3a">Despliegue on-premise o nube privada</li>
-        <li data-i="pl3b">SSO y auditoría completa</li>
-        <li data-i="pl3c">Cumplimiento (GDPR / LGPD / Ley 18.331)</li>
-        <li data-i="pl3d">Integraciones a medida</li>
+        <li data-i="pl3a">API REST para BI ilimitada</li>
+        <li data-i="pl3b">Instalador Windows (.exe)</li>
+        <li data-i="pl3c">Alertas de calidad y SLA</li>
+        <li data-i="pl3d">Soporte prioritario</li>
       </ul>
-      <a class="btn btn-d" href="#contacto" data-i="pl3btn">Contactar</a>
+      <a class="btn btn-d" data-mp="pro" href="#" data-i="pl3btn">Suscribirme</a>
+    </div>
+    <div class="plan">
+      <h3 data-i="pl4t">Enterprise</h3><div class="who" data-i="pl4w">Para organizaciones con requisitos regulatorios.</div>
+      <div class="amt" data-i="pl4amt">A medida</div><div class="per" data-i="pl4per">Usuarios ilimitados</div>
+      <ul>
+        <li data-i="pl4a">On-premise o nube privada</li>
+        <li data-i="pl4b">SSO y auditoría completa</li>
+        <li data-i="pl4c">Cumplimiento (GDPR / LGPD / Ley 18.331)</li>
+        <li data-i="pl4d">Integraciones a medida</li>
+      </ul>
+      <a class="btn btn-od" href="#contacto" data-i="pl4btn">Contactar</a>
     </div>
   </div>
+  <p class="paynote" data-i="pr_pay">Pagá con MercadoPago: tarjeta, débito, efectivo o dinero en cuenta. Al confirmar el pago se habilita la descarga.</p>
+
+  <!-- CREDITOS -->
+  <div class="eyebrow" style="margin-top:44px" data-i="cr_eye">Créditos (opcional)</div>
+  <h2 class="h2" data-i="cr_h2">Potenciá con créditos IA y packs</h2>
+  <p class="lead-d" data-i="cr_lead">Comprá créditos por MercadoPago y usalos cuando quieras en funciones de IA (sugerencias avanzadas, definiciones de glosario, análisis) o para desbloquear packs embebidos: ZIPs de ejemplos, datasets y plantillas de gobierno.</p>
+  <div class="crgrid">
+    <div class="crcard">
+      <div class="crn"><span id="cr100c">100</span> <span data-i="cr_credits">créditos</span></div>
+      <div class="cramt">US$ <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
+      <div class="crx" data-i="cr100x">Para probar la IA y bajar un pack de ejemplo.</div>
+      <a class="btn btn-o" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
+    </div>
+    <div class="crcard pop"><span class="crtag" data-i="cr_best">+10% bonus</span>
+      <div class="crn"><span id="cr550c">550</span> <span data-i="cr_credits2">créditos</span></div>
+      <div class="cramt">US$ <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
+      <div class="crx" data-i="cr550x">El más elegido para uso regular.</div>
+      <a class="btn btn-a" data-mp="cred550" href="#" data-i="cr_buy2">Comprar</a>
+    </div>
+    <div class="crcard">
+      <div class="crn"><span id="cr2500c">2.500</span> <span data-i="cr_credits3">créditos</span></div>
+      <div class="cramt">US$ <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
+      <div class="crx" data-i="cr2500x">Mejor precio por crédito, para equipos.</div>
+      <a class="btn btn-o" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
+    </div>
+  </div>
+  <p class="paynote" data-i="cr_use">Ejemplos de consumo: 1 sugerencia IA = 1 crédito · auto-definición de glosario = 2 créditos · pack de ejemplo (ZIP) = 20 créditos. Los créditos no vencen.</p>
 </div></section>
 
 <!-- RESEÑAS -->
@@ -593,13 +645,14 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 </div></footer>
 
 <script src="reviews-data.js"></script>
+<script src="payments-config.js"></script>
 <script>
 var I18N={
 en:{
   cmp_eye:"Why MV",cmp_h2:"How we compare",
   cmp_lead:"Data governance for those who can't pay an enterprise suite nor run an open-source tool without a dedicated technical team.",
   cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Entry price",cmp_r1a:"Free → US$490/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
+  cmp_r1:"Entry price",cmp_r1a:"Free · License US$149 · US$390/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   nav_guide:"What is it?",
   nav_reviews:"Reviews",rv_eye:"Reviews",rv_h2:"What people who use it say",
@@ -682,13 +735,22 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   d3t:"100% Web",d3p:"The same platform running on your server or in the cloud (Docker/Streamlit). This landing and the app share the same engine.",
   d3b:"⬇ Download (free)",
   pr_eye:"Pricing",pr_h2:"Simple plans, no surprises",
-  pr_lead:"Start with the free demo on synthetic data and scale when your team needs it.",
-  pl1t:"Starter",pl1w:"To explore the platform with demo data.",pl_mo:"/mo",pl1per:"Free forever",
+  pr_lead:"Try it free on synthetic data. Buy the PC license with a one-time payment via MercadoPago, or scale to the monthly team plan.",
+  pr_pay:"Pay with MercadoPago: card, debit, cash or account money. The download unlocks once the payment is confirmed.",
+  pl1t:"Free",pl1w:"To explore the platform with demo data.",pl1per:"Forever",
   pl1a:"Full demo with synthetic data",pl1b:"3 languages included",pl1c:"CSV / Excel / JSON export",pl1d:"Windows program (.bat)",pl1btn:"Download demo",
-  pl2tag:"Most popular",pl2t:"Professional",pl2w:"For data teams governing for real.",pl_mo2:"/mo",pl2per:"Up to 25 users",
-  pl2a:"Connect your real sources",pl2b:"Unlimited BI REST API",pl2c:"Windows installer (.exe)",pl2d:"Quality alerts and SLA",pl2e:"Priority support",pl2btn:"Talk to sales",
-  pl3t:"Enterprise",pl3w:"For organizations with regulatory requirements.",pl3amt:"Custom",pl3per:"Unlimited users",
-  pl3a:"On-premise or private cloud deployment",pl3b:"SSO and full audit",pl3c:"Compliance (GDPR / LGPD / local laws)",pl3d:"Custom integrations",pl3btn:"Contact us",
+  pl2tag:"Best value",pl2t:"PC License",pl2w:"One-time payment, yours forever. Download via MercadoPago.",pl2per:"One-time · 1 machine",
+  pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
+  pl3t:"Professional",pl3w:"For teams governing for real (monthly).",pl_mo2:"/mo",pl3per:"Up to 25 users",
+  pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
+  pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
+  pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
+  cr_eye:"Credits (optional)",cr_h2:"Boost with AI credits and packs",
+  cr_lead:"Buy credits via MercadoPago and use them anytime on AI features (advanced suggestions, glossary definitions, analysis) or to unlock embedded packs: example ZIPs, datasets and governance templates.",
+  cr_credits:"credits",cr_credits2:"credits",cr_credits3:"credits",cr_best:"+10% bonus",
+  cr100x:"To try the AI and download an example pack.",cr550x:"The most popular for regular use.",cr2500x:"Best price per credit, for teams.",
+  cr_buy:"Buy",cr_buy2:"Buy",cr_buy3:"Buy",
+  cr_use:"Usage examples: 1 AI suggestion = 1 credit · glossary auto-definition = 2 credits · example pack (ZIP) = 20 credits. Credits never expire.",
   c_eye:"Contact",c_h2:"Let's talk about your data",
   c_lead:"Tell us what you need to govern and we'll reply with a concrete proposal.",
   c_name:"Name",c_mail:"Email",c_msg:"Message",c_send:"Send",
@@ -698,7 +760,7 @@ pt:{
   cmp_eye:"Por que MV",cmp_h2:"Como nos comparamos",
   cmp_lead:"Governança de dados para quem não pode pagar uma suíte enterprise nem operar uma ferramenta open source sem equipe técnica dedicada.",
   cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis → US$490/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
+  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença US$149 · US$390/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   nav_guide:"O que é?",
   nav_reviews:"Avaliações",rv_eye:"Avaliações",rv_h2:"O que dizem quem usa",
@@ -781,13 +843,22 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   d3t:"100% Web",d3p:"A mesma plataforma rodando no seu servidor ou na nuvem (Docker/Streamlit). Esta landing e o app compartilham o mesmo motor.",
   d3b:"⬇ Baixar (grátis)",
   pr_eye:"Preços",pr_h2:"Planos simples, sem surpresas",
-  pr_lead:"Comece com a demo gratuita com dados sintéticos e escale quando sua equipe precisar.",
-  pl1t:"Starter",pl1w:"Para conhecer a plataforma com dados de demo.",pl_mo:"/mês",pl1per:"Grátis para sempre",
+  pr_lead:"Teste grátis com dados sintéticos. Compre a licença de PC com um pagamento único via MercadoPago, ou escale ao plano mensal para equipes.",
+  pr_pay:"Pague com MercadoPago: cartão, débito, dinheiro ou saldo em conta. O download é liberado assim que o pagamento é confirmado.",
+  pl1t:"Grátis",pl1w:"Para conhecer a plataforma com dados de demo.",pl1per:"Para sempre",
   pl1a:"Demo completa com dados sintéticos",pl1b:"3 idiomas incluídos",pl1c:"Exportação CSV / Excel / JSON",pl1d:"Programa Windows (.bat)",pl1btn:"Baixar demo",
-  pl2tag:"Mais escolhido",pl2t:"Professional",pl2w:"Para equipes de dados que governam de verdade.",pl_mo2:"/mês",pl2per:"Até 25 usuários",
-  pl2a:"Conexão às suas fontes reais",pl2b:"API REST para BI ilimitada",pl2c:"Instalador Windows (.exe)",pl2d:"Alertas de qualidade e SLA",pl2e:"Suporte prioritário",pl2btn:"Falar com vendas",
-  pl3t:"Enterprise",pl3w:"Para organizações com requisitos regulatórios.",pl3amt:"Sob medida",pl3per:"Usuários ilimitados",
-  pl3a:"Implantação on-premise ou nuvem privada",pl3b:"SSO e auditoria completa",pl3c:"Conformidade (GDPR / LGPD / leis locais)",pl3d:"Integrações sob medida",pl3btn:"Entrar em contato",
+  pl2tag:"Melhor valor",pl2t:"Licença PC",pl2w:"Pagamento único, sua para sempre. Download via MercadoPago.",pl2per:"Pagamento único · 1 equipamento",
+  pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
+  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários",
+  pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
+  pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
+  pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
+  cr_eye:"Créditos (opcional)",cr_h2:"Potencialize com créditos IA e packs",
+  cr_lead:"Compre créditos via MercadoPago e use quando quiser em funções de IA (sugestões avançadas, definições de glossário, análises) ou para desbloquear packs embarcados: ZIPs de exemplos, datasets e modelos de governança.",
+  cr_credits:"créditos",cr_credits2:"créditos",cr_credits3:"créditos",cr_best:"+10% bônus",
+  cr100x:"Para testar a IA e baixar um pack de exemplo.",cr550x:"O mais escolhido para uso regular.",cr2500x:"Melhor preço por crédito, para equipes.",
+  cr_buy:"Comprar",cr_buy2:"Comprar",cr_buy3:"Comprar",
+  cr_use:"Exemplos de consumo: 1 sugestão IA = 1 crédito · autodefinição de glossário = 2 créditos · pack de exemplo (ZIP) = 20 créditos. Os créditos não expiram.",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
   c_lead:"Conte o que você precisa governar e responderemos com uma proposta concreta.",
   c_name:"Nome",c_mail:"E-mail",c_msg:"Mensagem",c_send:"Enviar",
@@ -845,4 +916,36 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   var body='Nombre: '+f.name.value+'%0D%0AEmail: '+f.email.value+'%0D%0A%0D%0A'+encodeURIComponent(f.msg.value);
   location.href='mailto:vieraschiavi@gmail.com?subject=MV%20Data%20Governance&body='+body;
 });
+
+/* --- Pagos MercadoPago: precios + wiring de botones (payments-config.js) --- */
+(function(){
+  var P=window.MVDG_PAY||{links:{},prices:{}};
+  function setTxt(id,v){var e=document.getElementById(id);if(e&&v!=null)e.textContent=v;}
+  var pr=P.prices||{};
+  var rate=+P.uyuRate||0;
+  function uyu(id,usd,unit){
+    var e=document.getElementById(id);if(!e)return;
+    if(!rate||!usd){e.textContent='';return;}
+    var v=Math.round(usd*rate).toLocaleString('es-UY');
+    e.textContent='≈ $ '+v+' UYU'+(unit||'');
+  }
+  if(pr.licencia){setTxt('priceLic',pr.licencia.amount);uyu('uyuLic',pr.licencia.amount);}
+  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount,'/mes');}
+  if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
+  if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
+  if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}
+  var names={licencia:'Licencia PC',pro:'Professional (mensual)',cred100:'100 créditos',cred550:'550 créditos',cred2500:'2500 créditos'};
+  document.querySelectorAll('[data-mp]').forEach(function(a){
+    var key=a.getAttribute('data-mp');
+    var link=(P.links||{})[key]||'';
+    if(link){
+      a.setAttribute('href',link);a.setAttribute('target','_blank');a.setAttribute('rel','noopener');
+    }else{
+      // Fallback honesto: sin link configurado, deriva al contacto por mail
+      var mail=P.contactEmail||'vieraschiavi@gmail.com';
+      a.setAttribute('href','mailto:'+mail+'?subject='+encodeURIComponent('Compra: '+(names[key]||key)+' - MV Data Governance')+
+        '&body='+encodeURIComponent('Hola, quiero comprar: '+(names[key]||key)+'. ¿Me pasás el link de pago de MercadoPago?'));
+    }
+  });
+})();
 </script>
