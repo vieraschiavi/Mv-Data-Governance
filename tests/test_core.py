@@ -260,6 +260,33 @@ def test_build_release_option_b(tmp_path, monkeypatch):
     assert br.build_option_a() is None  # sin Setup.exe construido
 
 
+# ------------------------------------------------------------- auto-diagnostico
+def test_selfcheck_all_pass():
+    from mvdg.selfcheck import run_checks
+    results = run_checks()
+    assert len(results) >= 12
+    failed = [(n, d) for n, ok, d in results if not ok]
+    assert not failed, f"selfcheck fallo: {failed}"
+
+
+# --------------------------------------------------- caso de ejemplo (impacto)
+def test_medir_impacto_reproducible():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "mvdg_medir_impacto",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "docs", "caso_ejemplo", "medir_impacto.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    r = mod.medir()
+    # el "despues" debe ser mejor que el "antes" en indice y filas afectadas
+    assert r["despues"]["indice"] > r["antes"]["indice"]
+    assert r["despues"]["filas_afectadas"] < r["antes"]["filas_afectadas"]
+    assert r["mejora_indice"] > 0 and r["reduccion_filas_pct"] > 0
+    # determinista: dos corridas dan el mismo resultado
+    assert mod.medir()["antes"]["indice"] == r["antes"]["indice"]
+
+
 # --------------------------------------------------------------------- API
 def test_api_all_tables_and_formats():
     pytest.importorskip("fastapi")
