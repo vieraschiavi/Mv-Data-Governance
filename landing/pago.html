@@ -1,0 +1,70 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MV Data Governance · Descarga desbloqueada</title>
+<link rel="icon" type="image/png" href="mv_icon.png">
+<style>
+:root{
+  --navy:#081527;--hero-a:#0d2440;--hero-b:#081324;--amber:#f2b441;--amber2:#e39a2e;
+  --amber-ink:#1c1305;--ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
+  --green:#00c896;--mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(700px 420px at 80% -10%,rgba(242,180,65,.13),transparent 60%),
+  linear-gradient(160deg,var(--hero-a),var(--hero-b));color:var(--ink);font-family:var(--sans);
+  display:flex;align-items:center;justify-content:center;padding:24px;line-height:1.6}
+.card{max-width:560px;width:100%;background:rgba(255,255,255,.04);border:1px solid var(--line2);
+  border-radius:22px;padding:38px 34px;text-align:center}
+.lang{display:flex;gap:2px;justify-content:center;margin-bottom:18px}
+.lang button{background:rgba(255,255,255,.06);border:1px solid var(--line2);color:var(--faint);font-size:11.5px;
+  font-weight:800;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
+.lang button.on{background:var(--amber);color:var(--amber-ink);border-color:var(--amber)}
+.ok{width:64px;height:64px;border-radius:50%;background:rgba(0,200,150,.14);border:1px solid rgba(0,200,150,.4);
+  display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px}
+h1{margin:0 0 10px;font-size:26px;font-weight:850}
+p{color:var(--muted);font-size:15px;margin:0 0 18px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;border-radius:10px;
+  padding:13px 22px;cursor:pointer;border:1px solid transparent;font-family:inherit;text-decoration:none;
+  background:var(--amber);color:var(--amber-ink)}
+.small{font-size:12.5px;color:var(--faint);margin-top:18px}
+.small a{color:var(--amber)}
+.code{font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.25);border:1px solid var(--line2);
+  border-radius:8px;padding:10px 12px;margin-top:14px;color:#cfe3ff;word-break:break-all}
+</style>
+<div class="card">
+  <div class="lang">
+    <button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button>
+  </div>
+  <div class="ok">✓</div>
+  <h1 data-i="h1">¡Gracias por tu compra!</h1>
+  <p data-i="lead">Tu pago con MercadoPago fue confirmado. Descargá MV Data Governance acá abajo. También te enviamos el enlace y la licencia por correo.</p>
+  <a class="btn" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download data-i="btn">⬇ Descargar MV Data Governance</a>
+  <div class="code" data-i="note2">Tu licencia y las instrucciones llegan al email usado en MercadoPago.</div>
+  <div class="small">
+    <span data-i="help">¿Algún problema con la descarga o el pago?</span>
+    <a href="mailto:vieraschiavi@gmail.com?subject=Compra%20MV%20Data%20Governance" data-i="help_link">Escribinos</a> ·
+    <a href="index.html" data-i="home">Volver al inicio</a>
+  </div>
+</div>
+<script>
+var I18N={
+en:{h1:"Thank you for your purchase!",
+  lead:"Your MercadoPago payment was confirmed. Download MV Data Governance below. We also emailed you the link and license.",
+  btn:"⬇ Download MV Data Governance",
+  note2:"Your license and instructions arrive at the email used in MercadoPago.",
+  help:"Any problem with the download or payment?",help_link:"Contact us",home:"Back to home"},
+pt:{h1:"Obrigado pela sua compra!",
+  lead:"Seu pagamento com MercadoPago foi confirmado. Baixe o MV Data Governance abaixo. Também enviamos o link e a licença por e-mail.",
+  btn:"⬇ Baixar MV Data Governance",
+  note2:"Sua licença e instruções chegam no e-mail usado no MercadoPago.",
+  help:"Algum problema com o download ou pagamento?",help_link:"Fale conosco",home:"Voltar ao início"}};
+var ES={};
+document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+function setLang(l){var d=l==='es'?null:I18N[l];
+  document.querySelectorAll('[data-i]').forEach(function(el){var k=el.getAttribute('data-i');
+    el.innerHTML=(d&&d[k]!==undefined)?d[k]:ES[k];});
+  document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===l);});
+  document.documentElement.lang=l;try{localStorage.setItem('mvdg_lang',l);}catch(e){}}
+document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+try{var s=localStorage.getItem('mvdg_lang');if(s&&s!=='es')setLang(s);}catch(e){}
+</script>

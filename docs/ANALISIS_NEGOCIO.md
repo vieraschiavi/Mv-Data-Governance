@@ -11,9 +11,46 @@
 
 | Versión | Precio | Para quién | Qué incluye |
 |---|---|---|---|
-| **Starter** | **US$ 0** (gratis para siempre) | Prueba y evaluación | Demo 100% operativa con datos sintéticos, 3 idiomas, exportación CSV/Excel/JSON, programa `.bat`/web. Es el **imán de leads**. |
-| **Professional** | **US$ 490 / mes** | Equipos de datos (hasta 25 usuarios) | Conexión a fuentes reales, API REST para BI ilimitada, instalador `.exe`, alertas de calidad y SLA, soporte prioritario. |
+| **Gratis** | **US$ 0** (para siempre) | Prueba y evaluación | Demo 100% operativa con datos sintéticos, 3 idiomas, exportación CSV/Excel/JSON, programa `.bat`/web. Es el **imán de leads**. |
+| **Licencia PC** | **US$ 149** (pago único) | PyMEs, consultores, 1 equipo | Programa completo sin límite de tiempo, conectores a BD, fichas de empresas, exportación a BI, actualizaciones menores. **Se descarga pagando por MercadoPago.** |
+| **Professional** | **US$ 390 / mes** | Equipos de datos (hasta 25 usuarios) | API REST para BI ilimitada, instalador `.exe`, alertas de calidad y SLA, soporte prioritario. |
 | **Enterprise** | **desde US$ 1.900 / mes** (a medida) | Organizaciones reguladas | On-premise / nube privada, SSO y auditoría, cumplimiento (GDPR/LGPD/Ley 18.331 UY), integraciones a medida, usuarios ilimitados. |
+
+### Créditos (opcional, comprables por MercadoPago)
+
+Monetización adicional de bajo compromiso: se venden créditos que el usuario
+gasta en **funciones de IA** (sugerencias avanzadas, auto-definiciones de
+glosario, análisis) o en **packs embebidos** (ZIPs de ejemplos, datasets,
+plantillas de gobierno).
+
+| Pack | Precio | Precio / crédito |
+|---|---|---|
+| 100 créditos | US$ 9 | US$ 0,090 |
+| 550 créditos (+10% bonus) | US$ 39 | US$ 0,071 |
+| 2.500 créditos | US$ 149 | US$ 0,060 |
+
+Consumo de referencia: 1 sugerencia IA = 1 crédito · auto-definición de
+glosario = 2 créditos · pack de ejemplo (ZIP) = 20 créditos. Los créditos no
+vencen. Margen alto: el costo real de una llamada IA es de centavos, y los
+packs embebidos tienen costo marginal ≈ 0.
+
+### Por qué estos precios (competencia · barrera · rentabilidad)
+
+- **Licencia US$ 149 (barrera baja):** un pago que una PyME o un consultor
+  aprueba sin comité; 1/400 a 1/3.000 del costo anual de Collibra/Alation.
+  Con costo marginal ≈ 0, casi todo es margen — rentable desde la primera venta.
+- **Professional US$ 390/mes (competitivo):** bajado desde US$ 490 para entrar
+  más fácil en medianas de LATAM sin resignar valor; sigue siendo múltiplos
+  más barato que cualquier suite enterprise.
+- **Créditos (upsell sin fricción):** monetizan a quien no quiere suscripción;
+  ticket chico (US$ 9) que sube el LTV sin barrera de entrada.
+
+### Cobro: MercadoPago
+
+Pago con **MercadoPago** (tarjeta, débito, efectivo, dinero en cuenta) — el
+medio dominante en Uruguay/Argentina/LATAM. La web usa **links de pago** de
+MercadoPago (sin backend): al confirmarse el pago, el cliente vuelve a
+`pago.html` y se habilita la descarga. Configuración en `landing/payments-config.js`.
 
 ### El verdadero motor: servicio + plataforma
 
