@@ -180,6 +180,18 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .faq details[open] summary::after{content:"–"}
 .faq .a{padding:0 18px 15px;color:var(--muted-d);font-size:14px;line-height:1.6}
 
+/* COMPARATIVA */
+.cmp{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
+.cmp th,.cmp td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line-d)}
+.cmp thead th{font-size:13px;color:var(--ink-d);font-weight:800;vertical-align:bottom}
+.cmp thead th small{color:var(--muted-d);font-weight:600;font-size:11px}
+.cmp tbody td{color:var(--muted-d)}
+.cmp tbody td:first-child{color:var(--ink-d);font-weight:700}
+.cmp tbody tr:nth-child(odd){background:var(--tint)}
+.cmp td.yes{color:#0b9e71;font-weight:800}
+.cmp td.no{color:#c0504e;font-weight:700}
+.cmp th:nth-child(2),.cmp td:nth-child(2){background:rgba(242,180,65,.08)}
+
 /* PRICING */
 .pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch}
 @media(max-width:860px){.pgrid{grid-template-columns:1fr}}
@@ -415,6 +427,34 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
 </div></section>
 
+<!-- COMPARATIVA (por qué nosotros) -->
+<section class="panel" id="comparativa"><div class="wrap">
+  <div class="eyebrow" data-i="cmp_eye">Por qué MV</div>
+  <h2 class="h2" data-i="cmp_h2">Cómo nos comparamos</h2>
+  <p class="lead-d" data-i="cmp_lead">El gobierno de datos de los que no pueden pagar una suite enterprise
+    ni operar una herramienta open source sin equipo técnico dedicado.</p>
+  <div style="overflow-x:auto">
+  <table class="cmp">
+    <thead><tr>
+      <th data-i="cmp_c0">Característica</th>
+      <th style="color:var(--amber)">MV Data Governance</th>
+      <th data-i="cmp_c2">Suites enterprise<br><small>(Collibra, Alation…)</small></th>
+      <th data-i="cmp_c3">Open source<br><small>(DataHub, OpenMetadata)</small></th>
+      <th data-i="cmp_c4">BI cloud<br><small>(Purview, Atlan)</small></th>
+    </tr></thead>
+    <tbody>
+      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis → US$490/mes</td><td class="no" data-i="cmp_r1b">US$60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">US$40k+/año</td></tr>
+      <tr><td data-i="cmp_r2">Datos 100% locales</td><td class="yes">✓</td><td>Parcial</td><td class="yes">✓</td><td class="no">✗ (nube)</td></tr>
+      <tr><td data-i="cmp_r3">Listo para usar sin equipo técnico</td><td class="yes">✓</td><td>Parcial</td><td class="no">✗</td><td class="yes">✓</td></tr>
+      <tr><td data-i="cmp_r4">Trilingüe ES/EN/PT</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td data-i="cmp_r5">Resultados el día 1</td><td class="yes">✓</td><td class="no">✗ (meses)</td><td class="no">✗</td><td>Parcial</td></tr>
+      <tr><td data-i="cmp_r6">Servicio de steward incluido</td><td class="yes">✓</td><td>Extra caro</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td data-i="cmp_r7">Sin APK · web + PC</td><td class="yes">✓</td><td>Solo web</td><td>Solo web</td><td>Solo web</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div></section>
+
 <!-- PRECIOS -->
 <section class="panel" id="precios"><div class="wrap">
   <div class="eyebrow" data-i="pr_eye">Precios</div>
@@ -501,6 +541,11 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <script>
 var I18N={
 en:{
+  cmp_eye:"Why MV",cmp_h2:"How we compare",
+  cmp_lead:"Data governance for those who can't pay an enterprise suite nor run an open-source tool without a dedicated technical team.",
+  cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
+  cmp_r1:"Entry price",cmp_r1a:"Free → US$490/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
+  cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platform:"Platform",nav_bi:"BI",
   nav_impl:"Rollout",nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
   kick:"100% Web + Desktop app · ES / EN / PT",
@@ -583,6 +628,11 @@ en:{
   ft_a:"Built with the same DNA as MV Kobra AI",ft_b:"Español · English · Português — no APK, 100% web and PC"
 },
 pt:{
+  cmp_eye:"Por que MV",cmp_h2:"Como nos comparamos",
+  cmp_lead:"Governança de dados para quem não pode pagar uma suíte enterprise nem operar uma ferramenta open source sem equipe técnica dedicada.",
+  cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
+  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis → US$490/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
+  cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_platform:"Plataforma",nav_bi:"BI",
   nav_impl:"Implantação",nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
   kick:"100% Web + Programa PC · ES / EN / PT",
