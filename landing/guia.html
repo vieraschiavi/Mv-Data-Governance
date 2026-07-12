@@ -1,0 +1,313 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MV Data Governance · Qué es gobernanza de datos y cómo te ayuda</title>
+<link rel="icon" type="image/png" href="mv_icon.png">
+<style>
+:root{
+  --navy:#081527;--navy2:#0c2137;--hero-a:#0d2440;--hero-b:#081324;
+  --amber:#f2b441;--amber2:#e39a2e;--amber-ink:#1c1305;
+  --ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
+  --paper:#fff;--ink-d:#122238;--muted-d:#586a80;--line-d:#e6ebf2;--tint:#f4f7fb;
+  --blue:#2f74c0;--green:#00c896;--red:#e05c5c;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--navy);color:var(--ink);font-family:var(--sans);line-height:1.6;
+  -webkit-font-smoothing:antialiased;padding:14px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1000px;margin:0 auto;padding:0 26px}
+h1,h2,h3{margin:0;line-height:1.12;letter-spacing:-.02em}
+.am{color:var(--amber)}
+nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px;max-width:1000px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800}
+.mk{width:30px;height:30px;border-radius:8px;display:block}
+.brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+.right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
+.lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
+  border-radius:6px;cursor:pointer;font-family:inherit}
+.lang button.on{background:var(--amber);color:var(--amber-ink)}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:750;font-size:14px;border-radius:9px;
+  padding:10px 17px;cursor:pointer;border:1px solid transparent;font-family:inherit}
+.btn-a{background:var(--amber);color:var(--amber-ink)}
+.btn-o{background:transparent;color:#fff;border-color:var(--line2)}
+.hero{background:radial-gradient(680px 420px at 82% -10%,rgba(242,180,65,.13),transparent 60%),
+  linear-gradient(160deg,var(--hero-a),var(--hero-b));border:1px solid var(--line);border-radius:24px;
+  margin-top:14px;padding:46px 40px}
+@media(max-width:600px){.hero{padding:32px 22px}}
+.kick{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.05em;
+  color:var(--amber);background:rgba(242,180,65,.1);border:1px solid rgba(242,180,65,.28);
+  padding:6px 13px;border-radius:30px;margin-bottom:16px;text-transform:uppercase}
+.hero h1{font-size:clamp(27px,4.2vw,42px);font-weight:850;color:#fff}
+.hero p{font-size:clamp(15px,1.8vw,17px);color:var(--muted);max-width:66ch;margin:16px 0 0}
+.panel{background:var(--paper);color:var(--ink-d);border-radius:24px;margin-top:14px;padding:52px 0}
+.panel.dark{background:linear-gradient(170deg,var(--navy2),#0a1a30);border:1px solid var(--line);color:var(--ink)}
+.panel .wrap{padding:0 44px}
+@media(max-width:600px){.panel .wrap{padding:0 24px}}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.h2{font-size:clamp(23px,3.3vw,34px);font-weight:850;color:var(--ink-d);margin:10px 0 16px}
+.dark .h2{color:#fff}
+.lead{color:var(--muted-d);font-size:16.5px;max-width:70ch}
+.dark .lead{color:var(--muted)}
+.prose p{color:var(--muted-d);font-size:15.5px;margin:0 0 14px;max-width:74ch}
+.prose b{color:var(--ink-d)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 30px;margin-top:8px}
+@media(max-width:720px){.cols{grid-template-columns:1fr}}
+.pt{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-d)}
+.pt .em{font-size:22px;flex:none;width:30px;text-align:center}
+.pt h4{margin:0 0 3px;font-size:15.5px;color:var(--ink-d)}
+.pt p{margin:0;font-size:13.5px;color:var(--muted-d)}
+.pt .obj{display:block;margin-top:4px;font-size:12px;color:var(--blue);font-weight:700}
+.impact{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+@media(max-width:720px){.impact{grid-template-columns:1fr}}
+.ic2{background:var(--tint);border:1px solid var(--line-d);border-radius:14px;padding:20px}
+.ic2 h4{margin:0 0 6px;font-size:15px;color:var(--ink-d)}
+.ic2 p{margin:0;font-size:13.5px;color:var(--muted-d)}
+/* caso */
+.case{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:18px;padding:26px;margin-top:8px}
+.case h3{color:#fff;font-size:20px;margin-bottom:6px}
+.case .sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+.timeline{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+@media(max-width:720px){.timeline{grid-template-columns:1fr 1fr}}
+.tstep{background:rgba(255,255,255,.03);border:1px solid var(--line2);border-radius:12px;padding:14px}
+.tstep .w{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
+.tstep p{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+@media(max-width:600px){.ba{grid-template-columns:1fr}}
+.bacard{border-radius:14px;padding:20px}
+.bacard.before{background:rgba(224,92,92,.08);border:1px solid rgba(224,92,92,.3)}
+.bacard.after{background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.3)}
+.bacard .t{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.bacard.before .t{color:#e8807f}.bacard.after .t{color:#3fd6a8}
+.bacard .big{font-size:38px;font-weight:850;color:#fff;line-height:1}
+.bacard ul{list-style:none;padding:0;margin:12px 0 0}
+.bacard li{font-size:13px;color:var(--muted);padding:4px 0}
+.bacard li b{color:#fff}
+.metrics{display:flex;flex-wrap:wrap;gap:14px 30px;margin-top:20px}
+.metric .v{font-size:30px;font-weight:850;color:var(--amber)}
+.metric .l{font-size:12.5px;color:var(--muted);max-width:22ch}
+.proof{margin-top:16px;font-size:12.5px;color:var(--faint);font-family:var(--mono);
+  background:rgba(0,0,0,.2);border:1px solid var(--line2);border-radius:10px;padding:12px 14px}
+.cta{text-align:center;margin-top:14px}
+footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center}
+</style>
+
+<nav><div class="wrap">
+  <a class="brand" href="index.html"><img class="mk" src="mv_icon.png" alt="MV">
+    <span><b>MV Data Governance</b> <small data-i="sub">· Guía</small></span></a>
+  <div class="right">
+    <div class="lang"><button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button></div>
+    <a class="btn btn-o" href="index.html" data-i="back">← Inicio</a>
+  </div>
+</div></nav>
+
+<section class="hero">
+  <span class="kick" data-i="kick">Guía · Qué es y cómo ayuda</span>
+  <h1 data-i="h1">Gobernanza de datos, <span class="am">explicada simple</span></h1>
+  <p data-i="lead">Qué es, para qué sirve cada tablero del programa, cómo impacta en tu empresa y un
+    caso de ejemplo con el antes y el después medidos por el propio motor de MV Data Governance.</p>
+</section>
+
+<!-- QUE ES -->
+<section class="panel"><div class="wrap prose">
+  <div class="eyebrow" data-i="q_eye">Concepto</div>
+  <h2 class="h2" data-i="q_h2">¿Qué es la gobernanza de datos?</h2>
+  <p data-i="q_p1"><b>Gobernanza de datos es el conjunto de reglas, roles y herramientas que hacen que los datos de una empresa sean confiables, entendibles y utilizables</b> — para que todos decidan sobre la misma información y nadie discuta "de qué planilla salió este número".</p>
+  <p data-i="q_p2">Sin gobierno, cada área tiene su propia versión de la verdad: ventas dice una cosa, finanzas otra, y cada reunión empieza discutiendo cuál dato es el bueno. Con gobierno, hay <b>una sola definición oficial</b> de cada término, un <b>dueño</b> responsable de cada dato, y una <b>medida objetiva de calidad</b> que muestra dónde hay problemas antes de que lleguen a un reporte.</p>
+  <p data-i="q_p3">MV Data Governance resuelve la parte técnica de forma automática (catalogar, medir, perfilar, exportar) y te da los guiones para la parte humana (acordar dueños y definiciones). Los tres problemas que ataca:</p>
+  <div class="cols" style="margin-top:14px">
+    <div class="pt"><div class="em">🎯</div><div><h4 data-i="q_a">Datos en los que confiar</h4><p data-i="q_ap">Calidad medida y visible: sabés qué tan bueno es cada dato antes de decidir con él.</p></div></div>
+    <div class="pt"><div class="em">🧭</div><div><h4 data-i="q_b">Un lenguaje común</h4><p data-i="q_bp">Una definición oficial por término, en 3 idiomas, que todos los tableros comparten.</p></div></div>
+    <div class="pt"><div class="em">🛡️</div><div><h4 data-i="q_c">Control y cumplimiento</h4><p data-i="q_cp">Datos personales identificados, dueños asignados, políticas verificadas solas.</p></div></div>
+    <div class="pt"><div class="em">🔗</div><div><h4 data-i="q_d">Todo conectado a tu BI</h4><p data-i="q_dp">Los datos gobernados alimentan Power BI, Tableau, Looker… sin trabajo extra.</p></div></div>
+  </div>
+</div></section>
+
+<!-- TABLEROS -->
+<section class="panel"><div class="wrap">
+  <div class="eyebrow" data-i="t_eye">Los tableros</div>
+  <h2 class="h2" data-i="t_h2">Qué hace cada tablero (y su objetivo)</h2>
+  <p class="lead" data-i="t_lead">El programa tiene 10 tableros que trabajan sobre los mismos datos. Cada uno resuelve una parte del gobierno.</p>
+  <div class="cols" style="margin-top:18px">
+    <div class="pt"><div class="em">📊</div><div><h4 data-i="t1">Panorama</h4><p data-i="t1p">KPIs de gobierno, calidad por dominio y evolución de 12 meses.</p><span class="obj" data-i="t1o">Objetivo: ver la salud de los datos de un vistazo.</span></div></div>
+    <div class="pt"><div class="em">📚</div><div><h4 data-i="t2">Catálogo</h4><p data-i="t2p">Inventario de datasets con dueño, steward, dominio, clasificación (PII) y diccionario de columnas.</p><span class="obj" data-i="t2o">Objetivo: saber qué datos existen y quién responde por ellos.</span></div></div>
+    <div class="pt"><div class="em">✅</div><div><h4 data-i="t3">Calidad</h4><p data-i="t3p">17 reglas en 6 dimensiones con umbrales, estados y mapa de calor.</p><span class="obj" data-i="t3o">Objetivo: medir y detectar los problemas de datos automáticamente.</span></div></div>
+    <div class="pt"><div class="em">🧬</div><div><h4 data-i="t4">Linaje</h4><p data-i="t4p">Recorrido del dato de la fuente al BI, aguas arriba y aguas abajo.</p><span class="obj" data-i="t4o">Objetivo: saber de dónde viene cada número y a qué afecta.</span></div></div>
+    <div class="pt"><div class="em">📖</div><div><h4 data-i="t5">Glosario</h4><p data-i="t5p">Una definición oficial por término, en 3 idiomas, con dueño y datasets vinculados.</p><span class="obj" data-i="t5o">Objetivo: que todos hablen el mismo idioma de negocio.</span></div></div>
+    <div class="pt"><div class="em">🛡️</div><div><h4 data-i="t6">Políticas</h4><p data-i="t6p">Reglas de gobierno verificadas solas contra el catálogo y la calidad.</p><span class="obj" data-i="t6o">Objetivo: cumplimiento con evidencia, no casillas marcadas a mano.</span></div></div>
+    <div class="pt"><div class="em">🔎</div><div><h4 data-i="t7">Mis datos</h4><p data-i="t7p">Subís tu CSV/Excel y obtenés perfil, nulos, duplicados, PII y reglas sugeridas.</p><span class="obj" data-i="t7o">Objetivo: incorporar un dato nuevo al gobierno en segundos.</span></div></div>
+    <div class="pt"><div class="em">📤</div><div><h4 data-i="t8">BI &amp; API</h4><p data-i="t8p">Exportación CSV/Excel/JSON/Parquet y API REST para cualquier BI.</p><span class="obj" data-i="t8o">Objetivo: llevar los datos gobernados a tus tableros sin fricción.</span></div></div>
+    <div class="pt"><div class="em">🏢</div><div><h4 data-i="t9">Empresas</h4><p data-i="t9p">Fichas de empresas clientes que se guardan en disco (contacto, BI, restricción de TI, madurez).</p><span class="obj" data-i="t9o">Objetivo: gestionar tu cartera de clientes de gobierno.</span></div></div>
+    <div class="pt"><div class="em">❓</div><div><h4 data-i="t10">Ayuda</h4><p data-i="t10p">Qué se automatiza y qué no, con speeches IA para lograr la parte humana.</p><span class="obj" data-i="t10o">Objetivo: cerrar el círculo de lo que un software no puede hacer solo.</span></div></div>
+  </div>
+</div></section>
+
+<!-- IMPACTO -->
+<section class="panel"><div class="wrap">
+  <div class="eyebrow" data-i="i_eye">Impacto</div>
+  <h2 class="h2" data-i="i_h2">Cómo ayuda a tu empresa</h2>
+  <p class="lead" data-i="i_lead">El gobierno de datos no es un fin en sí mismo: se nota en decisiones, en plata y en tranquilidad.</p>
+  <div class="impact" style="margin-top:18px">
+    <div class="ic2"><h4 data-i="i1">Decisiones más rápidas</h4><p data-i="i1p">Se deja de discutir "cuál número es el bueno" y las reuniones pasan a discutir decisiones, no planillas.</p></div>
+    <div class="ic2"><h4 data-i="i2">Menos retrabajo y errores</h4><p data-i="i2p">Los errores se detectan en origen, no cuando ya llegaron a un reporte gerencial o a un cliente.</p></div>
+    <div class="ic2"><h4 data-i="i3">Cumplimiento sin sustos</h4><p data-i="i3p">Datos personales identificados y protegidos; auditorías con evidencia lista, no improvisada.</p></div>
+    <div class="ic2"><h4 data-i="i4">BI que se puede creer</h4><p data-i="i4p">Los tableros consumen datos gobernados: el Power BI del directorio deja de mentir.</p></div>
+    <div class="ic2"><h4 data-i="i5">Conocimiento que queda</h4><p data-i="i5p">Si se va una persona, la definición y el linaje quedan documentados, no en su cabeza.</p></div>
+    <div class="ic2"><h4 data-i="i6">Escala sin caos</h4><p data-i="i6p">Sumar fuentes o datasets no multiplica el desorden: entran al mismo marco de gobierno.</p></div>
+  </div>
+</div></section>
+
+<!-- CASO -->
+<section class="panel dark"><div class="wrap">
+  <div class="eyebrow" style="color:var(--amber)" data-i="c_eye">Caso de ejemplo · impacto medido</div>
+  <h2 class="h2" data-i="c_h2">Un proyecto de gobierno, de principio a fin</h2>
+  <p class="lead" data-i="c_lead">Distribuidora ficticia con datos sintéticos. El antes y el después están medidos por el mismo motor de reglas del programa — reproducible con <b>docs/caso_ejemplo/medir_impacto.py</b>.</p>
+  <div class="case">
+    <h3 data-i="cs_name">Distribuidora del Sur · 4 datasets, ~9.000 registros</h3>
+    <div class="sub" data-i="cs_ctx">Situación inicial: cada área con su Excel, reportes que no cerraban, reclamos por facturación mal cargada.</div>
+    <div class="timeline">
+      <div class="tstep"><div class="w" data-i="cs_w1">Día 1</div><p data-i="cs_p1">Se cargan los 4 datasets. El índice de calidad marca 88.9 y 12 reglas en falla.</p></div>
+      <div class="tstep"><div class="w" data-i="cs_w2">Semana 1–2</div><p data-i="cs_p2">Catálogo armado, PII detectada, dueños asignados con los speeches del menú Ayuda.</p></div>
+      <div class="tstep"><div class="w" data-i="cs_w3">Mes 1</div><p data-i="cs_p3">El equipo corrige en origen los emails y montos; el glosario define "cliente activo".</p></div>
+      <div class="tstep"><div class="w" data-i="cs_w4">Mes 3</div><p data-i="cs_p4">Índice 99.05. Los tableros de BI consumen datos gobernados y el directorio confía.</p></div>
+    </div>
+    <div class="ba">
+      <div class="bacard before">
+        <div class="t" data-i="cs_before">Antes del proyecto</div>
+        <div class="big">88.9</div>
+        <ul>
+          <li data-i="cs_b1"><b>12/17</b> reglas en falla</li>
+          <li data-i="cs_b2"><b>3.656</b> filas con problemas</li>
+          <li data-i="cs_b3">Validez <b>75.9</b> · Exactitud <b>80.9</b> · Completitud <b>83.9</b></li>
+        </ul>
+      </div>
+      <div class="bacard after">
+        <div class="t" data-i="cs_after">Después del proyecto</div>
+        <div class="big">99.05</div>
+        <ul>
+          <li data-i="cs_a1"><b>12/17</b> reglas aprobadas, solo 2 en falla</li>
+          <li data-i="cs_a2"><b>268</b> filas con problemas</li>
+          <li data-i="cs_a3">Validez <b>98.6</b> · Exactitud <b>98.0</b> · Completitud <b>98.6</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="v">+10,1</div><div class="l" data-i="cs_m1">puntos de índice de calidad</div></div>
+      <div class="metric"><div class="v">−93%</div><div class="l" data-i="cs_m2">de filas con problemas de datos</div></div>
+      <div class="metric"><div class="v">6→2</div><div class="l" data-i="cs_m3">veces menos reglas críticas en falla</div></div>
+    </div>
+    <div class="proof" data-i="cs_proof">✓ Medición reproducible: python docs/caso_ejemplo/medir_impacto.py → índice 88.9 → 99.05 (+10.1), filas 3656 → 268 (−93%).</div>
+  </div>
+  <div class="cta"><a class="btn btn-a" href="descargas.html" data-i="cs_cta">⬇ Probalo con tus datos (gratis)</a></div>
+</div></section>
+
+<footer><div class="wrap">© 2026 MV Data Governance · <span data-i="ft">Sin APK · 100% web y PC · Español · English · Português</span></div></footer>
+
+<script>
+var I18N={
+en:{sub:"· Guide",back:"← Home",kick:"Guide · What it is and how it helps",
+  h1:'Data governance, <span class="am">explained simply</span>',
+  lead:"What it is, what each dashboard of the program is for, how it impacts your company, and an example case with the before and after measured by MV Data Governance's own engine.",
+  q_eye:"Concept",q_h2:"What is data governance?",
+  q_p1:'<b>Data governance is the set of rules, roles and tools that make a company’s data trustworthy, understandable and usable</b> — so everyone decides on the same information and nobody argues "which spreadsheet did this number come from".',
+  q_p2:"Without governance, each department has its own version of the truth: sales says one thing, finance another, and every meeting starts by arguing which figure is right. With governance there is <b>one official definition</b> per term, an <b>owner</b> responsible for each data asset, and an <b>objective quality measure</b> showing where the problems are before they reach a report.",
+  q_p3:"MV Data Governance solves the technical part automatically (catalog, measure, profile, export) and gives you the scripts for the human part (agreeing owners and definitions). The three problems it tackles:",
+  q_a:"Data you can trust",q_ap:"Quality measured and visible: you know how good each data asset is before deciding with it.",
+  q_b:"A common language",q_bp:"One official definition per term, in 3 languages, shared by every dashboard.",
+  q_c:"Control and compliance",q_cp:"Personal data identified, owners assigned, policies verified automatically.",
+  q_d:"All connected to your BI",q_dp:"Governed data feeds Power BI, Tableau, Looker… with no extra work.",
+  t_eye:"The dashboards",t_h2:"What each dashboard does (and its objective)",
+  t_lead:"The program has 10 dashboards working on the same data. Each solves one part of governance.",
+  t1:"Overview",t1p:"Governance KPIs, quality by domain and a 12-month trend.",t1o:"Objective: see data health at a glance.",
+  t2:"Catalog",t2p:"Dataset inventory with owner, steward, domain, classification (PII) and column dictionary.",t2o:"Objective: know what data exists and who is accountable for it.",
+  t3:"Quality",t3p:"17 rules across 6 dimensions with thresholds, statuses and a heatmap.",t3o:"Objective: measure and detect data problems automatically.",
+  t4:"Lineage",t4p:"The data’s path from source to BI, upstream and downstream.",t4o:"Objective: know where each number comes from and what it affects.",
+  t5:"Glossary",t5p:"One official definition per term, in 3 languages, with owner and linked datasets.",t5o:"Objective: get everyone speaking the same business language.",
+  t6:"Policies",t6p:"Governance rules verified automatically against the catalog and quality.",t6o:"Objective: compliance with evidence, not hand-ticked boxes.",
+  t7:"My data",t7p:"Upload your CSV/Excel and get profile, nulls, duplicates, PII and suggested rules.",t7o:"Objective: bring a new data asset into governance in seconds.",
+  t8:"BI & API",t8p:"CSV/Excel/JSON/Parquet export and a REST API for any BI.",t8o:"Objective: get governed data into your dashboards frictionlessly.",
+  t9:"Companies",t9p:"Client company records saved to disk (contact, BI, IT restriction, maturity).",t9o:"Objective: manage your governance client portfolio.",
+  t10:"Help",t10p:"What is automated and what isn’t, with AI speeches to achieve the human part.",t10o:"Objective: close the loop on what software can’t do alone.",
+  i_eye:"Impact",i_h2:"How it helps your company",
+  i_lead:"Data governance isn’t an end in itself: it shows up in decisions, in money and in peace of mind.",
+  i1:"Faster decisions",i1p:'People stop arguing "which number is right" and meetings discuss decisions, not spreadsheets.',
+  i2:"Less rework and fewer errors",i2p:"Errors are caught at the source, not once they’ve reached a management report or a customer.",
+  i3:"Compliance without scares",i3p:"Personal data identified and protected; audits with ready evidence, not improvised.",
+  i4:"BI you can believe",i4p:"Dashboards consume governed data: the board’s Power BI stops lying.",
+  i5:"Knowledge that stays",i5p:"If someone leaves, the definition and lineage are documented, not in their head.",
+  i6:"Scale without chaos",i6p:"Adding sources or datasets doesn’t multiply the mess: they enter the same governance framework.",
+  c_eye:"Example case · measured impact",c_h2:"A governance project, start to finish",
+  c_lead:"Fictional distributor with synthetic data. The before and after are measured by the program’s own rule engine — reproducible with <b>docs/caso_ejemplo/medir_impacto.py</b>.",
+  cs_name:"Distribuidora del Sur · 4 datasets, ~9,000 records",
+  cs_ctx:"Starting point: each department with its own Excel, reports that didn’t reconcile, complaints over mis-entered billing.",
+  cs_w1:"Day 1",cs_p1:"The 4 datasets are loaded. The quality index reads 88.9 with 12 rules failing.",
+  cs_w2:"Week 1–2",cs_p2:"Catalog built, PII detected, owners assigned using the Help menu speeches.",
+  cs_w3:"Month 1",cs_p3:'The team fixes emails and amounts at the source; the glossary defines "active customer".',
+  cs_w4:"Month 3",cs_p4:"Index 99.05. BI dashboards consume governed data and the board trusts them.",
+  cs_before:"Before the project",cs_after:"After the project",
+  cs_b1:"<b>12/17</b> rules failing",cs_b2:"<b>3,656</b> rows with problems",cs_b3:"Validity <b>75.9</b> · Accuracy <b>80.9</b> · Completeness <b>83.9</b>",
+  cs_a1:"<b>12/17</b> rules passing, only 2 failing",cs_a2:"<b>268</b> rows with problems",cs_a3:"Validity <b>98.6</b> · Accuracy <b>98.0</b> · Completeness <b>98.6</b>",
+  cs_m1:"points of quality index",cs_m2:"of rows with data problems",cs_m3:"times fewer critical failing rules",
+  cs_proof:"✓ Reproducible measurement: python docs/caso_ejemplo/medir_impacto.py → index 88.9 → 99.05 (+10.1), rows 3656 → 268 (−93%).",
+  cs_cta:"⬇ Try it with your data (free)",
+  ft:"No APK · 100% web and PC · Español · English · Português"},
+pt:{sub:"· Guia",back:"← Início",kick:"Guia · O que é e como ajuda",
+  h1:'Governança de dados, <span class="am">explicada simples</span>',
+  lead:"O que é, para que serve cada painel do programa, como impacta sua empresa e um caso de exemplo com o antes e o depois medidos pelo próprio motor do MV Data Governance.",
+  q_eye:"Conceito",q_h2:"O que é governança de dados?",
+  q_p1:'<b>Governança de dados é o conjunto de regras, papéis e ferramentas que tornam os dados de uma empresa confiáveis, compreensíveis e utilizáveis</b> — para que todos decidam sobre a mesma informação e ninguém discuta "de qual planilha saiu este número".',
+  q_p2:"Sem governança, cada área tem sua própria versão da verdade: vendas diz uma coisa, finanças outra, e toda reunião começa discutindo qual dado é o certo. Com governança há <b>uma definição oficial</b> por termo, um <b>dono</b> responsável por cada dado e uma <b>medida objetiva de qualidade</b> que mostra onde estão os problemas antes de chegarem a um relatório.",
+  q_p3:"O MV Data Governance resolve a parte técnica automaticamente (catalogar, medir, perfilar, exportar) e te dá os roteiros para a parte humana (acordar donos e definições). Os três problemas que ataca:",
+  q_a:"Dados em que confiar",q_ap:"Qualidade medida e visível: você sabe quão bom é cada dado antes de decidir com ele.",
+  q_b:"Uma linguagem comum",q_bp:"Uma definição oficial por termo, em 3 idiomas, compartilhada por todos os painéis.",
+  q_c:"Controle e conformidade",q_cp:"Dados pessoais identificados, donos atribuídos, políticas verificadas sozinhas.",
+  q_d:"Tudo conectado ao seu BI",q_dp:"Dados governados alimentam Power BI, Tableau, Looker… sem trabalho extra.",
+  t_eye:"Os painéis",t_h2:"O que cada painel faz (e seu objetivo)",
+  t_lead:"O programa tem 10 painéis que trabalham sobre os mesmos dados. Cada um resolve uma parte da governança.",
+  t1:"Panorama",t1p:"KPIs de governança, qualidade por domínio e evolução de 12 meses.",t1o:"Objetivo: ver a saúde dos dados num relance.",
+  t2:"Catálogo",t2p:"Inventário de datasets com dono, steward, domínio, classificação (PII) e dicionário de colunas.",t2o:"Objetivo: saber quais dados existem e quem responde por eles.",
+  t3:"Qualidade",t3p:"17 regras em 6 dimensões com limites, status e mapa de calor.",t3o:"Objetivo: medir e detectar os problemas de dados automaticamente.",
+  t4:"Linhagem",t4p:"O caminho do dado da fonte ao BI, a montante e a jusante.",t4o:"Objetivo: saber de onde vem cada número e o que ele afeta.",
+  t5:"Glossário",t5p:"Uma definição oficial por termo, em 3 idiomas, com dono e datasets vinculados.",t5o:"Objetivo: fazer todos falarem a mesma linguagem de negócio.",
+  t6:"Políticas",t6p:"Regras de governança verificadas sozinhas contra o catálogo e a qualidade.",t6o:"Objetivo: conformidade com evidência, não caixas marcadas à mão.",
+  t7:"Meus dados",t7p:"Envie seu CSV/Excel e obtenha perfil, nulos, duplicados, PII e regras sugeridas.",t7o:"Objetivo: incorporar um dado novo à governança em segundos.",
+  t8:"BI & API",t8p:"Exportação CSV/Excel/JSON/Parquet e API REST para qualquer BI.",t8o:"Objetivo: levar os dados governados aos seus painéis sem atrito.",
+  t9:"Empresas",t9p:"Fichas de empresas clientes salvas em disco (contato, BI, restrição de TI, maturidade).",t9o:"Objetivo: gerenciar sua carteira de clientes de governança.",
+  t10:"Ajuda",t10p:"O que é automatizado e o que não é, com speeches IA para alcançar a parte humana.",t10o:"Objetivo: fechar o ciclo do que um software não pode fazer sozinho.",
+  i_eye:"Impacto",i_h2:"Como ajuda sua empresa",
+  i_lead:"Governança de dados não é um fim em si mesma: aparece em decisões, em dinheiro e em tranquilidade.",
+  i1:"Decisões mais rápidas",i1p:'Para de se discutir "qual número é o certo" e as reuniões passam a discutir decisões, não planilhas.',
+  i2:"Menos retrabalho e erros",i2p:"Os erros são detectados na origem, não quando já chegaram a um relatório gerencial ou a um cliente.",
+  i3:"Conformidade sem sustos",i3p:"Dados pessoais identificados e protegidos; auditorias com evidência pronta, não improvisada.",
+  i4:"BI em que dá para acreditar",i4p:"Os painéis consomem dados governados: o Power BI da diretoria para de mentir.",
+  i5:"Conhecimento que fica",i5p:"Se alguém sai, a definição e a linhagem ficam documentadas, não na cabeça da pessoa.",
+  i6:"Escala sem caos",i6p:"Adicionar fontes ou datasets não multiplica a bagunça: entram no mesmo marco de governança.",
+  c_eye:"Caso de exemplo · impacto medido",c_h2:"Um projeto de governança, do início ao fim",
+  c_lead:"Distribuidora fictícia com dados sintéticos. O antes e o depois são medidos pelo próprio motor de regras do programa — reproduzível com <b>docs/caso_ejemplo/medir_impacto.py</b>.",
+  cs_name:"Distribuidora del Sur · 4 datasets, ~9.000 registros",
+  cs_ctx:"Situação inicial: cada área com seu Excel, relatórios que não fechavam, reclamações por faturamento mal lançado.",
+  cs_w1:"Dia 1",cs_p1:"Os 4 datasets são carregados. O índice de qualidade marca 88.9 com 12 regras em falha.",
+  cs_w2:"Semana 1–2",cs_p2:"Catálogo montado, PII detectada, donos atribuídos com os speeches do menu Ajuda.",
+  cs_w3:"Mês 1",cs_p3:'A equipe corrige e-mails e valores na origem; o glossário define "cliente ativo".',
+  cs_w4:"Mês 3",cs_p4:"Índice 99.05. Os painéis de BI consomem dados governados e a diretoria confia.",
+  cs_before:"Antes do projeto",cs_after:"Depois do projeto",
+  cs_b1:"<b>12/17</b> regras em falha",cs_b2:"<b>3.656</b> linhas com problemas",cs_b3:"Validade <b>75.9</b> · Exatidão <b>80.9</b> · Completude <b>83.9</b>",
+  cs_a1:"<b>12/17</b> regras aprovadas, só 2 em falha",cs_a2:"<b>268</b> linhas com problemas",cs_a3:"Validade <b>98.6</b> · Exatidão <b>98.0</b> · Completude <b>98.6</b>",
+  cs_m1:"pontos de índice de qualidade",cs_m2:"das linhas com problemas de dados",cs_m3:"vezes menos regras críticas em falha",
+  cs_proof:"✓ Medição reproduzível: python docs/caso_ejemplo/medir_impacto.py → índice 88.9 → 99.05 (+10.1), linhas 3656 → 268 (−93%).",
+  cs_cta:"⬇ Teste com seus dados (grátis)",
+  ft:"Sem APK · 100% web e PC · Español · English · Português"}};
+var ES={};
+document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+function setLang(lang){
+  var dict=lang==='es'?null:I18N[lang];
+  document.querySelectorAll('[data-i]').forEach(function(el){
+    var k=el.getAttribute('data-i');el.innerHTML=(dict&&dict[k]!==undefined)?dict[k]:ES[k];});
+  document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
+  document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+}
+document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+try{var s=localStorage.getItem('mvdg_lang');if(s&&s!=='es')setLang(s);}catch(e){}
+</script>
