@@ -1,0 +1,222 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MV Data Governance · Reseñas de usuarios</title>
+<link rel="icon" type="image/png" href="mv_icon.png">
+<style>
+:root{
+  --navy:#081527;--navy2:#0c2137;--hero-a:#0d2440;--hero-b:#081324;
+  --amber:#f2b441;--amber2:#e39a2e;--amber-ink:#1c1305;
+  --ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
+  --paper:#fff;--ink-d:#122238;--muted-d:#586a80;--line-d:#e6ebf2;--tint:#f4f7fb;
+  --blue:#2f74c0;--green:#00c896;--star:#f2b441;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--navy);color:var(--ink);font-family:var(--sans);line-height:1.6;
+  -webkit-font-smoothing:antialiased;padding:14px}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1040px;margin:0 auto;padding:0 26px}
+h1,h2,h3{margin:0;line-height:1.12;letter-spacing:-.02em}
+.am{color:var(--amber)}
+nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800}
+.mk{width:30px;height:30px;border-radius:8px;display:block}
+.brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+.right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
+.lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
+  border-radius:6px;cursor:pointer;font-family:inherit}
+.lang button.on{background:var(--amber);color:var(--amber-ink)}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:750;font-size:14px;border-radius:9px;
+  padding:11px 18px;cursor:pointer;border:1px solid transparent;font-family:inherit}
+.btn-a{background:var(--amber);color:var(--amber-ink)}
+.btn-o{background:transparent;color:#fff;border-color:var(--line2)}
+.hero{background:radial-gradient(680px 420px at 82% -10%,rgba(242,180,65,.13),transparent 60%),
+  linear-gradient(160deg,var(--hero-a),var(--hero-b));border:1px solid var(--line);border-radius:24px;
+  margin-top:14px;padding:40px}
+@media(max-width:600px){.hero{padding:30px 22px}}
+.hgrid{display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center}
+@media(max-width:640px){.hgrid{grid-template-columns:1fr;gap:22px}}
+.score{text-align:center;padding-right:30px;border-right:1px solid var(--line2)}
+@media(max-width:640px){.score{border-right:0;border-bottom:1px solid var(--line2);padding:0 0 18px}}
+.score .big{font-size:58px;font-weight:850;color:#fff;line-height:1}
+.score .stars{font-size:22px;color:var(--star);letter-spacing:2px;margin-top:6px}
+.score .count{color:var(--muted);font-size:13px;margin-top:6px}
+.hero h1{font-size:clamp(24px,3.4vw,34px);font-weight:850;color:#fff;margin-bottom:8px}
+.hero p{color:var(--muted);font-size:15px;max-width:52ch}
+.dist{margin-top:14px;display:grid;gap:6px;max-width:360px}
+.drow{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.drow .lbl{width:28px;text-align:right}
+.drow .bar{flex:1;height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden}
+.drow .bar i{display:block;height:100%;background:var(--star);border-radius:6px}
+.drow .n{width:24px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+@media(max-width:860px){.grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+.card{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:20px;display:flex;flex-direction:column}
+.card .cstars{color:var(--star);font-size:15px;letter-spacing:1px}
+.card .cc{color:var(--ink);font-size:14px;margin:10px 0 14px;flex:1}
+.card .who{display:flex;align-items:center;gap:10px}
+.card .av{width:34px;height:34px;border-radius:50%;background:#0f2135;color:var(--amber);display:flex;
+  align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:none}
+.card .who b{font-size:13.5px;color:#fff;display:block}
+.card .who span{font-size:11.5px;color:var(--muted)}
+.card .ex{align-self:flex-start;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--amber2);background:rgba(242,180,65,.12);border:1px solid rgba(242,180,65,.3);
+  border-radius:20px;padding:2px 8px;margin-bottom:8px}
+.note{max-width:760px;margin:16px auto 0;text-align:center;color:var(--faint);font-size:12.5px}
+/* form */
+.panel{background:var(--paper);color:var(--ink-d);border-radius:24px;margin-top:14px;padding:46px 0}
+.panel .wrap{padding:0 44px}
+@media(max-width:600px){.panel .wrap{padding:0 24px}}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.h2{font-size:clamp(22px,3vw,30px);font-weight:850;color:var(--ink-d);margin:10px 0 8px}
+.lead-d{color:var(--muted-d);font-size:15.5px;max-width:60ch;margin-bottom:22px}
+.cform{max-width:640px;display:grid;gap:14px}
+.cform .frow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.cform .frow{grid-template-columns:1fr}}
+.cform label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted-d)}
+.cform input,.cform textarea,.cform select{font-family:inherit;font-size:15px;color:var(--ink-d);background:#fff;
+  border:1px solid var(--line-d);border-radius:10px;padding:11px 13px;width:100%;font-weight:400}
+.cform textarea{min-height:110px;resize:vertical}
+.rate{display:flex;gap:6px;font-size:30px;cursor:pointer;user-select:none}
+.rate span{color:#d7deea;transition:color .1s}
+.rate span.on{color:var(--star)}
+footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center}
+</style>
+
+<nav><div class="wrap">
+  <a class="brand" href="index.html"><img class="mk" src="mv_icon.png" alt="MV">
+    <span><b>MV Data Governance</b> <small data-i="sub">· Reseñas</small></span></a>
+  <div class="right">
+    <div class="lang"><button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button></div>
+    <a class="btn btn-o" href="index.html" data-i="back">← Inicio</a>
+  </div>
+</div></nav>
+
+<section class="hero">
+  <div class="hgrid">
+    <div class="score">
+      <div class="big" id="avg">–</div>
+      <div class="stars" id="avgStars">★★★★★</div>
+      <div class="count" id="count" data-i="count">reseñas</div>
+    </div>
+    <div>
+      <h1 data-i="h1">Lo que dicen quienes lo usan</h1>
+      <p data-i="lead">Opiniones de equipos de datos, consultores y áreas de negocio que probaron MV Data Governance.</p>
+      <div class="dist" id="dist"></div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" style="padding:0;margin-top:14px">
+  <div class="grid" id="grid"></div>
+  <p class="note" data-i="note">Algunas reseñas están marcadas como «Ejemplo»: son ilustrativas y se reemplazan por reseñas reales a medida que llegan.</p>
+</section>
+
+<!-- DEJAR RESEÑA -->
+<section class="panel" id="dejar"><div class="wrap">
+  <div class="eyebrow" data-i="f_eye">Tu opinión</div>
+  <h2 class="h2" data-i="f_h2">Dejá tu reseña</h2>
+  <p class="lead-d" data-i="f_lead">¿Usaste MV Data Governance? Contanos tu experiencia. La revisamos y la publicamos.</p>
+  <form class="cform" id="rform">
+    <div class="frow">
+      <label><span data-i="f_name">Nombre o iniciales</span><input name="name" required></label>
+      <label><span data-i="f_role">Cargo / empresa (opcional)</span><input name="role"></label>
+    </div>
+    <label><span data-i="f_rating">Puntaje</span>
+      <div class="rate" id="rate" role="radiogroup" aria-label="Puntaje">
+        <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+      </div>
+      <input type="hidden" name="rating" id="ratingVal" value="5">
+    </label>
+    <label><span data-i="f_comment">Comentario</span><textarea name="comment" required></textarea></label>
+    <div><button class="btn btn-a" type="submit" data-i="f_send">Enviar reseña</button></div>
+  </form>
+</div></section>
+
+<footer><div class="wrap">© 2026 MV Data Governance · <span data-i="ft">Sin APK · 100% web y PC · Español · English · Português</span></div></footer>
+
+<script src="reviews-data.js"></script>
+<script>
+var I18N={
+en:{sub:"· Reviews",back:"← Home",count:"reviews",
+  h1:"What people who use it say",
+  lead:"Opinions from data teams, consultants and business units that tried MV Data Governance.",
+  note:"Some reviews are marked “Example”: they are illustrative and get replaced by real reviews as they arrive.",
+  f_eye:"Your opinion",f_h2:"Leave your review",
+  f_lead:"Did you use MV Data Governance? Tell us your experience. We review it and publish it.",
+  f_name:"Name or initials",f_role:"Role / company (optional)",f_rating:"Rating",f_comment:"Comment",f_send:"Send review",
+  ft:"No APK · 100% web and PC · Español · English · Português"},
+pt:{sub:"· Avaliações",back:"← Início",count:"avaliações",
+  h1:"O que dizem quem usa",
+  lead:"Opiniões de equipes de dados, consultores e áreas de negócio que testaram o MV Data Governance.",
+  note:"Algumas avaliações estão marcadas como “Exemplo”: são ilustrativas e são substituídas por avaliações reais conforme chegam.",
+  f_eye:"Sua opinião",f_h2:"Deixe sua avaliação",
+  f_lead:"Você usou o MV Data Governance? Conte sua experiência. Nós revisamos e publicamos.",
+  f_name:"Nome ou iniciais",f_role:"Cargo / empresa (opcional)",f_rating:"Nota",f_comment:"Comentário",f_send:"Enviar avaliação",
+  ft:"Sem APK · 100% web e PC · Español · English · Português"}};
+var ES={};
+document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+function setLang(lang){
+  var d=lang==='es'?null:I18N[lang];
+  document.querySelectorAll('[data-i]').forEach(function(el){
+    var k=el.getAttribute('data-i');el.innerHTML=(d&&d[k]!==undefined)?d[k]:ES[k];});
+  document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
+  document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  render();
+}
+function stars(n){return '★★★★★☆☆☆☆☆'.slice(5-Math.round(n),10-Math.round(n));}
+function exLabel(){var l=document.documentElement.lang||'es';return l==='en'?'Example':l==='pt'?'Exemplo':'Ejemplo';}
+function initials(name){return (name||'?').split(/\s+/).map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();}
+function render(){
+  var R=(window.MVDG_REVIEWS||[]).slice();
+  var n=R.length;
+  var avg=n?R.reduce(function(s,r){return s+(+r.rating||0);},0)/n:0;
+  document.getElementById('avg').textContent=n?avg.toFixed(1):'–';
+  document.getElementById('avgStars').textContent=stars(avg);
+  var l=document.documentElement.lang||'es';
+  var word=l==='en'?'reviews':l==='pt'?'avaliações':'reseñas';
+  document.getElementById('count').textContent=n+' '+word;
+  // distribucion
+  var dist=document.getElementById('dist');dist.innerHTML='';
+  for(var s=5;s>=1;s--){
+    var c=R.filter(function(r){return Math.round(r.rating)===s;}).length;
+    var pct=n?Math.round(100*c/n):0;
+    dist.insertAdjacentHTML('beforeend',
+      '<div class="drow"><span class="lbl">'+s+'★</span><div class="bar"><i style="width:'+pct+'%"></i></div><span class="n">'+c+'</span></div>');
+  }
+  // tarjetas
+  var g=document.getElementById('grid');g.innerHTML='';
+  R.forEach(function(r){
+    g.insertAdjacentHTML('beforeend',
+      '<div class="card">'+
+        (r.example?'<span class="ex">'+exLabel()+'</span>':'')+
+        '<div class="cstars">'+stars(r.rating)+'</div>'+
+        '<div class="cc">“'+(r.comment||'').replace(/</g,'&lt;')+'”</div>'+
+        '<div class="who"><span class="av">'+initials(r.name)+'</span>'+
+          '<span><b>'+(r.name||'').replace(/</g,'&lt;')+'</b>'+
+          '<span>'+(r.role||'').replace(/</g,'&lt;')+(r.date?' · '+r.date:'')+'</span></span></div>'+
+      '</div>');
+  });
+}
+// puntaje interactivo del form
+var rv=5;
+document.querySelectorAll('#rate span').forEach(function(sp){
+  sp.addEventListener('click',function(){rv=+sp.getAttribute('data-v');paint();document.getElementById('ratingVal').value=rv;});
+  sp.addEventListener('mouseenter',function(){paint(+sp.getAttribute('data-v'));});
+});
+document.getElementById('rate').addEventListener('mouseleave',function(){paint();});
+function paint(h){document.querySelectorAll('#rate span').forEach(function(sp){sp.classList.toggle('on',+sp.getAttribute('data-v')<=(h||rv));});}
+paint();
+document.getElementById('rform').addEventListener('submit',function(ev){
+  ev.preventDefault();var f=ev.target;
+  var body='Puntaje: '+f.rating.value+'/5%0D%0ANombre: '+encodeURIComponent(f.name.value)+
+    '%0D%0ACargo/empresa: '+encodeURIComponent(f.role.value)+'%0D%0A%0D%0A'+encodeURIComponent(f.comment.value);
+  location.href='mailto:vieraschiavi@gmail.com?subject=Rese%C3%B1a%20MV%20Data%20Governance&body='+body;
+});
+document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+document.documentElement.lang='es';
+try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es'){setLang(sv);}else{render();}}catch(e){render();}
+</script>

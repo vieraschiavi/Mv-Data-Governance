@@ -180,6 +180,27 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .faq details[open] summary::after{content:"–"}
 .faq .a{padding:0 18px 15px;color:var(--muted-d);font-size:14px;line-height:1.6}
 
+/* RESEÑAS */
+.rvhead{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin:6px 0 22px}
+.rvscore{display:flex;align-items:baseline;gap:12px}
+.rvbig{font-size:44px;font-weight:850;color:var(--ink-d);line-height:1}
+.rvstars{font-size:22px;color:var(--amber);letter-spacing:2px}
+.rvcount{font-size:13.5px;color:var(--muted-d)}
+.rvgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:860px){.rvgrid{grid-template-columns:1fr}}
+.rvcard{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;padding:20px;display:flex;flex-direction:column}
+.rvcard .rs{color:var(--amber);font-size:15px;letter-spacing:1px}
+.rvcard .rc{color:var(--ink-d);font-size:14px;margin:9px 0 13px;flex:1}
+.rvcard .rw{display:flex;align-items:center;gap:10px}
+.rvcard .rav{width:34px;height:34px;border-radius:50%;background:var(--ink-d);color:var(--amber);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:none}
+.rvcard .rw b{font-size:13px;color:var(--ink-d);display:block}
+.rvcard .rw span{font-size:11.5px;color:var(--muted-d)}
+.rvcard .rex{align-self:flex-start;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--amber2);background:rgba(242,180,65,.14);border:1px solid rgba(242,180,65,.35);
+  border-radius:20px;padding:2px 8px;margin-bottom:8px}
+.rvnote{color:var(--faint);font-size:12.5px;margin-top:16px}
+
 /* COMPARATIVA */
 .cmp{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
 .cmp th,.cmp td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line-d)}
@@ -233,6 +254,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </a>
   <div class="nlinks">
     <a href="guia.html" data-i="nav_guide">¿Qué es?</a>
+    <a href="#resenas" data-i="nav_reviews">Reseñas</a>
     <a href="#video" data-i="nav_video">Video</a>
     <a href="#tableros" data-i="nav_shots">Tableros</a>
     <a href="#plataforma" data-i="nav_platform">Plataforma</a>
@@ -514,6 +536,22 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
 </div></section>
 
+<!-- RESEÑAS -->
+<section class="panel" id="resenas"><div class="wrap">
+  <div class="eyebrow" data-i="rv_eye">Reseñas</div>
+  <h2 class="h2" data-i="rv_h2">Lo que dicen quienes lo usan</h2>
+  <div class="rvhead">
+    <div class="rvscore">
+      <span class="rvbig" id="rvAvg">–</span>
+      <span class="rvstars" id="rvStars">★★★★★</span>
+      <span class="rvcount" id="rvCount"></span>
+    </div>
+    <a class="btn btn-od" href="reviews.html" data-i="rv_all">Ver todas / dejar reseña →</a>
+  </div>
+  <div class="rvgrid" id="rvGrid"></div>
+  <p class="rvnote" data-i="rv_note">Reseñas ilustrativas de la demo — se reemplazan por reales a medida que llegan.</p>
+</div></section>
+
 <!-- FAQ -->
 <section class="panel" id="faq"><div class="wrap">
   <div class="eyebrow" data-i="fq_eye">Preguntas frecuentes</div>
@@ -554,6 +592,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   <span data-i="ft_b">Español · English · Português — sin APK, 100% web y PC</span>
 </div></footer>
 
+<script src="reviews-data.js"></script>
 <script>
 var I18N={
 en:{
@@ -563,6 +602,9 @@ en:{
   cmp_r1:"Entry price",cmp_r1a:"Free → US$490/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   nav_guide:"What is it?",
+  nav_reviews:"Reviews",rv_eye:"Reviews",rv_h2:"What people who use it say",
+  rv_all:"See all / leave a review →",rv_note:"Illustrative demo reviews — replaced by real ones as they arrive.",
+
   df_eye:"Differentiators",df_h2:"Why it's a 10/10",
   df_lead:"Six things almost no tool combines: enterprise power, SMB price and zero friction.",
   df1t:"100% local data",df1p:"Runs on your PC or server. Nothing travels to the internet: fit for banking, healthcare and public sector.",
@@ -659,6 +701,9 @@ pt:{
   cmp_r1:"Preço de entrada",cmp_r1a:"Grátis → US$490/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   nav_guide:"O que é?",
+  nav_reviews:"Avaliações",rv_eye:"Avaliações",rv_h2:"O que dizem quem usa",
+  rv_all:"Ver todas / avaliar →",rv_note:"Avaliações ilustrativas da demo — substituídas por reais conforme chegam.",
+
   df_eye:"Diferenciais",df_h2:"Por que é um 10/10",
   df_lead:"Seis coisas que quase nenhuma ferramenta junta: potência enterprise, preço de PME e zero atrito.",
   df1t:"Dados 100% locais",df1p:"Roda no seu PC ou servidor. Nada viaja para a internet: apto para bancos, saúde e setor público.",
@@ -762,8 +807,34 @@ function setLang(lang){
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;
   try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  renderReviews();
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+
+/* --- Reseñas: promedio + 3 destacadas (datos en reviews-data.js) --- */
+function rvStars(n){return '★★★★★☆☆☆☆☆'.slice(5-Math.round(n),10-Math.round(n));}
+function renderReviews(){
+  var R=(window.MVDG_REVIEWS||[]);var n=R.length;if(!document.getElementById('rvGrid'))return;
+  var avg=n?R.reduce(function(s,r){return s+(+r.rating||0);},0)/n:0;
+  var l=document.documentElement.lang||'es';
+  var word=l==='en'?'reviews':l==='pt'?'avaliações':'reseñas';
+  var exW=l==='en'?'Example':l==='pt'?'Exemplo':'Ejemplo';
+  document.getElementById('rvAvg').textContent=n?avg.toFixed(1):'–';
+  document.getElementById('rvStars').textContent=rvStars(avg);
+  document.getElementById('rvCount').textContent='· '+n+' '+word;
+  var top=R.slice().sort(function(a,b){return b.rating-a.rating;}).slice(0,3);
+  var g=document.getElementById('rvGrid');g.innerHTML='';
+  top.forEach(function(r){
+    var ini=(r.name||'?').split(/\s+/).map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();
+    g.insertAdjacentHTML('beforeend','<div class="rvcard">'+
+      (r.example?'<span class="rex">'+exW+'</span>':'')+
+      '<div class="rs">'+rvStars(r.rating)+'</div>'+
+      '<div class="rc">“'+(r.comment||'').replace(/</g,'&lt;')+'”</div>'+
+      '<div class="rw"><span class="rav">'+ini+'</span><span><b>'+(r.name||'').replace(/</g,'&lt;')+
+      '</b><span>'+(r.role||'').replace(/</g,'&lt;')+'</span></span></div></div>');
+  });
+}
+renderReviews();
 try{
   var saved=localStorage.getItem('mvdg_lang');
   if(saved&&saved!=='es')setLang(saved);
