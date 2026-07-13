@@ -39,6 +39,7 @@ datas += [
     (os.path.join(ROOT, "mvdg"), "mvdg"),
     (os.path.join(ROOT, "bi_api"), "bi_api"),
     (os.path.join(ROOT, "assets", "brand"), os.path.join("assets", "brand")),
+    (os.path.join(ROOT, "assets", "samples"), os.path.join("assets", "samples")),
 ]
 
 a = Analysis(

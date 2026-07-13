@@ -51,8 +51,9 @@ _DEMO_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
                "MV_DataGovernance_Server.bat", "run.sh", "run_server.sh",
                "server_authorized.txt", "requirements.txt", "README.md",
                ".gitattributes"]
-# solo los iconos de marca, no el video
+# solo los iconos de marca (no el video) + el dataset de ejemplo real
 _DEMO_BRAND = os.path.join("assets", "brand")
+_DEMO_SAMPLES = os.path.join("assets", "samples")
 
 
 def _iter_files(dirs, files, extra_dirs=()):
@@ -84,7 +85,8 @@ def build_web_demo() -> str:
     os.makedirs(DESCARGAS, exist_ok=True)
     out = os.path.join(DESCARGAS, f"MVDataGovernance_Demo_v{__version__}.zip")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for path in _iter_files(_DEMO_DIRS, _DEMO_FILES, extra_dirs=[_DEMO_BRAND]):
+        for path in _iter_files(_DEMO_DIRS, _DEMO_FILES,
+                                extra_dirs=[_DEMO_BRAND, _DEMO_SAMPLES]):
             arc = os.path.join("MVDataGovernance",
                                os.path.relpath(path, ROOT))
             z.write(path, arc)

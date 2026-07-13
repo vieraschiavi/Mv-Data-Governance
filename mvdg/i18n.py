@@ -213,6 +213,28 @@ _T: dict[str, dict[str, str]] = {
     "pr_source": {"es": "Fuente de datos", "en": "Data source", "pt": "Fonte de dados"},
     "pr_src_file": {"es": "📄 Archivo (CSV/Excel)", "en": "📄 File (CSV/Excel)", "pt": "📄 Arquivo (CSV/Excel)"},
     "pr_src_db": {"es": "🗄️ Base de datos", "en": "🗄️ Database", "pt": "🗄️ Banco de dados"},
+    "pr_src_example": {"es": "🧪 Dataset de ejemplo (real)", "en": "🧪 Example dataset (real)", "pt": "🧪 Dataset de exemplo (real)"},
+    "pr_example_title": {
+        "es": "Rotulado de alimentos 2026 — control bromatológico (dataset público real)",
+        "en": "Food labeling 2026 — food-safety control (real public dataset)",
+        "pt": "Rotulagem de alimentos 2026 — controle bromatológico (dataset público real)",
+    },
+    "pr_example_desc": {
+        "es": "284 análisis de productos alimenticios (dulce de leche, agua mineral, etc.) con su "
+              "clasificación, marca, habilitación, vencimiento, lote y contenido neto. Un caso "
+              "real para ver la plataforma perfilando datos que no son de demostración.",
+        "en": "284 food-product analyses (dulce de leche, mineral water, etc.) with their "
+              "classification, brand, authorization, expiry, batch and net content. A real case "
+              "to watch the platform profiling non-demo data.",
+        "pt": "284 análises de produtos alimentícios (doce de leite, água mineral, etc.) com sua "
+              "classificação, marca, habilitação, vencimento, lote e conteúdo líquido. Um caso "
+              "real para ver a plataforma perfilando dados que não são de demonstração.",
+    },
+    "pr_example_missing": {
+        "es": "No se encontró el dataset de ejemplo en el paquete.",
+        "en": "The example dataset was not found in the package.",
+        "pt": "O dataset de exemplo não foi encontrado no pacote.",
+    },
     # ------------------------------------------------------------- connectors
     "db_intro": {
         "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "

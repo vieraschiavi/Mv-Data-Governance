@@ -396,6 +396,25 @@ def test_dmbok_translations_differ():
     assert es != en  # están realmente traducidas
 
 
+# ------------------------------------------------- dataset de ejemplo real
+def test_sample_dataset_profiles():
+    from mvdg.profiler import profile_table, suggest_rules, summary
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "samples", "rotulado_de_alimentos_2026.csv")
+    assert os.path.exists(path), "el dataset de ejemplo debe estar versionado"
+    df = pd.read_csv(path)
+    info = summary(df)
+    assert info["rows"] == 284 and info["columns"] == 12
+    assert info["duplicate_rows"] == 0
+    prof = profile_table(df)
+    assert len(prof) == 12
+    # 'muestra' es clave (única) y 'articulos' tiene muchos nulos
+    assert set(prof["column"]) >= {"producto", "marca", "muestra", "articulos"}
+    # las sugerencias corren sin error en los 3 idiomas
+    for lang in LANGS:
+        assert isinstance(suggest_rules(df, lang), list)
+
+
 # ------------------------------------------------------------- auto-diagnostico
 def test_selfcheck_all_pass():
     from mvdg.selfcheck import run_checks

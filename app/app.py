@@ -10,9 +10,12 @@ import os
 import sys
 
 # Permite ejecutar tanto desde la raíz del repo como desde el bundle PyInstaller.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ROOT = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+
+# Dataset de ejemplo real (control bromatológico) para la pestaña "Mis datos".
+_SAMPLE_CSV = os.path.join(_ROOT, "assets", "samples", "rotulado_de_alimentos_2026.csv")
 
 import pandas as pd
 import plotly.express as px
@@ -527,12 +530,28 @@ def _render_profile(user_df):
 
 with tab_pr:
     st.info(t("pr_intro", lang), icon="🔎")
+    _SRC_LABEL = {"example": t("pr_src_example", lang),
+                  "file": t("pr_src_file", lang), "db": t("pr_src_db", lang)}
     source = st.radio(t("pr_source", lang),
-                      ["file", "db"], horizontal=True, key="pr_source",
-                      format_func=lambda k: t("pr_src_file", lang) if k == "file"
-                      else t("pr_src_db", lang))
+                      ["example", "file", "db"], horizontal=True, key="pr_source",
+                      format_func=lambda k: _SRC_LABEL[k])
 
-    if source == "file":
+    if source == "example":
+        st.markdown(f"**{t('pr_example_title', lang)}**")
+        st.caption(t("pr_example_desc", lang))
+        if os.path.exists(_SAMPLE_CSV):
+            try:
+                sample_df = pd.read_csv(_SAMPLE_CSV)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+                sample_df = None
+            if sample_df is not None:
+                with st.expander("👁️ " + t("cat_detail", lang), expanded=False):
+                    st.dataframe(sample_df.head(20), width="stretch", hide_index=True)
+                _render_profile(sample_df)
+        else:
+            st.warning(t("pr_example_missing", lang), icon="⚠️")
+    elif source == "file":
         up = st.file_uploader(t("pr_upload", lang), type=["csv", "xlsx", "xls"])
         if up is not None:
             try:

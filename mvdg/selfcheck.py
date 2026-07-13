@@ -143,6 +143,22 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert "--server.address" in argv and "--server.port" in argv
         return "autorización por host + arranque server OK"
 
+    @check("Dataset de ejemplo real (rotulado de alimentos)")
+    def _():
+        import os
+        import pandas as pd
+        from .profiler import profile_table, summary
+        root = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, "assets", "samples",
+                            "rotulado_de_alimentos_2026.csv")
+        assert os.path.exists(path), "falta el CSV de ejemplo"
+        df = pd.read_csv(path)
+        info = summary(df)
+        assert info["rows"] == 284 and info["columns"] == 12
+        assert len(profile_table(df)) == 12
+        return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
+
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():
         import os
