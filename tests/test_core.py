@@ -415,6 +415,164 @@ def test_sample_dataset_profiles():
         assert isinstance(suggest_rules(df, lang), list)
 
 
+# ------------------------------------- datasets de ejemplo, gobernados end-to-end
+def test_samples_file_second_dataset_versioned():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "samples", "dirty_cafe_sales.csv")
+    assert os.path.exists(path), "el segundo dataset de ejemplo debe estar versionado"
+    df = pd.read_csv(path)
+    assert len(df) == 10000 and len(df.columns) == 8
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_samples_meta_complete(lang):
+    from mvdg import samples
+    for key in samples.sample_keys():
+        m = samples.sample_meta(key, lang)
+        for field in ("name", "domain", "description", "owner", "steward",
+                     "classification", "refresh", "source", "license"):
+            assert m[field], f"{key}.{field} vacío en {lang}"
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_samples_quality_results_have_real_spread(lang):
+    from mvdg import samples
+    ral = samples.sample_quality_results("rotulado_alimentos", lang)
+    assert len(ral) == 6
+    assert set(ral["status"]) <= {"pass", "warn", "fail"}
+    assert (ral["status"] == "warn").sum() >= 1  # marca "-" y vencimiento detectados
+
+    caf = samples.sample_quality_results("cafe_sales_kaggle", lang)
+    assert len(caf) == 7
+    assert (caf["status"] == "fail").sum() >= 3  # Item/Payment Method/Location muy incompletos
+    from mvdg.quality import overall_index
+    assert overall_index(caf) < overall_index(ral)  # cafe_sales es más sucio a propósito
+
+
+def test_samples_accuracy_rule_is_meaningful():
+    """La regla de exactitud (total = cantidad × precio) no es un no-op: si
+    se corrompe Total Spent, el score debe bajar."""
+    from mvdg import samples
+    df = samples.load_sample_table("cafe_sales_kaggle").copy()
+    rule = next(r for r in samples.SAMPLES["cafe_sales_kaggle"]["rules"] if r.rule_id == "CAF-07")
+    score_before, _ = rule.check(df)
+    df.loc[df.index[:500], "Total Spent"] = "999999.0"
+    score_after, affected_after = rule.check(df)
+    assert score_after < score_before
+    assert affected_after > 0
+
+
+def test_samples_dictionary_and_glossary_link_columns():
+    from mvdg import samples
+    for key in samples.sample_keys():
+        dic = samples.sample_dictionary_df(key, "es")
+        df = samples.load_sample_table(key)
+        assert set(dic["column"]) == set(df.columns)
+        gloss = samples.sample_glossary_df(key, "es")
+        assert len(gloss) >= 3
+        assert all(key in ds for ds in gloss["linked_datasets"])
+
+
+def test_samples_governance_tables_bundle():
+    from mvdg import samples
+    for key in samples.sample_keys():
+        gov = samples.sample_governance_tables(key, "es")
+        assert set(gov) == {"data", "dictionary", "quality_results", "glossary"}
+        assert len(gov["data"]) > 0
+
+
+def test_samples_exportable_with_generic_exporters():
+    """Los datasets de ejemplo deben poder exportarse con los mismos
+    exportadores genéricos que usa el resto de la plataforma (BI real)."""
+    from mvdg import samples
+    from mvdg.exporters import to_csv_bytes, to_excel_bytes, to_json_bytes
+    df = samples.load_sample_table("rotulado_alimentos")
+    assert to_csv_bytes(df).startswith(b"\xef\xbb\xbf") or len(to_csv_bytes(df)) > 0
+    assert to_excel_bytes(df)[:2] == b"PK"
+    assert len(to_json_bytes(df)) > 0
+
+
+def test_bi_api_serves_sample_datasets():
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+    client = TestClient(app)
+
+    r = client.get("/")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle"}
+
+    r = client.get("/api/samples/cafe_sales_kaggle?lang=en")
+    assert r.status_code == 200
+    assert r.json()["owner"] == "Operations / Point of Sale"
+
+    r = client.get("/api/samples/cafe_sales_kaggle/quality_results?lang=es&format=csv")
+    assert r.status_code == 200
+    assert "rule_id" in r.text
+
+    r = client.get("/api/samples/rotulado_alimentos/data?format=json")
+    assert r.status_code == 200 and r.json()["rows"] == 284
+
+    assert client.get("/api/samples/no-existe/data").status_code == 404
+    assert client.get("/api/samples/cafe_sales_kaggle/no-existe").status_code == 404
+
+
+# ------------------------------------------- sugerencias de correccion (IA)
+@pytest.mark.parametrize("lang", LANGS)
+def test_remediation_covers_all_demo_rules(lang):
+    from mvdg.quality import RULES
+    from mvdg.remediation import REMEDIATIONS, suggest_fix
+    # las 17 reglas de demo tienen contenido especifico, no generico
+    assert {r.rule_id for r in RULES} <= set(REMEDIATIONS)
+    for r in RULES:
+        fix = suggest_fix(r.rule_id, r.dimension, r.column, 123, lang)
+        for field in ("root_cause", "short_term", "long_term", "owner"):
+            assert fix[field], f"{r.rule_id}.{field} vacio en {lang}"
+        # el numero de filas afectadas aparece formateado en el texto
+        assert "123" in fix["short_term"] or "123" in fix["root_cause"]
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_remediation_covers_all_sample_rules(lang):
+    from mvdg import samples
+    from mvdg.remediation import REMEDIATIONS, suggest_fix
+    for key in samples.sample_keys():
+        for r in samples.SAMPLES[key]["rules"]:
+            assert r.rule_id in REMEDIATIONS
+            fix = suggest_fix(r.rule_id, r.dimension, r.column, 9, lang)
+            assert all(fix.values())
+
+
+def test_remediation_generic_fallback_for_unknown_rule():
+    from mvdg.quality import DIMENSIONS
+    from mvdg.remediation import suggest_fix
+    for dim in DIMENSIONS:
+        for lang in LANGS:
+            fix = suggest_fix("NEW-01", dim, "alguna_columna", 4, lang)
+            assert all(fix.values())
+            assert "alguna_columna" in fix["short_term"] or "alguna_columna" in fix["root_cause"]
+
+
+def test_remediation_thousands_separator():
+    from mvdg.remediation import suggest_fix
+    fix = suggest_fix("CAF-03", "completeness", "Payment Method", 3178, "es")
+    assert "3,178" in fix["short_term"]
+
+
+def test_render_fixes_shown_next_to_failures_in_app(monkeypatch):
+    """Las reglas en warn/fail del dataset de ejemplo mas sucio deben tener
+    una sugerencia de la IA disponible; las que pasan, no hace falta."""
+    from mvdg import samples
+    from mvdg.remediation import suggest_fix
+    res = samples.sample_quality_results("cafe_sales_kaggle", "es")
+    broken = res[res["status"] != "pass"]
+    assert len(broken) == 5  # 3 fail + 2 warn, ver test_samples_quality_results_have_real_spread
+    for _, row in broken.iterrows():
+        fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
+                          int(row["affected_rows"]), "es")
+        assert all(fix.values())
+
+
 # ------------------------------------------------------------- auto-diagnostico
 def test_selfcheck_all_pass():
     from mvdg.selfcheck import run_checks

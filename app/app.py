@@ -14,9 +14,6 @@ _ROOT = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.dirname(os.pat
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-# Dataset de ejemplo real (control bromatológico) para la pestaña "Mis datos".
-_SAMPLE_CSV = os.path.join(_ROOT, "assets", "samples", "rotulado_de_alimentos_2026.csv")
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -33,6 +30,8 @@ from mvdg.connectors import (ENGINES, delete_connection, list_tables,
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import dmbok
+from mvdg import samples as ext_samples
+from mvdg.remediation import suggest_fix
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -117,6 +116,26 @@ _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
                "timeliness", "accuracy"]}
 _STATUS_LABEL = {"pass": t("q_pass", lang), "warn": t("q_warn", lang),
                  "fail": t("q_fail", lang)}
+
+
+def _render_fixes(results_df, lang):
+    """Por cada regla en warn/fail: sugerencia de la IA para corregirla,
+    al lado de la falla — causa probable, corto plazo y prevención."""
+    st.subheader(t("fix_title", lang))
+    st.caption(t("fix_note", lang))
+    broken = results_df[results_df["status"] != "pass"]
+    if broken.empty:
+        st.success(t("fix_none", lang), icon="✅")
+        return
+    for _, row in broken.iterrows():
+        icon = "🟠" if row["status"] == "warn" else "🔴"
+        with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
+            fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
+                              int(row["affected_rows"]), lang)
+            st.markdown(f"**{t('fix_root', lang)}:** {fix['root_cause']}")
+            st.markdown(f"**{t('fix_short', lang)}:** {fix['short_term']}")
+            st.markdown(f"**{t('fix_long', lang)}:** {fix['long_term']}")
+            st.caption(f"{t('fix_owner', lang)}: {fix['owner']}")
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
@@ -452,6 +471,8 @@ with tab_q:
         "affected_rows": t("q_affected", lang),
     }), width="stretch", hide_index=True)
 
+    _render_fixes(results, lang)
+
     matrix = quality_matrix(results)
     matrix.columns = [_DIM_LABEL[c] for c in matrix.columns]
     fig = px.imshow(matrix, text_auto=".1f", aspect="auto",
@@ -537,21 +558,94 @@ with tab_pr:
                       format_func=lambda k: _SRC_LABEL[k])
 
     if source == "example":
-        st.markdown(f"**{t('pr_example_title', lang)}**")
-        st.caption(t("pr_example_desc", lang))
-        st.markdown(t("pr_example_source", lang))
-        if os.path.exists(_SAMPLE_CSV):
-            try:
-                sample_df = pd.read_csv(_SAMPLE_CSV)
-            except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
-                sample_df = None
-            if sample_df is not None:
-                with st.expander("👁️ " + t("cat_detail", lang), expanded=False):
-                    st.dataframe(sample_df.head(20), width="stretch", hide_index=True)
-                _render_profile(sample_df)
-        else:
-            st.warning(t("pr_example_missing", lang), icon="⚠️")
+        st.caption(t("pr_example_intro", lang))
+        skeys = ext_samples.sample_keys()
+        skey = st.selectbox(t("pr_example_pick", lang), skeys, key="pr_example_key",
+                            format_func=lambda k: ext_samples.sample_meta(k, lang)["name"])
+        meta = ext_samples.sample_meta(skey, lang)
+
+        # --- 1. Ficha del dataset (catálogo: dueño, steward, clasificación) ---
+        st.subheader(f"📇 {t('pr_example_card', lang)}")
+        st.markdown(f"**{meta['name']}** — {meta['description']}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(t("cat_domain", lang), meta["domain"])
+        c2.metric(t("col_owner", lang), meta["owner"])
+        c3.metric(t("col_steward", lang), meta["steward"])
+        c4.metric(t("col_classification", lang), meta["classification"])
+        c5, c6 = st.columns(2)
+        c5.markdown(f"**{t('pr_example_source_lbl', lang)}:** {meta['source']}" +
+                   (f" — [{meta['source_url']}]({meta['source_url']})" if meta["source_url"] else ""))
+        c6.markdown(f"**{t('pr_example_license_lbl', lang)}:** {meta['license']} · "
+                   f"**{t('col_freshness', lang)}:** {meta['refresh']}")
+        with st.expander("👁️ " + t("pr_example_data", lang), expanded=False):
+            st.dataframe(ext_samples.load_sample_table(skey).head(20), width="stretch", hide_index=True)
+
+        # --- 2. Métricas: reglas de calidad con umbral/estado (no perfilado genérico) ---
+        st.subheader(f"✅ {t('pr_example_metrics', lang)}")
+        sres = ext_samples.sample_quality_results(skey, lang)
+        s_show = sres.copy()
+        s_show["dimension"] = s_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        s_show["status"] = s_show["status"].map(_STATUS_LABEL)
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("kpi_quality", lang), f"{overall_index(sres)} / 100")
+        k2.metric(t("kpi_rules_pass", lang), f"{int((sres['status']=='pass').sum())} / {len(sres)}")
+        k3.metric(t("col_rows", lang), f"{len(ext_samples.load_sample_table(skey)):,}")
+        st.dataframe(s_show.rename(columns={
+            "rule_id": "ID", "dataset": t("col_dataset", lang), "column": t("col_column", lang),
+            "dimension": t("q_dimension", lang), "description": t("q_rule", lang),
+            "score": t("q_score", lang), "threshold": t("q_threshold", lang),
+            "status": t("q_status", lang), "affected_rows": t("q_affected", lang),
+        }), width="stretch", hide_index=True)
+        sdim = quality_by_dimension(sres)
+        sdim["dimension"] = sdim["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        fig = px.bar(sdim, x="dimension", y="quality_index", text="quality_index",
+                    color_discrete_sequence=[BRAND["amber"]])
+        fig.update_traces(texttemplate="%{text:.1f}")
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101], xaxis_title=None,
+                          yaxis_title=None, height=300)
+        st.plotly_chart(fig, width="stretch", key=f"pr_example_dims_{skey}")
+
+        _render_fixes(sres, lang)
+
+        # --- 3. Definiciones (glosario) ---
+        st.subheader(f"📖 {t('pr_example_glossary_title', lang)}")
+        sgloss = ext_samples.sample_glossary_df(skey, lang)
+        st.dataframe(sgloss.drop(columns=["term_id"]).rename(columns={
+            "term": t("g_term", lang), "definition": t("g_definition", lang),
+            "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
+        }), width="stretch", hide_index=True)
+
+        # --- 4. Exportar / conectar a BI (Power BI, Tableau, API) ---
+        st.subheader(f"📤 {t('pr_example_bi_title', lang)}")
+        st.caption(t("pr_example_bi_note", lang))
+        gov_s = ext_samples.sample_governance_tables(skey, lang)
+        bt_labels = {"data": t("pr_example_data", lang), "dictionary": t("tbl_dictionary", lang),
+                    "quality_results": t("tbl_quality", lang), "glossary": t("tbl_glossary", lang)}
+        bpick = st.selectbox(t("bi_pick_table", lang), list(gov_s.keys()),
+                             format_func=lambda k: bt_labels.get(k, k), key=f"pr_example_bt_{skey}")
+        bdf = gov_s[bpick]
+        e1, e2, e3, e4 = st.columns(4)
+        e1.download_button(t("bi_download_csv", lang), to_csv_bytes(bdf),
+                           f"mvdg_sample_{skey}_{bpick}_{lang}.csv", "text/csv", width="stretch")
+        e2.download_button(t("bi_download_xlsx", lang), to_excel_bytes(bdf, bpick),
+                           f"mvdg_sample_{skey}_{bpick}_{lang}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+        e3.download_button(t("bi_download_json", lang), to_json_bytes(bdf),
+                           f"mvdg_sample_{skey}_{bpick}_{lang}.json", "application/json", width="stretch")
+        bpq = to_parquet_bytes(bdf)
+        if bpq is not None:
+            e4.download_button(t("bi_download_parquet", lang), bpq,
+                               f"mvdg_sample_{skey}_{bpick}_{lang}.parquet",
+                               "application/octet-stream", width="stretch")
+        base = "http://127.0.0.1:8600"
+        st.code("\n".join(f"GET {base}/api/samples/{skey}/{name}?lang={lang}" for name in gov_s) +
+               f"\nGET {base}/api/samples/{skey}/data?lang={lang}&format=csv", language="http")
+        st.caption(t("bi_guide", lang))
+
+        # --- 5. Comparar con el perfilado genérico (opcional) ---
+        with st.expander(t("pr_example_generic_toggle", lang), expanded=False):
+            _render_profile(ext_samples.load_sample_table(skey))
     elif source == "file":
         up = st.file_uploader(t("pr_upload", lang), type=["csv", "xlsx", "xls"])
         if up is not None:

@@ -129,6 +129,17 @@ _T: dict[str, dict[str, str]] = {
     "q_fail": {"es": "🔴 Falla", "en": "🔴 Fail", "pt": "🔴 Falha"},
     "q_threshold": {"es": "Umbral", "en": "Threshold", "pt": "Limite"},
     "q_affected": {"es": "Filas afectadas", "en": "Affected rows", "pt": "Linhas afetadas"},
+    "fix_title": {"es": "💡 Cómo corregir cada falla (sugerencia de la IA)", "en": "💡 How to fix each issue (AI suggestion)", "pt": "💡 Como corrigir cada falha (sugestão da IA)"},
+    "fix_note": {
+        "es": "Al lado de cada regla en warn o fail: causa probable, qué hacer con las filas ya cargadas y cómo evitar que vuelva a pasar. 100% local — no sale ningún dato de tu equipo para generar esto.",
+        "en": "Next to every warn/fail rule: likely cause, what to do with the rows already loaded, and how to prevent it from happening again. 100% local — no data leaves your machine to generate this.",
+        "pt": "Ao lado de cada regra em warn ou fail: causa provável, o que fazer com as linhas já carregadas e como evitar que aconteça de novo. 100% local — nenhum dado sai da sua máquina para gerar isto.",
+    },
+    "fix_none": {"es": "✅ Sin fallas que corregir: todas las reglas pasan.", "en": "✅ Nothing to fix: all rules pass.", "pt": "✅ Nada a corrigir: todas as regras passam."},
+    "fix_root": {"es": "🔎 Causa probable", "en": "🔎 Likely cause", "pt": "🔎 Causa provável"},
+    "fix_short": {"es": "🩹 Corto plazo (las filas ya cargadas)", "en": "🩹 Short term (rows already loaded)", "pt": "🩹 Curto prazo (linhas já carregadas)"},
+    "fix_long": {"es": "🛠️ Prevención (que no vuelva a pasar)", "en": "🛠️ Prevention (so it doesn't happen again)", "pt": "🛠️ Prevenção (para não acontecer de novo)"},
+    "fix_owner": {"es": "Asignar a", "en": "Assign to", "pt": "Atribuir a"},
     "q_heatmap": {
         "es": "Mapa de calor · dataset × dimensión",
         "en": "Heatmap · dataset × dimension",
@@ -214,41 +225,41 @@ _T: dict[str, dict[str, str]] = {
     "pr_src_file": {"es": "📄 Archivo (CSV/Excel)", "en": "📄 File (CSV/Excel)", "pt": "📄 Arquivo (CSV/Excel)"},
     "pr_src_db": {"es": "🗄️ Base de datos", "en": "🗄️ Database", "pt": "🗄️ Banco de dados"},
     "pr_src_example": {"es": "🧪 Dataset de ejemplo (real)", "en": "🧪 Example dataset (real)", "pt": "🧪 Dataset de exemplo (real)"},
-    "pr_example_title": {
-        "es": "Rotulado de alimentos 2026 — control bromatológico (dataset público real)",
-        "en": "Food labeling 2026 — food-safety control (real public dataset)",
-        "pt": "Rotulagem de alimentos 2026 — controle bromatológico (dataset público real)",
-    },
-    "pr_example_desc": {
-        "es": "284 análisis de productos alimenticios (dulce de leche, agua mineral, etc.) con su "
-              "clasificación, marca, habilitación, vencimiento, lote y contenido neto. Un caso "
-              "real para ver la plataforma perfilando datos que no son de demostración.",
-        "en": "284 food-product analyses (dulce de leche, mineral water, etc.) with their "
-              "classification, brand, authorization, expiry, batch and net content. A real case "
-              "to watch the platform profiling non-demo data.",
-        "pt": "284 análises de produtos alimentícios (doce de leite, água mineral, etc.) com sua "
-              "classificação, marca, habilitação, vencimento, lote e conteúdo líquido. Um caso "
-              "real para ver a plataforma perfilando dados que não são de demonstração.",
-    },
     "pr_example_missing": {
         "es": "No se encontró el dataset de ejemplo en el paquete.",
         "en": "The example dataset was not found in the package.",
         "pt": "O dataset de exemplo não foi encontrado no pacote.",
     },
-    "pr_example_source": {
-        "es": "📛 Nombre: **Rotulado de alimentos 2026** · Archivo: `rotulado_de_alimentos_2026.csv` · "
-              "Origen: datos públicos de **control bromatológico de alimentos (Uruguay, 2026)** — "
-              "análisis de rotulado y composición según el Reglamento Bromatológico Nacional (referencias "
-              "a RUNAEV, Decreto 466/009). Provisto por el usuario a partir de datos abiertos de gobierno.",
-        "en": "📛 Name: **Food labeling 2026** · File: `rotulado_de_alimentos_2026.csv` · "
-              "Origin: public **food-safety (bromatological) control data (Uruguay, 2026)** — labeling and "
-              "composition analyses under the National Food Regulation (references to RUNAEV, Decree 466/009). "
-              "Provided by the user from open government data.",
-        "pt": "📛 Nome: **Rotulagem de alimentos 2026** · Arquivo: `rotulado_de_alimentos_2026.csv` · "
-              "Origem: dados públicos de **controle bromatológico de alimentos (Uruguai, 2026)** — análises "
-              "de rotulagem e composição conforme o Regulamento Bromatológico Nacional (referências a RUNAEV, "
-              "Decreto 466/009). Fornecido pelo usuário a partir de dados abertos de governo.",
+    "pr_example_pick": {"es": "Elegí el dataset de ejemplo", "en": "Pick the example dataset", "pt": "Escolha o dataset de exemplo"},
+    "pr_example_intro": {
+        "es": "De punta a punta, no solo perfilado: ficha con dueño y steward, reglas de calidad con "
+              "umbral y estado, definiciones de negocio, y exportación/API lista para Power BI o Tableau.",
+        "en": "End to end, not just profiling: a card with owner and steward, quality rules with "
+              "threshold and status, business definitions, and export/API ready for Power BI or Tableau.",
+        "pt": "De ponta a ponta, não só perfilamento: ficha com dono e steward, regras de qualidade com "
+              "limiar e status, definições de negócio, e exportação/API pronta para Power BI ou Tableau.",
     },
+    "pr_example_card": {"es": "Ficha del dataset", "en": "Dataset card", "pt": "Ficha do dataset"},
+    "pr_example_source_lbl": {"es": "Fuente", "en": "Source", "pt": "Fonte"},
+    "pr_example_license_lbl": {"es": "Licencia", "en": "License", "pt": "Licença"},
+    "pr_example_metrics": {"es": "Métricas de calidad (reglas con umbral)", "en": "Quality metrics (rules with threshold)", "pt": "Métricas de qualidade (regras com limiar)"},
+    "pr_example_glossary_title": {"es": "Definiciones de negocio", "en": "Business definitions", "pt": "Definições de negócio"},
+    "pr_example_bi_title": {"es": "Exportar y conectar a BI", "en": "Export and connect to BI", "pt": "Exportar e conectar ao BI"},
+    "pr_example_bi_note": {
+        "es": "Mismos datos y resultados de calidad, listos para Power BI (Obtener datos → Web), Tableau "
+              "(Conector de datos web) o cualquier BI que lea CSV/Excel/JSON/Parquet o una API REST.",
+        "en": "Same data and quality results, ready for Power BI (Get Data → Web), Tableau "
+              "(Web Data Connector), or any BI tool that reads CSV/Excel/JSON/Parquet or a REST API.",
+        "pt": "Mesmos dados e resultados de qualidade, prontos para Power BI (Obter dados → Web), Tableau "
+              "(Conector de dados web) ou qualquer BI que leia CSV/Excel/JSON/Parquet ou uma API REST.",
+    },
+    "pr_example_generic_toggle": {
+        "es": "También: perfilado genérico (sin reglas configuradas), para comparar",
+        "en": "Also: generic profiling (no configured rules), for comparison",
+        "pt": "Também: perfilamento genérico (sem regras configuradas), para comparar",
+    },
+    "pr_example_data": {"es": "Datos", "en": "Data", "pt": "Dados"},
+
     # ------------------------------------------------------------- connectors
     "db_intro": {
         "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "

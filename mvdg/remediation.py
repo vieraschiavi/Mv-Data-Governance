@@ -1,0 +1,457 @@
+"""
+MV Data Governance · Sugerencias de la IA para corregir cada falla detectada.
+
+Por cada regla que no pasa (warn/fail), la plataforma no se limita a mostrar
+el número: propone una corrección concreta, al lado de la falla — causa
+probable, qué hacer con las filas ya cargadas (corto plazo) y cómo evitar que
+vuelva a pasar (prevención en origen), más a quién asignárselo.
+
+Es determinístico y 100% local (no llama a ningún servicio externo, en línea
+con que la plataforma no manda datos afuera): un motor de reglas de
+remediación, igual de "IA" que los speeches de mvdg.help_center — contenido
+curado y accionable, no una llamada en vivo a un modelo. Para las 30 reglas
+existentes (17 de demo + 6 + 7 de los datasets de ejemplo) la sugerencia es
+específica; para cualquier regla nueva que no esté en el diccionario, cae a
+una sugerencia genérica por dimensión DAMA.
+"""
+from __future__ import annotations
+
+
+def _f(root: str, short: str, long: str, owner: str) -> dict:
+    return {"root_cause": root, "short_term": short, "long_term": long, "owner": owner}
+
+
+def _d(es: str, en: str, pt: str) -> dict:
+    return {"es": es, "en": en, "pt": pt}
+
+
+# ---------------------------------------------------------------------------
+# Reglas de los 4 datasets sintéticos de demo (mvdg.quality.RULES)
+# ---------------------------------------------------------------------------
+REMEDIATIONS: dict[str, dict] = {
+    "CUS-01": _f(
+        _d("Duplicados exactos de customer_id — probablemente una recarga o sincronización que insertó al mismo cliente dos veces.",
+           "Exact customer_id duplicates — likely a reload or sync that inserted the same customer twice.",
+           "Duplicatas exatas de customer_id — provavelmente uma recarga ou sincronização que inseriu o mesmo cliente duas vezes."),
+        _d("Revisar y eliminar los {n} registros duplicados de customer_id en «{col}», conservando el más reciente o el más completo.",
+           "Review and remove the {n} duplicate customer_id records in “{col}”, keeping the most recent or most complete one.",
+           "Revisar e remover os {n} registros duplicados de customer_id em «{col}», mantendo o mais recente ou mais completo."),
+        _d("Agregar una restricción UNIQUE sobre customer_id en la base de origen para que no se puedan volver a insertar duplicados.",
+           "Add a UNIQUE constraint on customer_id in the source database so duplicates can't be inserted again.",
+           "Adicionar uma restrição UNIQUE em customer_id no banco de origem para que duplicatas não possam ser inseridas novamente."),
+        _d("Steward de Clientes + DBA del CRM", "Customer Data Steward + CRM DBA", "Steward de Clientes + DBA do CRM")),
+    "CUS-02": _f(
+        _d("El formulario de alta de cliente permite guardar sin email.",
+           "The customer signup form allows saving without an email.",
+           "O formulário de cadastro de cliente permite salvar sem e-mail."),
+        _d("Contactar a los {n} clientes con «{col}» vacío para completarlo, priorizando los de mayor actividad.",
+           "Contact the {n} customers with empty “{col}” to complete it, prioritizing the most active ones.",
+           "Contatar os {n} clientes com «{col}» vazio para completá-lo, priorizando os mais ativos."),
+        _d("Hacer obligatorio el campo email en el formulario de alta del CRM.",
+           "Make the email field mandatory on the CRM signup form.",
+           "Tornar o campo e-mail obrigatório no formulário de cadastro do CRM."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "CUS-03": _f(
+        _d("El campo email acepta texto libre sin validar el formato.",
+           "The email field accepts free text without validating its format.",
+           "O campo e-mail aceita texto livre sem validar o formato."),
+        _d("Corregir manualmente los {n} emails con formato inválido en «{col}», o volver a pedírselos al cliente.",
+           "Manually fix the {n} invalid-format emails in “{col}”, or ask the customer for them again.",
+           "Corrigir manualmente os {n} e-mails com formato inválido em «{col}», ou pedi-los novamente ao cliente."),
+        _d("Agregar validación de formato (regex) en el formulario de alta, antes de guardar.",
+           "Add format validation (regex) on the signup form, before saving.",
+           "Adicionar validação de formato (regex) no formulário de cadastro, antes de salvar."),
+        _d("Equipo de TI / CRM", "IT / CRM Team", "Equipe de TI / CRM")),
+    "CUS-04": _f(
+        _d("segment se carga como texto libre en vez de una lista cerrada, generando variantes fuera del dominio Retail/Corporate/SMB.",
+           "segment is entered as free text instead of a closed list, producing variants outside the Retail/Corporate/SMB domain.",
+           "segment é digitado como texto livre em vez de uma lista fechada, gerando variantes fora do domínio Retail/Corporate/SMB."),
+        _d("Normalizar los {n} valores de «{col}» fuera de dominio al valor correcto más cercano.",
+           "Normalize the {n} out-of-domain “{col}” values to the closest correct value.",
+           "Normalizar os {n} valores de «{col}» fora do domínio para o valor correto mais próximo."),
+        _d("Reemplazar el campo de texto libre por una lista desplegable con los 3 valores permitidos.",
+           "Replace the free-text field with a dropdown listing the 3 allowed values.",
+           "Substituir o campo de texto livre por uma lista suspensa com os 3 valores permitidos."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "PRD-01": _f(
+        _d("product_id duplicado — probablemente productos cargados dos veces desde distintos canales (ERP + carga manual).",
+           "Duplicate product_id — likely products loaded twice from different channels (ERP + manual entry).",
+           "product_id duplicado — provavelmente produtos carregados duas vezes por canais diferentes (ERP + carga manual)."),
+        _d("Fusionar los {n} product_id duplicados en «{col}» en un solo registro maestro.",
+           "Merge the {n} duplicate product_id values in “{col}” into a single master record.",
+           "Fundir os {n} product_id duplicados em «{col}» num único registro mestre."),
+        _d("Restricción UNIQUE en product_id + un único punto de alta de productos (el ERP).",
+           "UNIQUE constraint on product_id + a single point of product creation (the ERP).",
+           "Restrição UNIQUE em product_id + um único ponto de cadastro de produtos (o ERP)."),
+        _d("Gerencia de Operaciones", "Operations Management", "Gerência de Operações")),
+    "PRD-02": _f(
+        _d("Precios negativos o cero — típico de una carga con signo invertido o un error de tipeo.",
+           "Negative or zero prices — typical of a load with an inverted sign or a typing error.",
+           "Preços negativos ou zero — típico de uma carga com sinal invertido ou erro de digitação."),
+        _d("Corregir manualmente los {n} precios negativos o en cero en «{col}».",
+           "Manually fix the {n} negative or zero prices in “{col}”.",
+           "Corrigir manualmente os {n} preços negativos ou zerados em «{col}»."),
+        _d("Agregar una validación en el ERP que impida guardar un precio ≤ 0.",
+           "Add a validation in the ERP that prevents saving a price ≤ 0.",
+           "Adicionar uma validação no ERP que impeça salvar um preço ≤ 0."),
+        _d("Gerencia de Operaciones", "Operations Management", "Gerência de Operações")),
+    "PRD-03": _f(
+        _d("Productos nuevos que se cargan sin categoría asignada.",
+           "New products loaded without an assigned category.",
+           "Produtos novos carregados sem categoria atribuída."),
+        _d("Asignar categoría a los {n} productos sin «{col}», apoyándose en el nombre del producto.",
+           "Assign a category to the {n} products with no “{col}”, using the product name as a guide.",
+           "Atribuir categoria aos {n} produtos sem «{col}», apoiando-se no nome do produto."),
+        _d("Hacer obligatoria la categoría al dar de alta un producto nuevo.",
+           "Make category mandatory when creating a new product.",
+           "Tornar a categoria obrigatória ao cadastrar um produto novo."),
+        _d("Gerencia de Operaciones", "Operations Management", "Gerência de Operações")),
+    "SAL-01": _f(
+        _d("sale_id duplicado — normalmente un reintento de carga tras un timeout que insertó la venta dos veces.",
+           "Duplicate sale_id — usually a retry after a timeout that inserted the sale twice.",
+           "sale_id duplicado — normalmente uma nova tentativa após timeout que inseriu a venda duas vezes."),
+        _d("Eliminar las {n} filas de venta duplicadas en «{col}», conservando la primera carga.",
+           "Remove the {n} duplicate sale rows in “{col}”, keeping the first load.",
+           "Remover as {n} linhas de venda duplicadas em «{col}», mantendo a primeira carga."),
+        _d("Agregar una clave de idempotencia en el POS/eCommerce para que un reintento no duplique la venta.",
+           "Add an idempotency key in the POS/eCommerce so a retry doesn't duplicate the sale.",
+           "Adicionar uma chave de idempotência no POS/eCommerce para que uma nova tentativa não duplique a venda."),
+        _d("Gerencia Comercial + TI", "Sales Management + IT", "Gerência Comercial + TI")),
+    "SAL-02": _f(
+        _d("Ventas cargadas sin importe — posible falla de integración entre el POS y el sistema de ventas.",
+           "Sales loaded with no amount — possible integration failure between the POS and the sales system.",
+           "Vendas carregadas sem valor — possível falha de integração entre o POS e o sistema de vendas."),
+        _d("Recuperar el importe real de las {n} ventas sin «{col}» desde el ticket o comprobante original.",
+           "Recover the real amount of the {n} sales with no “{col}” from the original ticket or receipt.",
+           "Recuperar o valor real das {n} vendas sem «{col}» a partir do comprovante original."),
+        _d("No permitir cerrar una venta en el POS sin un importe cargado.",
+           "Don't allow closing a sale in the POS without an amount entered.",
+           "Não permitir fechar uma venda no POS sem um valor informado."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "SAL-03": _f(
+        _d("Importes negativos en ventas — puede ser una devolución mal registrada como venta.",
+           "Negative sale amounts — could be a return incorrectly recorded as a sale.",
+           "Valores negativos em vendas — pode ser uma devolução registrada incorretamente como venda."),
+        _d("Revisar las {n} ventas con «{col}» negativo y reclasificar las que sean devoluciones.",
+           "Review the {n} sales with negative “{col}” and reclassify the ones that are actually returns.",
+           "Revisar as {n} vendas com «{col}» negativo e reclassificar as que forem devoluções."),
+        _d("Separar 'venta' y 'devolución' como tipos de movimiento distintos, en vez de usar el signo del importe.",
+           "Separate 'sale' and 'return' as distinct movement types, instead of using the amount's sign.",
+           "Separar 'venda' e 'devolução' como tipos de movimento distintos, em vez de usar o sinal do valor."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "SAL-04": _f(
+        _d("Ventas con un customer_id que no existe en dim_customers — el cliente se borró, o la venta llegó antes que el alta del cliente.",
+           "Sales with a customer_id that doesn't exist in dim_customers — the customer was deleted, or the sale arrived before the customer record.",
+           "Vendas com um customer_id que não existe em dim_customers — o cliente foi excluído, ou a venda chegou antes do cadastro do cliente."),
+        _d("Investigar las {n} ventas con «{col}» huérfano y asociarlas al cliente correcto (o crear el registro faltante).",
+           "Investigate the {n} sales with orphan “{col}” and link them to the correct customer (or create the missing record).",
+           "Investigar as {n} vendas com «{col}» órfão e associá-las ao cliente correto (ou criar o registro faltante)."),
+        _d("Agregar la restricción de clave foránea (FK) en la base para que no se pueda insertar una venta sin cliente válido.",
+           "Add the foreign key (FK) constraint in the database so a sale can't be inserted without a valid customer.",
+           "Adicionar a restrição de chave estrangeira (FK) no banco para que não seja possível inserir uma venda sem cliente válido."),
+        _d("TI / DBA", "IT / DBA", "TI / DBA")),
+    "SAL-05": _f(
+        _d("El canal de venta se carga con variantes de mayúsculas o texto libre en vez de un valor fijo.",
+           "The sales channel is entered with case variants or free text instead of a fixed value.",
+           "O canal de venda é digitado com variações de maiúsculas ou texto livre em vez de um valor fixo."),
+        _d("Normalizar los {n} valores de «{col}» fuera de dominio (web/tienda/app/mayorista).",
+           "Normalize the {n} out-of-domain “{col}” values (web/store/app/wholesale).",
+           "Normalizar os {n} valores de «{col}» fora do domínio (web/loja/app/atacado)."),
+        _d("Fijar el valor de channel automáticamente según el sistema de origen (POS, app, eCommerce), sin tipeo manual.",
+           "Set the channel value automatically based on the source system (POS, app, eCommerce), with no manual typing.",
+           "Definir o valor de channel automaticamente conforme o sistema de origem (POS, app, eCommerce), sem digitação manual."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "SAL-06": _f(
+        _d("Ventas con fecha muy antigua todavía activas en la tabla — probablemente una carga histórica sin filtrar o un error de fecha.",
+           "Very old sales still active in the table — likely an unfiltered historical load or a date error.",
+           "Vendas com data muito antiga ainda ativas na tabela — provavelmente uma carga histórica sem filtro ou um erro de data."),
+        _d("Revisar las {n} ventas con más de 400 días de antigüedad en «{col}»: archivarlas si son históricas, o corregir la fecha si está mal cargada.",
+           "Review the {n} sales older than 400 days in “{col}”: archive them if historical, or fix the date if it was loaded incorrectly.",
+           "Revisar as {n} vendas com mais de 400 dias em «{col}»: arquivá-las se forem históricas, ou corrigir a data se estiver errada."),
+        _d("Definir una política de archivado automático para ventas que superen el SLA de antigüedad.",
+           "Define an automatic archiving policy for sales that exceed the age SLA.",
+           "Definir uma política de arquivamento automático para vendas que superem o SLA de idade."),
+        _d("Gerencia Comercial", "Sales Management", "Gerência Comercial")),
+    "PAY-01": _f(
+        _d("payment_id duplicado — un reintento de la pasarela de pago que generó el mismo comprobante dos veces.",
+           "Duplicate payment_id — a payment gateway retry that generated the same receipt twice.",
+           "payment_id duplicado — uma nova tentativa da gateway de pagamento que gerou o mesmo comprovante duas vezes."),
+        _d("Eliminar los {n} pagos duplicados en «{col}», conservando el que tenga el estado más avanzado.",
+           "Remove the {n} duplicate payments in “{col}”, keeping the one with the most advanced status.",
+           "Remover os {n} pagamentos duplicados em «{col}», mantendo o que tiver o status mais avançado."),
+        _d("Usar el ID que devuelve la pasarela de pago como clave, sin generar uno propio en paralelo.",
+           "Use the ID returned by the payment gateway as the key, without generating a parallel own ID.",
+           "Usar o ID retornado pela gateway de pagamento como chave, sem gerar um próprio em paralelo."),
+        _d("Gerencia de Finanzas", "Finance Management", "Gerência de Finanças")),
+    "PAY-02": _f(
+        _d("Pagos cargados sin método — falla de integración con la pasarela o carga manual incompleta.",
+           "Payments loaded with no method — integration failure with the gateway or incomplete manual entry.",
+           "Pagamentos carregados sem método — falha de integração com a gateway ou carga manual incompleta."),
+        _d("Completar el método de pago de los {n} registros sin «{col}» consultando el comprobante.",
+           "Complete the payment method for the {n} records missing “{col}” by checking the receipt.",
+           "Completar o método de pagamento dos {n} registros sem «{col}» consultando o comprovante."),
+        _d("Exigir el método de pago como campo obligatorio en la integración con la pasarela.",
+           "Require payment method as a mandatory field in the gateway integration.",
+           "Exigir o método de pagamento como campo obrigatório na integração com a gateway."),
+        _d("Gerencia de Finanzas", "Finance Management", "Gerência de Finanças")),
+    "PAY-03": _f(
+        _d("Pagos con más de 2 años de antigüedad aún en la tabla operativa.",
+           "Payments older than 2 years still in the operational table.",
+           "Pagamentos com mais de 2 anos ainda na tabela operacional."),
+        _d("Archivar los {n} pagos con más de 730 días en «{col}», o corregir la fecha si está mal cargada.",
+           "Archive the {n} payments older than 730 days in “{col}”, or fix the date if it was loaded incorrectly.",
+           "Arquivar os {n} pagamentos com mais de 730 dias em «{col}», ou corrigir a data se estiver errada."),
+        _d("Política de archivado automático para pagos que superen el SLA de antigüedad.",
+           "Automatic archiving policy for payments that exceed the age SLA.",
+           "Política de arquivamento automático para pagamentos que superem o SLA de idade."),
+        _d("Gerencia de Finanzas", "Finance Management", "Gerência de Finanças")),
+    "PAY-04": _f(
+        _d("El estado del pago se carga fuera del dominio esperado — típico de una integración que cambió sus códigos de estado.",
+           "The payment status is loaded outside the expected domain — typical of an integration that changed its status codes.",
+           "O status do pagamento é carregado fora do domínio esperado — típico de uma integração que mudou seus códigos de status."),
+        _d("Mapear los {n} estados fuera de dominio en «{col}» al valor correcto (ok/pendiente/rechazado).",
+           "Map the {n} out-of-domain statuses in “{col}” to the correct value (ok/pending/rejected).",
+           "Mapear os {n} status fora do domínio em «{col}» para o valor correto (ok/pendente/rejeitado)."),
+        _d("Acordar con la pasarela de pago un contrato de datos fijo para el campo de estado, y validarlo en la integración.",
+           "Agree on a fixed data contract with the payment gateway for the status field, and validate it in the integration.",
+           "Acordar com a gateway de pagamento um contrato de dados fixo para o campo de status, e validá-lo na integração."),
+        _d("TI / Pasarela de pagos", "IT / Payment Gateway", "TI / Gateway de Pagamento")),
+
+    # ----------------------------------------------------- rotulado_alimentos
+    "RAL-01": _f(
+        _d("muestra duplicada — indicaría una recarga del mismo registro de inspección (hoy sale 100% único).",
+           "Duplicate muestra — would indicate a reload of the same inspection record (currently 100% unique).",
+           "muestra duplicada — indicaria uma recarga do mesmo registro de inspeção (hoje sai 100% único)."),
+        _d("Si aparecen duplicados en «{col}», eliminar la copia y conservar el acta original.",
+           "If duplicates appear in “{col}”, remove the copy and keep the original record.",
+           "Se aparecerem duplicatas em «{col}», remover a cópia e manter o registro original."),
+        _d("Restricción UNIQUE sobre muestra en el sistema de carga de resultados de laboratorio.",
+           "UNIQUE constraint on muestra in the lab results loading system.",
+           "Restrição UNIQUE sobre muestra no sistema de carga de resultados de laboratório."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+    "RAL-02": _f(
+        _d("El formulario de carga permite un guion (\"-\") como respuesta cuando no se conoce la marca, en vez de dejarlo vacío o marcado como \"sin dato\".",
+           "The intake form allows a dash (\"-\") as an answer when the brand is unknown, instead of leaving it empty or flagged as \"no data\".",
+           "O formulário de carga permite um traço (\"-\") como resposta quando a marca é desconhecida, em vez de deixar vazio ou marcado como \"sem dado\"."),
+        _d("Revisar las {n} filas con «{col}» = \"-\" y completar la marca real consultando el acta de inspección original.",
+           "Review the {n} rows with “{col}” = \"-\" and fill in the real brand by checking the original inspection record.",
+           "Revisar as {n} linhas com «{col}» = \"-\" e completar a marca real consultando o registro de inspeção original."),
+        _d("Reemplazar el campo libre por una lista de marcas conocidas + opción explícita \"Marca no identificada\" (nunca un guion suelto).",
+           "Replace the free-text field with a list of known brands + an explicit \"Unidentified brand\" option (never a bare dash).",
+           "Substituir o campo livre por uma lista de marcas conhecidas + opção explícita \"Marca não identificada\" (nunca um traço solto)."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+    "RAL-03": _f(
+        _d("clasificacion fuera de las 3 categorías esperadas — indicaría un nuevo veredicto no contemplado en el sistema de carga.",
+           "clasificacion outside the 3 expected categories — would indicate a new verdict not yet handled by the intake system.",
+           "clasificacion fora das 3 categorias esperadas — indicaria um novo veredito não contemplado no sistema de carga."),
+        _d("Si aparece un valor nuevo en «{col}», mapearlo a una de las 3 categorías oficiales o agregarlo formalmente al dominio.",
+           "If a new value appears in “{col}”, map it to one of the 3 official categories or formally add it to the domain.",
+           "Se aparecer um valor novo em «{col}», mapeá-lo para uma das 3 categorias oficiais ou adicioná-lo formalmente ao domínio."),
+        _d("Lista cerrada de valores en el sistema de carga de resultados, no texto libre.",
+           "Closed list of values in the results intake system, not free text.",
+           "Lista fechada de valores no sistema de carga de resultados, não texto livre."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+    "RAL-04": _f(
+        _d("Fechas de vencimiento cargadas en formato no estándar, o con datos que no son una fecha (posible error de tipeo en el laboratorio).",
+           "Expiry dates loaded in non-standard format, or with data that isn't a date (possible typing error at the lab).",
+           "Datas de validade carregadas em formato não padrão, ou com dados que não são uma data (possível erro de digitação no laboratório)."),
+        _d("Corregir manualmente las {n} fechas de «{col}» inválidas, volviendo al envase o al acta original.",
+           "Manually fix the {n} invalid “{col}” dates by checking the package or the original record.",
+           "Corrigir manualmente as {n} datas de «{col}» inválidas, voltando à embalagem ou ao registro original."),
+        _d("Usar un selector de fecha (date picker) en el formulario de carga, no texto libre.",
+           "Use a date picker on the intake form, not free text.",
+           "Usar um seletor de data (date picker) no formulário de carga, não texto livre."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+    "RAL-05": _f(
+        _d("Ya sale en 100% — si en el futuro baja, sería por texto libre colado en el campo de fecha de análisis.",
+           "Currently at 100% — if it drops in the future, it would be from free text slipping into the analysis-date field.",
+           "Já sai em 100% — se cair no futuro, seria por texto livre no campo de data de análise."),
+        _d("Corregir las {n} fechas de «{col}» inválidas contra el registro del laboratorio.",
+           "Fix the {n} invalid “{col}” dates against the lab's log.",
+           "Corrigir as {n} datas de «{col}» inválidas contra o registro do laboratório."),
+        _d("Selector de fecha obligatorio, con la fecha del día por defecto.",
+           "Mandatory date picker, defaulting to today's date.",
+           "Seletor de data obrigatório, com a data do dia por padrão."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+    "RAL-06": _f(
+        _d("Cuando una muestra no es conforme, el campo articulos (la cita legal) queda vacío — una observación sin la norma que la respalda.",
+           "When a sample is non-conforming, the articulos field (the legal citation) is left empty — an observation with no regulation backing it.",
+           "Quando uma amostra não é conforme, o campo articulos (a citação legal) fica vazio — uma observação sem a norma que a respalde."),
+        _d("Completar la cita legal en «{col}» de las {n} muestras no conformes que no la tienen, antes de notificar al establecimiento.",
+           "Fill in the legal citation in “{col}” for the {n} non-conforming samples missing it, before notifying the establishment.",
+           "Completar a citação legal em «{col}» das {n} amostras não conformes que não a têm, antes de notificar o estabelecimento."),
+        _d("Hacer obligatorio el campo articulos en el formulario cuando clasificacion no sea 'conforme' (validación condicional).",
+           "Make the articulos field mandatory on the form when clasificacion isn't 'conforming' (conditional validation).",
+           "Tornar o campo articulos obrigatório no formulário quando clasificacion não for 'conforme' (validação condicional)."),
+        _d("Equipo de Calidad y Cumplimiento", "Quality & Compliance Team", "Equipe de Qualidade e Conformidade")),
+
+    # ----------------------------------------------------------- cafe_sales
+    "CAF-01": _f(
+        _d("ID de transacción duplicado — normalmente un reintento del sistema de cobro que generó el mismo ticket dos veces.",
+           "Duplicate transaction ID — usually a checkout-system retry that generated the same ticket twice.",
+           "ID de transação duplicado — normalmente uma nova tentativa do sistema de cobrança que gerou o mesmo ticket duas vezes."),
+        _d("Eliminar las {n} transacciones duplicadas en «{col}», conservando la original.",
+           "Remove the {n} duplicate transactions in “{col}”, keeping the original.",
+           "Remover as {n} transações duplicadas em «{col}», mantendo a original."),
+        _d("Generar el Transaction ID de forma idempotente en el POS (no en un reintento de red).",
+           "Generate the Transaction ID idempotently in the POS (not on a network retry).",
+           "Gerar o Transaction ID de forma idempotente no POS (não numa nova tentativa de rede)."),
+        _d("Equipo de Datos de Ventas", "Sales Data Team", "Equipe de Dados de Vendas")),
+    "CAF-02": _f(
+        _d("El POS permite cerrar una venta sin registrar qué producto se vendió — posible falla al escanear o tipear el ítem.",
+           "The POS allows closing a sale without recording which product was sold — a possible scanning/typing failure.",
+           "O POS permite fechar uma venda sem registrar qual produto foi vendido — possível falha ao escanear ou digitar o item."),
+        _d("De las {n} transacciones sin «{col}» válido, recuperar el producto a partir de Price Per Unit (suele identificar el ítem del menú) cuando sea posible.",
+           "For the {n} transactions with no valid “{col}”, recover the product from Price Per Unit (it usually identifies the menu item) where possible.",
+           "Das {n} transações sem «{col}» válido, recuperar o produto a partir de Price Per Unit (costuma identificar o item do menu) quando possível."),
+        _d("Hacer obligatoria la selección de producto en el POS antes de cobrar — no permitir 'cobro libre'.",
+           "Make product selection mandatory in the POS before charging — no 'free charge' allowed.",
+           "Tornar obrigatória a seleção de produto no POS antes de cobrar — não permitir 'cobrança livre'."),
+        _d("Equipo de Datos de Ventas", "Sales Data Team", "Equipe de Dados de Vendas")),
+    "CAF-03": _f(
+        _d("Payment Method es el campo más golpeado (32% de las transacciones) — sugiere que el terminal de pago no está integrado con el sistema de ventas y alguien lo tipea a mano después.",
+           "Payment Method is the hardest-hit field (32% of transactions) — suggesting the payment terminal isn't integrated with the sales system and someone types it in by hand afterward.",
+           "Payment Method é o campo mais afetado (32% das transações) — sugerindo que o terminal de pagamento não está integrado ao sistema de vendas e alguém digita depois manualmente."),
+        _d("De las {n} transacciones sin «{col}», cruzar contra el cierre de caja del día para reconstruirlo donde se pueda; el resto, marcarlo explícitamente como 'no registrado' en vez de dejarlo nulo.",
+           "For the {n} transactions with no “{col}”, cross-check against the day's cash closeout to rebuild it where possible; mark the rest explicitly as 'not recorded' instead of leaving it null.",
+           "Das {n} transações sem «{col}», cruzar com o fechamento de caixa do dia para reconstruir onde for possível; o resto, marcar explicitamente como 'não registrado' em vez de deixar nulo."),
+        _d("Integrar el terminal de pago (POS) directamente con el sistema de ventas para que el medio de pago se capture automáticamente, sin tipeo manual.",
+           "Integrate the payment terminal (POS) directly with the sales system so the payment method is captured automatically, with no manual typing.",
+           "Integrar o terminal de pagamento (POS) diretamente com o sistema de vendas para que o meio de pagamento seja capturado automaticamente, sem digitação manual."),
+        _d("Operaciones / Punto de Venta", "Operations / Point of Sale", "Operações / Ponto de Venda")),
+    "CAF-04": _f(
+        _d("Location es el campo más incompleto del dataset (40%) — el sistema no distingue automáticamente 'en el local' de 'para llevar', y depende de que el cajero lo marque.",
+           "Location is the most incomplete field in the dataset (40%) — the system doesn't automatically distinguish 'in-store' from 'takeaway', and depends on the cashier marking it.",
+           "Location é o campo mais incompleto do dataset (40%) — o sistema não distingue automaticamente 'no local' de 'para levar', e depende do caixa marcar."),
+        _d("Con las {n} transacciones sin «{col}», usar la hora y el ticket promedio para inferir el canal más probable donde sea razonable; documentar el resto como dato faltante conocido.",
+           "For the {n} transactions with no “{col}”, use the time and average ticket to infer the most likely channel where reasonable; document the rest as a known missing value.",
+           "Com as {n} transações sem «{col}», usar o horário e o ticket médio para inferir o canal mais provável onde for razoável; documentar o resto como dado faltante conhecido."),
+        _d("Que el canal se determine por el tipo de pedido en el POS (botón 'para llevar' vs. 'mesa'), no por un campo que el cajero tipea aparte.",
+           "Have the channel be determined by the order type in the POS ('takeaway' vs. 'table' button), not a field the cashier types separately.",
+           "Que o canal seja determinado pelo tipo de pedido no POS (botão 'para levar' vs. 'mesa'), não por um campo que o caixa digita à parte."),
+        _d("Operaciones / Punto de Venta", "Operations / Point of Sale", "Operações / Ponto de Venda")),
+    "CAF-05": _f(
+        _d("Cantidad no numérica o ausente — el POS acepta texto libre en el campo cantidad en vez de un selector numérico.",
+           "Non-numeric or missing quantity — the POS accepts free text in the quantity field instead of a numeric stepper.",
+           "Quantidade não numérica ou ausente — o POS aceita texto livre no campo quantidade em vez de um seletor numérico."),
+        _d("Corregir las {n} transacciones con «{col}» inválida usando Total Spent / Price Per Unit cuando ambos estén disponibles.",
+           "Fix the {n} transactions with invalid “{col}” using Total Spent / Price Per Unit when both are available.",
+           "Corrigir as {n} transações com «{col}» inválida usando Total Spent / Price Per Unit quando ambos estiverem disponíveis."),
+        _d("Reemplazar el campo de cantidad por un selector numérico con mínimo 1, sin texto libre.",
+           "Replace the quantity field with a numeric stepper with a minimum of 1, no free text.",
+           "Substituir o campo de quantidade por um seletor numérico com mínimo 1, sem texto livre."),
+        _d("Operaciones / Punto de Venta", "Operations / Point of Sale", "Operações / Ponto de Venda")),
+    "CAF-06": _f(
+        _d("Fecha de transacción ausente o mal formada — posible falla del reloj del POS o carga por lotes sin fecha.",
+           "Missing or malformed transaction date — possible POS clock failure or batch load with no date.",
+           "Data de transação ausente ou malformada — possível falha do relógio do POS ou carga em lote sem data."),
+        _d("Completar las {n} fechas faltantes de «{col}» con la fecha de importación del lote como aproximación, marcándolas como estimadas.",
+           "Fill the {n} missing “{col}” dates with the batch import date as an approximation, flagging them as estimated.",
+           "Completar as {n} datas faltantes de «{col}» com a data de importação do lote como aproximação, marcando-as como estimadas."),
+        _d("Que el POS registre la fecha automáticamente al momento del cobro (timestamp del sistema), nunca a mano.",
+           "Have the POS record the date automatically at checkout time (system timestamp), never by hand.",
+           "Que o POS registre a data automaticamente no momento da cobrança (timestamp do sistema), nunca manualmente."),
+        _d("Operaciones / Punto de Venta", "Operations / Point of Sale", "Operações / Ponto de Venda")),
+    "CAF-07": _f(
+        _d("No hay inconsistencias hoy: entre las filas con los 3 valores numéricos, el total siempre coincide con cantidad × precio.",
+           "No inconsistencies today: among rows with all 3 numeric values, the total always matches quantity × price.",
+           "Não há inconsistências hoje: entre as linhas com os 3 valores numéricos, o total sempre bate com quantidade × preço."),
+        _d("Sin acción sobre «{col}» — esta regla queda activa para detectar errores de cálculo si aparecieran en cargas futuras.",
+           "No action needed on “{col}” — this rule stays active to catch calculation errors if they appear in future loads.",
+           "Sem ação sobre «{col}» — esta regra permanece ativa para detectar erros de cálculo se aparecerem em cargas futuras."),
+        _d("Calcular Total Spent siempre en el sistema (cantidad × precio), nunca permitir que se tipee a mano por separado.",
+           "Always calculate Total Spent in the system (quantity × price), never allow it to be typed separately by hand.",
+           "Calcular Total Spent sempre no sistema (quantidade × preço), nunca permitir que seja digitado separadamente à mão."),
+        _d("Operaciones / Punto de Venta", "Operations / Point of Sale", "Operações / Ponto de Venda")),
+}
+
+# ---------------------------------------------------------------------------
+# Repuesto genérico por dimensión DAMA, para cualquier regla que no esté en
+# el diccionario de arriba (nuevas reglas que se agreguen a futuro).
+# ---------------------------------------------------------------------------
+_GENERIC: dict[str, dict] = {
+    "uniqueness": _f(
+        _d("Hay valores repetidos donde se espera una clave única — típico de una recarga, un reintento o falta de restricción en la base.",
+           "There are repeated values where a unique key is expected — typical of a reload, a retry, or a missing database constraint.",
+           "Há valores repetidos onde se espera uma chave única — típico de uma recarga, uma nova tentativa ou falta de restrição no banco."),
+        _d("Revisar y deduplicar las {n} filas afectadas en «{col}», conservando el registro más completo o más reciente.",
+           "Review and deduplicate the {n} affected rows in “{col}”, keeping the most complete or most recent record.",
+           "Revisar e deduplicar as {n} linhas afetadas em «{col}», mantendo o registro mais completo ou mais recente."),
+        _d("Agregar una restricción UNIQUE en la base de origen sobre esa columna.",
+           "Add a UNIQUE constraint on that column in the source database.",
+           "Adicionar uma restrição UNIQUE nessa coluna no banco de origem."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+    "completeness": _f(
+        _d("El campo permite guardarse vacío en el punto de captura (formulario, integración o carga manual).",
+           "The field can be saved empty at the point of capture (form, integration, or manual load).",
+           "O campo pode ser salvo vazio no ponto de captura (formulário, integração ou carga manual)."),
+        _d("Completar las {n} filas con «{col}» vacío, priorizando las de mayor impacto de negocio.",
+           "Fill in the {n} rows with empty “{col}”, prioritizing the ones with the highest business impact.",
+           "Completar as {n} linhas com «{col}» vazio, priorizando as de maior impacto no negócio."),
+        _d("Hacer obligatorio el campo en el punto de captura (formulario o integración).",
+           "Make the field mandatory at the point of capture (form or integration).",
+           "Tornar o campo obrigatório no ponto de captura (formulário ou integração)."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+    "validity": _f(
+        _d("El campo acepta valores fuera del formato o del dominio esperado — normalmente por texto libre sin validar.",
+           "The field accepts values outside the expected format or domain — usually from unvalidated free text.",
+           "O campo aceita valores fora do formato ou domínio esperado — normalmente por texto livre não validado."),
+        _d("Corregir las {n} filas con «{col}» inválido, según el formato o dominio esperado.",
+           "Fix the {n} rows with invalid “{col}”, according to the expected format or domain.",
+           "Corrigir as {n} linhas com «{col}» inválido, conforme o formato ou domínio esperado."),
+        _d("Agregar validación de formato/dominio en el punto de captura (regex, selector o lista cerrada).",
+           "Add format/domain validation at the point of capture (regex, picker, or closed list).",
+           "Adicionar validação de formato/domínio no ponto de captura (regex, seletor ou lista fechada)."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+    "consistency": _f(
+        _d("Hay una regla de negocio implícita entre columnas (o contra otra tabla) que hoy no se valida al cargar el dato.",
+           "There's an implicit business rule between columns (or against another table) that isn't validated when the data is loaded.",
+           "Há uma regra de negócio implícita entre colunas (ou contra outra tabela) que hoje não é validada ao carregar o dado."),
+        _d("Revisar las {n} filas inconsistentes en «{col}» y corregirlas según la regla de negocio esperada.",
+           "Review the {n} inconsistent rows in “{col}” and fix them according to the expected business rule.",
+           "Revisar as {n} linhas inconsistentes em «{col}» e corrigi-las conforme a regra de negócio esperada."),
+        _d("Codificar la regla como validación condicional en el formulario o en el ETL, no dejarla implícita.",
+           "Encode the rule as a conditional validation in the form or ETL, don't leave it implicit.",
+           "Codificar a regra como validação condicional no formulário ou no ETL, não deixá-la implícita."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+    "accuracy": _f(
+        _d("El valor no refleja la realidad (signo incorrecto, cálculo mal hecho o tipeo) aunque el campo esté completo y con formato válido.",
+           "The value doesn't reflect reality (wrong sign, miscalculation, or typo) even though the field is complete and well-formatted.",
+           "O valor não reflete a realidade (sinal incorreto, cálculo errado ou digitação) mesmo com o campo completo e com formato válido."),
+        _d("Revisar y corregir las {n} filas con «{col}» inexacto contra la fuente original (comprobante, ticket, contrato).",
+           "Review and fix the {n} rows with inaccurate “{col}” against the original source (receipt, ticket, contract).",
+           "Revisar e corrigir as {n} linhas com «{col}» impreciso contra a fonte original (comprovante, ticket, contrato)."),
+        _d("Calcular el valor siempre en el sistema (no permitir que se tipee a mano) y validar el rango esperado.",
+           "Always calculate the value in the system (don't allow manual typing) and validate the expected range.",
+           "Calcular o valor sempre no sistema (não permitir digitação manual) e validar o intervalo esperado."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+    "timeliness": _f(
+        _d("Datos que deberían estar al día quedaron rezagados — falta de sincronización o de un proceso de archivado.",
+           "Data that should be up to date fell behind — a lack of syncing or an archiving process.",
+           "Dados que deveriam estar em dia ficaram defasados — falta de sincronização ou de um processo de arquivamento."),
+        _d("Revisar las {n} filas de «{col}» fuera del SLA de antigüedad: actualizar si corresponde, o archivar si son históricas.",
+           "Review the {n} rows of “{col}” outside the age SLA: update if applicable, or archive if historical.",
+           "Revisar as {n} linhas de «{col}» fora do SLA de idade: atualizar se for o caso, ou arquivar se forem históricas."),
+        _d("Automatizar la sincronización o definir una política de archivado automático con alerta cuando se supere el SLA.",
+           "Automate the sync or define an automatic archiving policy with an alert when the SLA is exceeded.",
+           "Automatizar a sincronização ou definir uma política de arquivamento automático com alerta quando o SLA for superado."),
+        _d("Steward del dataset", "Dataset steward", "Steward do dataset")),
+}
+
+
+def suggest_fix(rule_id: str, dimension: str, column: str, affected_rows: int,
+                lang: str = "es") -> dict:
+    """Sugerencia de corrección para una regla que no pasó (warn/fail).
+
+    Devuelve {'root_cause','short_term','long_term','owner'} ya resueltos al
+    idioma pedido y con {n}/{col} reemplazados. Usa el contenido específico
+    de la regla si existe; si no, cae a la plantilla genérica de su dimensión.
+    """
+    entry = REMEDIATIONS.get(rule_id) or _GENERIC.get(dimension) or _GENERIC["completeness"]
+    n = f"{affected_rows:,}"
+    return {
+        "root_cause": entry["root_cause"][lang].format(n=n, col=column),
+        "short_term": entry["short_term"][lang].format(n=n, col=column),
+        "long_term": entry["long_term"][lang].format(n=n, col=column),
+        "owner": entry["owner"][lang],
+    }

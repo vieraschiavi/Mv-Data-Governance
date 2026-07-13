@@ -158,12 +158,14 @@ RULES: list[Rule] = [
 ]
 
 
-def run_rules(tables: dict[str, pd.DataFrame] | None = None,
-              lang: str = "es") -> pd.DataFrame:
-    """Ejecuta todas las reglas y devuelve un DataFrame de resultados."""
-    tables = tables or load_demo_tables()
+def evaluate_rules(rules: list[Rule], tables: dict[str, pd.DataFrame],
+                   lang: str = "es") -> pd.DataFrame:
+    """Corre una lista de reglas cualquiera contra un dict de tablas y
+    devuelve el DataFrame de resultados (score, umbral, estado, filas
+    afectadas). Reutilizado por ``run_rules`` (las 4 tablas de demo) y por
+    ``mvdg.samples`` (datasets de ejemplo externos)."""
     rows = []
-    for r in RULES:
+    for r in rules:
         df = tables[r.dataset]
         score, affected = r.check(df)
         score = round(float(score), 2)
@@ -185,6 +187,13 @@ def run_rules(tables: dict[str, pd.DataFrame] | None = None,
             "affected_rows": affected,
         })
     return pd.DataFrame(rows)
+
+
+def run_rules(tables: dict[str, pd.DataFrame] | None = None,
+              lang: str = "es") -> pd.DataFrame:
+    """Ejecuta las 17 reglas de los datasets de demo y devuelve los resultados."""
+    tables = tables or load_demo_tables()
+    return evaluate_rules(RULES, tables, lang)
 
 
 def quality_by_dataset(results: pd.DataFrame) -> pd.DataFrame:

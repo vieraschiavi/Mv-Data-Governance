@@ -126,9 +126,10 @@ def run_checks() -> list[tuple[str, bool, str]]:
 
     @check("API REST importable")
     def _():
-        from bi_api.main import TABLES, app  # noqa: F401
+        from bi_api.main import SAMPLE_TABLES, TABLES, app  # noqa: F401
         assert len(TABLES) == 9
-        return f"FastAPI OK, {len(TABLES)} endpoints"
+        assert len(SAMPLE_TABLES) == 4
+        return f"FastAPI OK, {len(TABLES)} tablas + {len(SAMPLE_TABLES)} tablas por dataset de ejemplo"
 
     @check("Modo servidor web (hosts autorizados)")
     def _():
@@ -158,6 +159,46 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert info["rows"] == 284 and info["columns"] == 12
         assert len(profile_table(df)) == 12
         return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
+
+    @check("Sugerencias de correccion (IA) para cada falla detectada")
+    def _():
+        from . import quality, samples
+        from .remediation import suggest_fix
+        n_checked = 0
+        for r in quality.RULES:
+            for lang in ("es", "en", "pt"):
+                fix = suggest_fix(r.rule_id, r.dimension, r.column, 12, lang)
+                assert all(fix.values()), r.rule_id
+                n_checked += 1
+        for key in samples.sample_keys():
+            for r in samples.SAMPLES[key]["rules"]:
+                for lang in ("es", "en", "pt"):
+                    fix = suggest_fix(r.rule_id, r.dimension, r.column, 5, lang)
+                    assert all(fix.values()), r.rule_id
+                    n_checked += 1
+        # regla desconocida -> repuesto generico, no debe romper
+        generic = suggest_fix("ZZZ-99", "completeness", "col_x", 3, "es")
+        assert all(generic.values())
+        return f"{n_checked} combinaciones regla×idioma con sugerencia completa"
+
+    @check("Datasets de ejemplo gobernados de punta a punta (catálogo+reglas+glosario+BI)")
+    def _():
+        from . import samples
+        keys = samples.sample_keys()
+        assert len(keys) >= 2
+        total_rows = 0
+        for key in keys:
+            for lang in ("es", "en", "pt"):
+                meta = samples.sample_meta(key, lang)
+                assert meta["name"] and meta["owner"] and meta["steward"]
+                results = samples.sample_quality_results(key, lang)
+                assert len(results) >= 5
+                gloss = samples.sample_glossary_df(key, lang)
+                assert len(gloss) >= 3
+            gov = samples.sample_governance_tables(key, "es")
+            assert set(gov) == {"data", "dictionary", "quality_results", "glossary"}
+            total_rows += len(gov["data"])
+        return f"{len(keys)} datasets, {total_rows:,} filas gobernadas (catálogo, reglas, glosario, BI)"
 
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():
