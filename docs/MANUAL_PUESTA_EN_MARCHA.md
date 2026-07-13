@@ -25,6 +25,12 @@ streamlit run app/app.py      # cualquier SO, para desplegar en servidor
 Doble clic en **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
 Guía por herramienta: [`docs/BI_INTEGRATION.md`](BI_INTEGRATION.md).
 
+### ¿Qué es el gobierno de datos? (DAMA-DMBOK)
+Explicado para técnicos y no técnicos, con el mapeo de las 11 áreas del
+estándar DAMA-DMBOK contra lo que hace esta plataforma:
+[`docs/DMBOK.md`](DMBOK.md). Lo mismo se ve en vivo dentro del programa, en
+la pestaña **Ayuda**.
+
 ---
 
 ## 🇬🇧 English
@@ -53,6 +59,12 @@ streamlit run app/app.py      # any OS, for server deployment
 Double-click **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
 Per-tool guide: [`docs/BI_INTEGRATION.md`](BI_INTEGRATION.md).
 
+### What is data governance? (DAMA-DMBOK)
+Explained for both technical and non-technical readers, mapping the 11
+areas of the DAMA-DMBOK standard against what this platform actually does:
+[`docs/DMBOK.md`](DMBOK.md). The same content is live inside the program,
+under the **Help** tab.
+
 ---
 
 ## 🇧🇷 Português
@@ -80,3 +92,9 @@ streamlit run app/app.py      # qualquer SO, para implantar em servidor
 ### API para BI
 Duplo clique em **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
 Guia por ferramenta: [`docs/BI_INTEGRATION.md`](BI_INTEGRATION.md).
+
+### O que é governança de dados? (DAMA-DMBOK)
+Explicado para técnicos e não técnicos, com o mapeamento das 11 áreas do
+padrão DAMA-DMBOK contra o que esta plataforma realmente faz:
+[`docs/DMBOK.md`](DMBOK.md). O mesmo conteúdo aparece ao vivo dentro do
+programa, na aba **Ajuda**.

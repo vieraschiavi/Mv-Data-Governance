@@ -396,6 +396,32 @@ _T: dict[str, dict[str, str]] = {
               "empresas que bloqueiam .exe mas permitem Python). Mesmas "
               "funcionalidades em ambas. Detalhes na pasta distribucion/.",
     },
+    "h_dmbok": {"es": "Marco DAMA-DMBOK: las 11 áreas del gobierno de datos",
+                "en": "DAMA-DMBOK framework: the 11 data-governance areas",
+                "pt": "Marco DAMA-DMBOK: as 11 áreas da governança de dados"},
+    "h_dmbok_note": {
+        "es": "El DMBOK (Data Management Body of Knowledge) es el estándar de "
+              "referencia de la industria en gobierno de datos, publicado por "
+              "DAMA International. Acá está explicado dos veces: en criollo, "
+              "para quien no es técnico, y con el detalle técnico. Con qué "
+              "color cubre esta plataforma cada área, sin exagerar.",
+        "en": "The DMBOK (Data Management Body of Knowledge) is the industry "
+              "reference standard for data governance, published by DAMA "
+              "International. It's explained twice here: in plain words, for "
+              "non-technical readers, and with technical detail. Color-coded "
+              "with how much this platform actually covers each area.",
+        "pt": "O DMBOK (Data Management Body of Knowledge) é o padrão de "
+              "referência da indústria em governança de dados, publicado pela "
+              "DAMA International. Está explicado duas vezes aqui: em "
+              "linguagem simples, para quem não é técnico, e com o detalhe "
+              "técnico. Com a cor de quanto esta plataforma cobre cada área, "
+              "sem exagerar.",
+    },
+    "h_dmbok_plain": {"es": "En criollo", "en": "In plain words", "pt": "Em linguagem simples"},
+    "h_dmbok_tech": {"es": "Detalle técnico", "en": "Technical detail", "pt": "Detalhe técnico"},
+    "h_dmbok_covered": {"es": "✅ Cubierta", "en": "✅ Covered", "pt": "✅ Coberta"},
+    "h_dmbok_partial": {"es": "🟡 Parcial", "en": "🟡 Partial", "pt": "🟡 Parcial"},
+    "h_dmbok_out": {"es": "⬜ Fuera de alcance", "en": "⬜ Out of scope", "pt": "⬜ Fora de escopo"},
     # ------------------------------------------------------------- tables
     "tbl_catalog": {"es": "Catálogo de datasets", "en": "Dataset catalog", "pt": "Catálogo de datasets"},
     "tbl_dictionary": {"es": "Diccionario de columnas", "en": "Column dictionary", "pt": "Dicionário de colunas"},
