@@ -68,7 +68,7 @@ su restricción y recomienda el paquete automáticamente.
 | 🧪 **Laboratorio** | Caso completo de punta a punta (empresa retail ficticia): las 7 etapas de un proyecto de gobierno de datos —catalogar, medir ANTES, gobernar, corregir y medir DESPUÉS, linaje, políticas, publicar a BI— con teoría en criollo + técnica y dashboards reales en cada paso |
 | 📘 **DMBOK** | Tutorial completo del estándar **DAMA-DMBOK**: las 11 áreas de conocimiento (con entregables y cobertura honesta), principios rectores, glosario de conceptos clave, roles (dueño/steward/custodio), modelo de madurez (5 niveles) y ciclo de vida del dato (POSMAD) — con tableros (radar de cobertura, madurez, 6 dimensiones de calidad). Para entender el proceso y demostrar conocimiento |
 | 📚 **Catálogo** | Inventario de datasets con dueño, steward, dominio, clasificación (PII), frescura + diccionario de columnas |
-| ✅ **Calidad** | Motor de reglas en 6 dimensiones (completitud, unicidad, validez, consistencia, puntualidad, exactitud) con umbrales, estados y mapa de calor |
+| ✅ **Calidad** | Motor de reglas en 6 dimensiones (completitud, unicidad, validez, consistencia, puntualidad, exactitud) con umbrales, estados y mapa de calor. Cada falla trae, al lado, una **sugerencia de la IA** para corregirla: causa probable, qué hacer con las filas ya cargadas y cómo evitar que vuelva a pasar (100% local, sin llamadas externas) |
 | 🧬 **Linaje** | Grafo interactivo fuente → cruda → curada → mart → BI, con foco aguas arriba/abajo |
 | 📖 **Glosario** | Términos de negocio con definición oficial en 3 idiomas y datasets vinculados |
 | 🛡️ **Políticas** | Cumplimiento verificado automáticamente contra catálogo y reglas (evidencia, no checkboxes) |

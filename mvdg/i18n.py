@@ -129,6 +129,17 @@ _T: dict[str, dict[str, str]] = {
     "q_fail": {"es": "🔴 Falla", "en": "🔴 Fail", "pt": "🔴 Falha"},
     "q_threshold": {"es": "Umbral", "en": "Threshold", "pt": "Limite"},
     "q_affected": {"es": "Filas afectadas", "en": "Affected rows", "pt": "Linhas afetadas"},
+    "fix_title": {"es": "💡 Cómo corregir cada falla (sugerencia de la IA)", "en": "💡 How to fix each issue (AI suggestion)", "pt": "💡 Como corrigir cada falha (sugestão da IA)"},
+    "fix_note": {
+        "es": "Al lado de cada regla en warn o fail: causa probable, qué hacer con las filas ya cargadas y cómo evitar que vuelva a pasar. 100% local — no sale ningún dato de tu equipo para generar esto.",
+        "en": "Next to every warn/fail rule: likely cause, what to do with the rows already loaded, and how to prevent it from happening again. 100% local — no data leaves your machine to generate this.",
+        "pt": "Ao lado de cada regra em warn ou fail: causa provável, o que fazer com as linhas já carregadas e como evitar que aconteça de novo. 100% local — nenhum dado sai da sua máquina para gerar isto.",
+    },
+    "fix_none": {"es": "✅ Sin fallas que corregir: todas las reglas pasan.", "en": "✅ Nothing to fix: all rules pass.", "pt": "✅ Nada a corrigir: todas as regras passam."},
+    "fix_root": {"es": "🔎 Causa probable", "en": "🔎 Likely cause", "pt": "🔎 Causa provável"},
+    "fix_short": {"es": "🩹 Corto plazo (las filas ya cargadas)", "en": "🩹 Short term (rows already loaded)", "pt": "🩹 Curto prazo (linhas já carregadas)"},
+    "fix_long": {"es": "🛠️ Prevención (que no vuelva a pasar)", "en": "🛠️ Prevention (so it doesn't happen again)", "pt": "🛠️ Prevenção (para não acontecer de novo)"},
+    "fix_owner": {"es": "Asignar a", "en": "Assign to", "pt": "Atribuir a"},
     "q_heatmap": {
         "es": "Mapa de calor · dataset × dimensión",
         "en": "Heatmap · dataset × dimension",

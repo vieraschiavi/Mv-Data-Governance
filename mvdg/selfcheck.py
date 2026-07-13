@@ -160,6 +160,27 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert len(profile_table(df)) == 12
         return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
 
+    @check("Sugerencias de correccion (IA) para cada falla detectada")
+    def _():
+        from . import quality, samples
+        from .remediation import suggest_fix
+        n_checked = 0
+        for r in quality.RULES:
+            for lang in ("es", "en", "pt"):
+                fix = suggest_fix(r.rule_id, r.dimension, r.column, 12, lang)
+                assert all(fix.values()), r.rule_id
+                n_checked += 1
+        for key in samples.sample_keys():
+            for r in samples.SAMPLES[key]["rules"]:
+                for lang in ("es", "en", "pt"):
+                    fix = suggest_fix(r.rule_id, r.dimension, r.column, 5, lang)
+                    assert all(fix.values()), r.rule_id
+                    n_checked += 1
+        # regla desconocida -> repuesto generico, no debe romper
+        generic = suggest_fix("ZZZ-99", "completeness", "col_x", 3, "es")
+        assert all(generic.values())
+        return f"{n_checked} combinaciones regla×idioma con sugerencia completa"
+
     @check("Datasets de ejemplo gobernados de punta a punta (catálogo+reglas+glosario+BI)")
     def _():
         from . import samples

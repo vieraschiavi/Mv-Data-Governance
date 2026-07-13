@@ -31,6 +31,7 @@ from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import dmbok
 from mvdg import samples as ext_samples
+from mvdg.remediation import suggest_fix
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -115,6 +116,26 @@ _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
                "timeliness", "accuracy"]}
 _STATUS_LABEL = {"pass": t("q_pass", lang), "warn": t("q_warn", lang),
                  "fail": t("q_fail", lang)}
+
+
+def _render_fixes(results_df, lang):
+    """Por cada regla en warn/fail: sugerencia de la IA para corregirla,
+    al lado de la falla — causa probable, corto plazo y prevención."""
+    st.subheader(t("fix_title", lang))
+    st.caption(t("fix_note", lang))
+    broken = results_df[results_df["status"] != "pass"]
+    if broken.empty:
+        st.success(t("fix_none", lang), icon="✅")
+        return
+    for _, row in broken.iterrows():
+        icon = "🟠" if row["status"] == "warn" else "🔴"
+        with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
+            fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
+                              int(row["affected_rows"]), lang)
+            st.markdown(f"**{t('fix_root', lang)}:** {fix['root_cause']}")
+            st.markdown(f"**{t('fix_short', lang)}:** {fix['short_term']}")
+            st.markdown(f"**{t('fix_long', lang)}:** {fix['long_term']}")
+            st.caption(f"{t('fix_owner', lang)}: {fix['owner']}")
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
@@ -450,6 +471,8 @@ with tab_q:
         "affected_rows": t("q_affected", lang),
     }), width="stretch", hide_index=True)
 
+    _render_fixes(results, lang)
+
     matrix = quality_matrix(results)
     matrix.columns = [_DIM_LABEL[c] for c in matrix.columns]
     fig = px.imshow(matrix, text_auto=".1f", aspect="auto",
@@ -581,6 +604,8 @@ with tab_pr:
         fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101], xaxis_title=None,
                           yaxis_title=None, height=300)
         st.plotly_chart(fig, width="stretch", key=f"pr_example_dims_{skey}")
+
+        _render_fixes(sres, lang)
 
         # --- 3. Definiciones (glosario) ---
         st.subheader(f"📖 {t('pr_example_glossary_title', lang)}")

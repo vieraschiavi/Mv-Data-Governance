@@ -517,6 +517,62 @@ def test_bi_api_serves_sample_datasets():
     assert client.get("/api/samples/cafe_sales_kaggle/no-existe").status_code == 404
 
 
+# ------------------------------------------- sugerencias de correccion (IA)
+@pytest.mark.parametrize("lang", LANGS)
+def test_remediation_covers_all_demo_rules(lang):
+    from mvdg.quality import RULES
+    from mvdg.remediation import REMEDIATIONS, suggest_fix
+    # las 17 reglas de demo tienen contenido especifico, no generico
+    assert {r.rule_id for r in RULES} <= set(REMEDIATIONS)
+    for r in RULES:
+        fix = suggest_fix(r.rule_id, r.dimension, r.column, 123, lang)
+        for field in ("root_cause", "short_term", "long_term", "owner"):
+            assert fix[field], f"{r.rule_id}.{field} vacio en {lang}"
+        # el numero de filas afectadas aparece formateado en el texto
+        assert "123" in fix["short_term"] or "123" in fix["root_cause"]
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_remediation_covers_all_sample_rules(lang):
+    from mvdg import samples
+    from mvdg.remediation import REMEDIATIONS, suggest_fix
+    for key in samples.sample_keys():
+        for r in samples.SAMPLES[key]["rules"]:
+            assert r.rule_id in REMEDIATIONS
+            fix = suggest_fix(r.rule_id, r.dimension, r.column, 9, lang)
+            assert all(fix.values())
+
+
+def test_remediation_generic_fallback_for_unknown_rule():
+    from mvdg.quality import DIMENSIONS
+    from mvdg.remediation import suggest_fix
+    for dim in DIMENSIONS:
+        for lang in LANGS:
+            fix = suggest_fix("NEW-01", dim, "alguna_columna", 4, lang)
+            assert all(fix.values())
+            assert "alguna_columna" in fix["short_term"] or "alguna_columna" in fix["root_cause"]
+
+
+def test_remediation_thousands_separator():
+    from mvdg.remediation import suggest_fix
+    fix = suggest_fix("CAF-03", "completeness", "Payment Method", 3178, "es")
+    assert "3,178" in fix["short_term"]
+
+
+def test_render_fixes_shown_next_to_failures_in_app(monkeypatch):
+    """Las reglas en warn/fail del dataset de ejemplo mas sucio deben tener
+    una sugerencia de la IA disponible; las que pasan, no hace falta."""
+    from mvdg import samples
+    from mvdg.remediation import suggest_fix
+    res = samples.sample_quality_results("cafe_sales_kaggle", "es")
+    broken = res[res["status"] != "pass"]
+    assert len(broken) == 5  # 3 fail + 2 warn, ver test_samples_quality_results_have_real_spread
+    for _, row in broken.iterrows():
+        fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
+                          int(row["affected_rows"]), "es")
+        assert all(fix.values())
+
+
 # ------------------------------------------------------------- auto-diagnostico
 def test_selfcheck_all_pass():
     from mvdg.selfcheck import run_checks
