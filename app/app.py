@@ -28,6 +28,7 @@ from mvdg.connectors import (ENGINES, delete_connection, list_tables,
                              load_connections, load_table, run_query,
                              save_connection, stored_password, test_connection)
 from mvdg.help_center import automation_rows, dmbok_rows, speeches
+from mvdg.lab_case import lab_measure, lab_steps
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -74,6 +75,11 @@ def _results(lang: str):
     return run_rules(_tables(), lang)
 
 
+@st.cache_data(show_spinner=False)
+def _lab(lang: str):
+    return lab_measure(lang)
+
+
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
     st.markdown(f"## 🛡️ {APP_NAME}")
@@ -93,9 +99,10 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
+(tab_ov, tab_lab, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
  tab_cl, tab_h) = st.tabs([
-    t("tab_overview", lang), t("tab_catalog", lang), t("tab_quality", lang),
+    t("tab_overview", lang), t("tab_lab", lang),
+    t("tab_catalog", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
     t("tab_clients", lang), t("tab_help", lang),
@@ -168,6 +175,127 @@ with tab_ov:
         fig.update_layout(**_PLOTLY_LAYOUT, showlegend=False,
                           xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig, width="stretch")
+
+# ------------------------------------------------------------ Laboratorio
+with tab_lab:
+    st.info(t("lab_intro", lang), icon="🧪")
+    steps = {s["step_id"]: s for s in lab_steps(lang)}
+    lab = _lab(lang)
+
+    def _theory(step_id: str):
+        s = steps[step_id]
+        st.subheader(s["title"])
+        tc1, tc2 = st.columns(2)
+        tc1.markdown(f"**{t('lab_plain', lang)}**  \n{s['plain']}")
+        tc2.markdown(f"**{t('lab_tech', lang)}**  \n{s['tech']}")
+        if s["dmbok_area"]:
+            st.caption(f"🔗 {t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
+
+    # 0. Contexto
+    _theory("contexto")
+    st.divider()
+
+    # 1. Catalogar
+    _theory("catalogar")
+    cat_lab = catalog_df(lang, tables)
+    st.dataframe(cat_lab[["dataset", "domain", "owner", "steward",
+                          "classification", "refresh"]].rename(columns={
+        "dataset": t("col_dataset", lang), "domain": t("cat_domain", lang),
+        "owner": t("col_owner", lang), "steward": t("col_steward", lang),
+        "classification": t("col_classification", lang),
+        "refresh": t("col_freshness", lang),
+    }), width="stretch", hide_index=True)
+    with st.expander(t("tbl_dictionary", lang)):
+        st.dataframe(dictionary_df(lang, "dim_customers").drop(columns=["dataset"]),
+                    width="stretch", hide_index=True)
+    st.divider()
+
+    # 2. Medir ANTES
+    _theory("medir_antes")
+    b = lab["summary_before"]
+    c1, c2, c3 = st.columns(3)
+    c1.metric(t("lab_index", lang), f"{b['indice']} / 100")
+    c2.metric(t("lab_rows_affected", lang), f"{b['filas_afectadas']:,}")
+    c3.metric(t("lab_rules_fail", lang), f"{b['fallas']} / {b['reglas_total']}")
+    issues_before = lab["issues_before"].copy()
+    issues_before["dimension"] = issues_before["dimension"].map(_DIM_LABEL)
+    with st.expander(t("lab_issues_before", lang)):
+        st.dataframe(issues_before.rename(columns={
+            "rule_id": "ID", "dataset": t("col_dataset", lang),
+            "column": t("col_column", lang), "dimension": t("q_dimension", lang),
+            "severity": t("q_status", lang), "score": t("q_score", lang),
+            "affected_rows": t("q_affected", lang),
+        }), width="stretch", hide_index=True)
+    st.divider()
+
+    # 3. Gobernar
+    _theory("gobernar")
+    st.dataframe(glossary_df(lang).drop(columns=["term_id"]).rename(columns={
+        "term": t("g_term", lang), "definition": t("g_definition", lang),
+        "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
+    }), width="stretch", hide_index=True)
+    st.divider()
+
+    # 4. Medir DESPUÉS + comparación
+    _theory("medir_despues")
+    a = lab["summary_after"]
+    c4, c5, c6 = st.columns(3)
+    c4.metric(t("lab_index", lang), f"{a['indice']} / 100", delta=f"+{lab['mejora_indice']}")
+    c5.metric(t("lab_rows_affected", lang), f"{a['filas_afectadas']:,}",
+             delta=f"-{lab['reduccion_filas_pct']}%")
+    c6.metric(t("lab_rules_fail", lang), f"{a['fallas']} / {a['reglas_total']}")
+
+    by_dim = lab["by_dimension"].copy()
+    by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
+    by_dim_long = by_dim.melt(id_vars="dimension", value_vars=["antes", "despues"],
+                              var_name="momento", value_name="quality_index")
+    by_dim_long["momento"] = by_dim_long["momento"].map(
+        {"antes": t("lab_before", lang), "despues": t("lab_after", lang)})
+    fig = px.bar(by_dim_long, x="dimension", y="quality_index", color="momento",
+                barmode="group", title=t("lab_compare_dim", lang),
+                color_discrete_map={t("lab_before", lang): BRAND["red"],
+                                    t("lab_after", lang): BRAND["green"]})
+    fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
+                      xaxis_title=None, yaxis_title=None, legend_title=None)
+    st.plotly_chart(fig, width="stretch", key="lab_compare_dim")
+    st.divider()
+
+    # 5. Linaje
+    _theory("linaje")
+    lab_layer_titles = {
+        "source": t("lin_layer_source", lang), "raw": t("lin_layer_raw", lang),
+        "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
+        "bi": t("lin_layer_bi", lang),
+    }
+    st.plotly_chart(lineage_figure(None, lab_layer_titles), width="stretch", key="lab_lineage")
+    st.divider()
+
+    # 6. Políticas
+    _theory("politicas")
+    pdf_lab = policies_df(lang, lab["results_after"])
+    status_label_lab = {"compliant": t("p_compliant", lang),
+                        "partial": t("p_partial", lang),
+                        "noncompliant": t("p_noncompliant", lang)}
+    pdf_lab["status"] = pdf_lab["status"].map(status_label_lab)
+    st.dataframe(pdf_lab.rename(columns={
+        "policy_id": "ID", "policy": t("p_policy", lang),
+        "category": t("p_category", lang), "status": t("p_compliance", lang),
+        "evidence": t("p_evidence", lang),
+    }), width="stretch", hide_index=True)
+    st.divider()
+
+    # 7. BI
+    _theory("bi")
+    st.divider()
+
+    # Resultado final
+    st.subheader(t("lab_summary_title", lang))
+    r1, r2 = st.columns(2)
+    r1.metric(t("lab_delta", lang), f"+{lab['mejora_indice']} pts",
+             help=f"{b['indice']} → {a['indice']}")
+    r2.metric(t("lab_rows_cut", lang), f"-{lab['reduccion_filas_pct']}%",
+             help=f"{b['filas_afectadas']:,} → {a['filas_afectadas']:,}")
+    st.caption(t("lab_reproducible", lang))
 
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
