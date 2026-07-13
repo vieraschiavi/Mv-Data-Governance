@@ -342,7 +342,7 @@ def test_api_all_tables_and_formats():
         from fastapi.testclient import TestClient
     except RuntimeError:
         pytest.skip("httpx2 no disponible para TestClient")
-    from api.main import TABLES, app
+    from bi_api.main import TABLES, app
     c = TestClient(app)
     assert c.get("/health").json() == {"status": "ok"}
     for tbl in TABLES:

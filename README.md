@@ -46,6 +46,9 @@ cd landing && python -m http.server 8080   # → http://localhost:8080
 | `streamlit run app/app.py` | Modo web/servidor en cualquier SO |
 
 Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
+¿Qué es el gobierno de datos y cómo lo cubre esta plataforma frente al
+estándar DAMA-DMBOK? [`docs/DMBOK.md`](docs/DMBOK.md) (explicado para
+técnicos y no técnicos, en los 3 idiomas).
 
 ### 📦 Dos paquetes según las restricciones de TI de cada empresa
 
@@ -70,7 +73,7 @@ su restricción y recomienda el paquete automáticamente.
 | 🔎 **Mis datos** | Subí tu CSV/Excel **o conectate directo a tu base de datos** (PostgreSQL, MySQL, SQL Server, Oracle, SQLite): perfil por columna, duplicados, PII detectada y reglas sugeridas |
 | 📤 **BI & API** | Exportación CSV/Excel/JSON/Parquet + paquete Excel multi-hoja + API REST |
 | 🏢 **Empresas** | Fichas de empresas clientes **que se guardan en disco** (contacto, BI, restricción de TI → recomienda Opción A o B, madurez, notas) con exportación |
-| ❓ **Ayuda** | Qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |
+| ❓ **Ayuda** | Marco **DAMA-DMBOK** (las 11 áreas, explicadas en criollo y técnicamente) + qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |
 
 ## 📊 Compatibilidad BI
 

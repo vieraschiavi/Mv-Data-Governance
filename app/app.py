@@ -27,7 +27,7 @@ from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
 from mvdg.connectors import (ENGINES, delete_connection, list_tables,
                              load_connections, load_table, run_query,
                              save_connection, stored_password, test_connection)
-from mvdg.help_center import automation_rows, speeches
+from mvdg.help_center import automation_rows, dmbok_rows, speeches
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -550,6 +550,16 @@ with tab_cl:
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
     st.info(t("h_intro", lang), icon="❓")
+
+    st.subheader(t("h_dmbok", lang))
+    st.markdown(t("h_dmbok_note", lang))
+    _COVERAGE_LABEL = {"covered": t("h_dmbok_covered", lang), "partial": t("h_dmbok_partial", lang),
+                        "out": t("h_dmbok_out", lang)}
+    for row in dmbok_rows(lang):
+        with st.expander(f"{_COVERAGE_LABEL[row['coverage']]} — {row['area']}"):
+            st.markdown(f"**{t('h_dmbok_plain', lang)}:** {row['plain']}")
+            st.markdown(f"**{t('h_dmbok_tech', lang)}:** {row['tech']}")
+            st.caption(row["note"])
 
     st.subheader(t("h_matrix", lang))
     st.markdown(t("h_matrix_note", lang))

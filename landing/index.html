@@ -917,9 +917,9 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   location.href='mailto:vieraschiavi@gmail.com?subject=MV%20Data%20Governance&body='+body;
 });
 
-/* --- Pagos MercadoPago: precios + wiring de botones (payments-config.js) --- */
+/* --- Pagos MercadoPago: precios (payments-config.js) + checkout real (api/checkout.js) --- */
 (function(){
-  var P=window.MVDG_PAY||{links:{},prices:{}};
+  var P=window.MVDG_PAY||{prices:{}};
   function setTxt(id,v){var e=document.getElementById(id);if(e&&v!=null)e.textContent=v;}
   var pr=P.prices||{};
   var rate=+P.uyuRate||0;
@@ -934,18 +934,28 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
   if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
   if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}
-  var names={licencia:'Licencia PC',pro:'Professional (mensual)',cred100:'100 créditos',cred550:'550 créditos',cred2500:'2500 créditos'};
-  document.querySelectorAll('[data-mp]').forEach(function(a){
-    var key=a.getAttribute('data-mp');
-    var link=(P.links||{})[key]||'';
-    if(link){
-      a.setAttribute('href',link);a.setAttribute('target','_blank');a.setAttribute('rel','noopener');
-    }else{
-      // Fallback honesto: sin link configurado, deriva al contacto por mail
-      var mail=P.contactEmail||'vieraschiavi@gmail.com';
-      a.setAttribute('href','mailto:'+mail+'?subject='+encodeURIComponent('Compra: '+(names[key]||key)+' - MV Data Governance')+
-        '&body='+encodeURIComponent('Hola, quiero comprar: '+(names[key]||key)+'. ¿Me pasás el link de pago de MercadoPago?'));
-    }
+
+  var MP_ERR={es:'No se pudo iniciar el pago. Probá de nuevo en un rato.',
+    en:'Could not start the payment. Please try again shortly.',
+    pt:'Não foi possível iniciar o pagamento. Tente novamente em instantes.'};
+  document.querySelectorAll('[data-mp]').forEach(function(btn){
+    btn.addEventListener('click',function(ev){
+      ev.preventDefault();
+      var plan=btn.getAttribute('data-mp');
+      var original=btn.textContent;
+      btn.setAttribute('aria-busy','true'); btn.style.opacity='.7'; btn.textContent='…';
+      fetch('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan:plan})})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d && d.url){ window.location.href=d.url; return; }
+          btn.style.opacity=''; btn.textContent=original;
+          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
+        })
+        .catch(function(){
+          btn.style.opacity=''; btn.textContent=original;
+          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
+        });
+    });
   });
 })();
 </script>

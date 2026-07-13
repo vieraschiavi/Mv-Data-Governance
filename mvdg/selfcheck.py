@@ -114,7 +114,7 @@ def run_checks() -> list[tuple[str, bool, str]]:
 
     @check("API REST importable")
     def _():
-        from api.main import TABLES, app  # noqa: F401
+        from bi_api.main import TABLES, app  # noqa: F401
         assert len(TABLES) == 9
         return f"FastAPI OK, {len(TABLES)} endpoints"
 

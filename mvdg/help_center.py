@@ -217,6 +217,174 @@ SPEECHES: list[dict] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# DAMA-DMBOK: las 11 áreas de conocimiento del "Data Management Body of
+# Knowledge" (el estándar de referencia de la industria en gobierno de
+# datos). Cada área trae una explicación en lenguaje simple (para quien no
+# es técnico) y una técnica (para quien sí lo es), más qué tan cubierta está
+# por esta plataforma hoy — sin inflar lo que no hace.
+# coverage: "covered" (la plataforma la resuelve) | "partial" (ayuda, pero
+# falta la parte humana/organizacional) | "out" (la plataforma no la cubre;
+# es responsabilidad de otra herramienta o equipo).
+# ---------------------------------------------------------------------------
+DMBOK_AREAS: list[dict] = [
+    {
+        "area": {"es": "Gobierno de datos", "en": "Data Governance", "pt": "Governança de dados"},
+        "plain": {"es": "El área central: quién decide qué sobre los datos de la empresa, y cómo se ponen de acuerdo.",
+                  "en": "The central area: who decides what about the company's data, and how they agree on it.",
+                  "pt": "A área central: quem decide o quê sobre os dados da empresa, e como chegam a um acordo."},
+        "tech": {"es": "Roles (dueños, stewards), políticas, comité de datos y el marco que ordena a las otras 10 áreas.",
+                 "en": "Roles (owners, stewards), policies, a data committee and the framework that organizes the other 10 areas.",
+                 "pt": "Papéis (donos, stewards), políticas, comitê de dados e o framework que organiza as outras 10 áreas."},
+        "coverage": "covered",
+        "note": {"es": "Módulo de políticas + comité + speeches para lograr sponsors y dueños.",
+                 "en": "Policies module + committee + speeches to win sponsors and owners.",
+                 "pt": "Módulo de políticas + comitê + speeches para conseguir patrocinadores e donos."},
+    },
+    {
+        "area": {"es": "Calidad de datos", "en": "Data Quality", "pt": "Qualidade de dados"},
+        "plain": {"es": "Medir si los datos están completos, correctos y actualizados — con un semáforo simple.",
+                  "en": "Measuring whether data is complete, correct and up to date — with a simple traffic light.",
+                  "pt": "Medir se os dados estão completos, corretos e atualizados — com um semáforo simples."},
+        "tech": {"es": "17 reglas sobre 6 dimensiones DAMA (completitud, unicidad, validez, consistencia, actualidad, exactitud).",
+                 "en": "17 rules across 6 DAMA dimensions (completeness, uniqueness, validity, consistency, timeliness, accuracy).",
+                 "pt": "17 regras em 6 dimensões DAMA (completude, unicidade, validade, consistência, atualidade, exatidão)."},
+        "coverage": "covered",
+        "note": {"es": "Motor de calidad (pestaña Calidad) — 100% automático.",
+                 "en": "Quality engine (Quality tab) — 100% automatic.",
+                 "pt": "Motor de qualidade (aba Qualidade) — 100% automático."},
+    },
+    {
+        "area": {"es": "Gestión de metadatos", "en": "Metadata Management", "pt": "Gestão de metadados"},
+        "plain": {"es": "Tener un catálogo de \"qué datos existen, dónde viven y qué significan\", en vez de que cada uno lo sepa de memoria.",
+                  "en": "Having a catalog of \"what data exists, where it lives and what it means\", instead of everyone keeping it in their head.",
+                  "pt": "Ter um catálogo de \"quais dados existem, onde vivem e o que significam\", em vez de cada um saber de cabeça."},
+        "tech": {"es": "Catálogo de datasets + diccionario de columnas (tipo, PII detectada, dataset origen).",
+                 "en": "Dataset catalog + column dictionary (type, detected PII, source dataset).",
+                 "pt": "Catálogo de datasets + dicionário de colunas (tipo, PII detectada, dataset de origem)."},
+        "coverage": "covered",
+        "note": {"es": "Pestaña Catálogo — se genera solo a partir de los datos conectados.",
+                 "en": "Catalog tab — generated automatically from the connected data.",
+                 "pt": "Aba Catálogo — gerada sozinha a partir dos dados conectados."},
+    },
+    {
+        "area": {"es": "Datos maestros y de referencia", "en": "Reference & Master Data", "pt": "Dados mestres e de referência"},
+        "plain": {"es": "Que \"cliente activo\" o \"producto\" signifiquen lo mismo en toda la empresa, no una cosa distinta por área.",
+                  "en": "Making sure \"active customer\" or \"product\" mean the same thing across the whole company, not something different per department.",
+                  "pt": "Que \"cliente ativo\" ou \"produto\" signifiquem a mesma coisa em toda a empresa, não algo diferente por área."},
+        "tech": {"es": "Glosario de negocio versionado y trilingüe; no incluye motor de deduplicación/MDM de registros maestros.",
+                 "en": "Versioned, trilingual business glossary; does not include a master-record deduplication/MDM engine.",
+                 "pt": "Glossário de negócio versionado e trilíngue; não inclui motor de deduplicação/MDM de registros mestres."},
+        "coverage": "partial",
+        "note": {"es": "Pestaña Glosario cubre las definiciones; la unificación de registros duplicados entre sistemas queda fuera.",
+                 "en": "Glossary tab covers definitions; unifying duplicate records across systems is out of scope.",
+                 "pt": "Aba Glossário cobre as definições; unificar registros duplicados entre sistemas fica de fora."},
+    },
+    {
+        "area": {"es": "Linaje e integración de datos", "en": "Data Integration & Lineage", "pt": "Integração e linhagem de dados"},
+        "plain": {"es": "Poder rastrear de dónde vino un dato y a dónde va, y conectar la plataforma con las bases y los BI que ya usás.",
+                  "en": "Being able to trace where data came from and where it goes, and connecting the platform with the databases and BI tools you already use.",
+                  "pt": "Poder rastrear de onde veio um dado e para onde vai, e conectar a plataforma com os bancos e BI que você já usa."},
+        "tech": {"es": "Mapa de linaje (origen → transformación → destino) + conectores SQLAlchemy (Postgres/MySQL/SQL Server/Oracle) + exportación CSV/Excel/JSON/Parquet + API REST.",
+                 "en": "Lineage map (source → transformation → target) + SQLAlchemy connectors (Postgres/MySQL/SQL Server/Oracle) + CSV/Excel/JSON/Parquet export + REST API.",
+                 "pt": "Mapa de linhagem (origem → transformação → destino) + conectores SQLAlchemy (Postgres/MySQL/SQL Server/Oracle) + exportação CSV/Excel/JSON/Parquet + API REST."},
+        "coverage": "covered",
+        "note": {"es": "Pestaña Linaje + Conectores + pestaña BI.",
+                 "en": "Lineage tab + Connectors + BI tab.",
+                 "pt": "Aba Linhagem + Conectores + aba BI."},
+    },
+    {
+        "area": {"es": "Data warehousing e inteligencia de negocio", "en": "Data Warehousing & Business Intelligence", "pt": "Data warehousing e inteligência de negócio"},
+        "plain": {"es": "Que los tableros de Power BI, Tableau, etc. usen datos ya medidos y confiables, no una copia suelta.",
+                  "en": "Making sure Power BI, Tableau, etc. dashboards use already-measured, trustworthy data, not a loose copy.",
+                  "pt": "Que os painéis de Power BI, Tableau, etc. usem dados já medidos e confiáveis, não uma cópia solta."},
+        "tech": {"es": "API REST con 9 tablas de gobierno + bundle .xlsx listo para conectar en cualquier herramienta de BI.",
+                 "en": "REST API with 9 governance tables + a ready-to-connect .xlsx bundle for any BI tool.",
+                 "pt": "API REST com 9 tabelas de governança + pacote .xlsx pronto para conectar em qualquer ferramenta de BI."},
+        "coverage": "covered",
+        "note": {"es": "Pestaña BI + docs/BI_INTEGRATION.md (guía por herramienta).",
+                 "en": "BI tab + docs/BI_INTEGRATION.md (per-tool guide).",
+                 "pt": "Aba BI + docs/BI_INTEGRATION.md (guia por ferramenta)."},
+    },
+    {
+        "area": {"es": "Seguridad de datos", "en": "Data Security", "pt": "Segurança de dados"},
+        "plain": {"es": "Saber qué columnas tienen datos personales (nombres, emails, documentos) para protegerlas.",
+                  "en": "Knowing which columns hold personal data (names, emails, ID numbers) so they can be protected.",
+                  "pt": "Saber quais colunas têm dados pessoais (nomes, e-mails, documentos) para protegê-las."},
+        "tech": {"es": "Detección heurística de columnas PII en el catálogo; NO incluye control de accesos, cifrado ni DLP — eso lo define y ejecuta TI.",
+                 "en": "Heuristic PII-column detection in the catalog; does NOT include access control, encryption or DLP — that is defined and run by IT.",
+                 "pt": "Detecção heurística de colunas PII no catálogo; NÃO inclui controle de acesso, criptografia nem DLP — isso é definido e executado por TI."},
+        "coverage": "partial",
+        "note": {"es": "Catálogo marca la PII detectada; la clasificación final y el enmascaramiento los confirma TI (speech incluido).",
+                 "en": "The catalog flags detected PII; final classification and masking are confirmed by IT (speech included).",
+                 "pt": "O catálogo sinaliza a PII detectada; a classificação final e o mascaramento são confirmados por TI (speech incluído)."},
+    },
+    {
+        "area": {"es": "Arquitectura de datos", "en": "Data Architecture", "pt": "Arquitetura de dados"},
+        "plain": {"es": "Tener un mapa de cómo están organizados los datos de la empresa hoy.",
+                  "en": "Having a map of how the company's data is organized today.",
+                  "pt": "Ter um mapa de como os dados da empresa estão organizados hoje."},
+        "tech": {"es": "El catálogo y el linaje documentan la arquitectura de estado actual; no incluye diseño de arquitectura objetivo (target state).",
+                 "en": "The catalog and lineage document the current-state architecture; target-state architecture design is not included.",
+                 "pt": "O catálogo e a linhagem documentam a arquitetura do estado atual; o desenho da arquitetura alvo não está incluído."},
+        "coverage": "partial",
+        "note": {"es": "Documenta el \"cómo es hoy\"; el diseño del \"cómo debería ser\" lo define el equipo de arquitectura.",
+                 "en": "Documents the \"as-is\"; designing the \"to-be\" is defined by the architecture team.",
+                 "pt": "Documenta o \"como é hoje\"; o desenho do \"como deveria ser\" é definido pela equipe de arquitetura."},
+    },
+    {
+        "area": {"es": "Modelado y diseño de datos", "en": "Data Modeling & Design", "pt": "Modelagem e desenho de dados"},
+        "plain": {"es": "Diseñar cómo se estructuran las tablas de un sistema nuevo.",
+                  "en": "Designing how the tables of a new system are structured.",
+                  "pt": "Desenhar como as tabelas de um sistema novo são estruturadas."},
+        "tech": {"es": "Fuera de alcance: la plataforma perfila y documenta esquemas existentes, no es una herramienta de modelado (ER/dimensional).",
+                 "en": "Out of scope: the platform profiles and documents existing schemas, it is not an ER/dimensional modeling tool.",
+                 "pt": "Fora de escopo: a plataforma perfila e documenta esquemas existentes, não é uma ferramenta de modelagem (ER/dimensional)."},
+        "coverage": "out",
+        "note": {"es": "Complementa herramientas de modelado; no las reemplaza.",
+                 "en": "Complements modeling tools; does not replace them.",
+                 "pt": "Complementa ferramentas de modelagem; não as substitui."},
+    },
+    {
+        "area": {"es": "Almacenamiento y operaciones", "en": "Data Storage & Operations", "pt": "Armazenamento e operações"},
+        "plain": {"es": "Administrar los servidores y bases de datos donde vive la información.",
+                  "en": "Managing the servers and databases where the information lives.",
+                  "pt": "Administrar os servidores e bancos de dados onde a informação vive."},
+        "tech": {"es": "Fuera de alcance: la plataforma se conecta a las bases (lectura), no administra backups, tuning ni infraestructura.",
+                 "en": "Out of scope: the platform connects to databases (read-only), it does not manage backups, tuning or infrastructure.",
+                 "pt": "Fora de escopo: a plataforma se conecta aos bancos (leitura), não administra backups, tuning nem infraestrutura."},
+        "coverage": "out",
+        "note": {"es": "Responsabilidad del equipo de infraestructura/DBA.",
+                 "en": "Responsibility of the infrastructure/DBA team.",
+                 "pt": "Responsabilidade da equipe de infraestrutura/DBA."},
+    },
+    {
+        "area": {"es": "Gestión documental y de contenido", "en": "Documents & Content Management", "pt": "Gestão documental e de conteúdo"},
+        "plain": {"es": "Organizar documentos, PDFs y archivos no estructurados (más allá de tablas).",
+                  "en": "Organizing documents, PDFs and unstructured files (beyond tables).",
+                  "pt": "Organizar documentos, PDFs e arquivos não estruturados (além de tabelas)."},
+        "tech": {"es": "Fuera de alcance: la plataforma trabaja con datos estructurados (tablas, CSV/Excel, bases relacionales).",
+                 "en": "Out of scope: the platform works with structured data (tables, CSV/Excel, relational databases).",
+                 "pt": "Fora de escopo: a plataforma trabalha com dados estruturados (tabelas, CSV/Excel, bancos relacionais)."},
+        "coverage": "out",
+        "note": {"es": "Se complementa con un gestor documental (SharePoint, etc.) si la empresa lo necesita.",
+                 "en": "Complemented by a document management system (SharePoint, etc.) if the company needs one.",
+                 "pt": "Complementa-se com um gestor documental (SharePoint, etc.) se a empresa precisar."},
+    },
+]
+
+
+def dmbok_rows(lang: str = "es") -> list[dict]:
+    """Las 11 áreas DAMA-DMBOK resueltas al idioma pedido."""
+    return [{
+        "area": a["area"].get(lang, a["area"]["es"]),
+        "plain": a["plain"].get(lang, a["plain"]["es"]),
+        "tech": a["tech"].get(lang, a["tech"]["es"]),
+        "coverage": a["coverage"],
+        "note": a["note"].get(lang, a["note"]["es"]),
+    } for a in DMBOK_AREAS]
+
+
 def automation_rows(lang: str = "es") -> list[dict]:
     """Matriz de automatización resuelta al idioma pedido."""
     return [{
