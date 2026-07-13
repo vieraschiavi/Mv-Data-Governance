@@ -235,6 +235,20 @@ _T: dict[str, dict[str, str]] = {
         "en": "The example dataset was not found in the package.",
         "pt": "O dataset de exemplo não foi encontrado no pacote.",
     },
+    "pr_example_source": {
+        "es": "📛 Nombre: **Rotulado de alimentos 2026** · Archivo: `rotulado_de_alimentos_2026.csv` · "
+              "Origen: datos públicos de **control bromatológico de alimentos (Uruguay, 2026)** — "
+              "análisis de rotulado y composición según el Reglamento Bromatológico Nacional (referencias "
+              "a RUNAEV, Decreto 466/009). Provisto por el usuario a partir de datos abiertos de gobierno.",
+        "en": "📛 Name: **Food labeling 2026** · File: `rotulado_de_alimentos_2026.csv` · "
+              "Origin: public **food-safety (bromatological) control data (Uruguay, 2026)** — labeling and "
+              "composition analyses under the National Food Regulation (references to RUNAEV, Decree 466/009). "
+              "Provided by the user from open government data.",
+        "pt": "📛 Nome: **Rotulagem de alimentos 2026** · Arquivo: `rotulado_de_alimentos_2026.csv` · "
+              "Origem: dados públicos de **controle bromatológico de alimentos (Uruguai, 2026)** — análises "
+              "de rotulagem e composição conforme o Regulamento Bromatológico Nacional (referências a RUNAEV, "
+              "Decreto 466/009). Fornecido pelo usuário a partir de dados abertos de governo.",
+    },
     # ------------------------------------------------------------- connectors
     "db_intro": {
         "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "

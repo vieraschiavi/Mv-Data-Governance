@@ -539,6 +539,7 @@ with tab_pr:
     if source == "example":
         st.markdown(f"**{t('pr_example_title', lang)}**")
         st.caption(t("pr_example_desc", lang))
+        st.markdown(t("pr_example_source", lang))
         if os.path.exists(_SAMPLE_CSV):
             try:
                 sample_df = pd.read_csv(_SAMPLE_CSV)
