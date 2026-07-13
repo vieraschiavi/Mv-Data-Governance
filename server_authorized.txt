@@ -1,0 +1,20 @@
+# MV Data Governance - Servidores autorizados por la empresa
+# ==========================================================
+# ES: Lista de servidores donde TI autoriza correr el programa en modo web.
+#     El programa (MV_DataGovernance_Server.bat / run_server.sh) solo arranca
+#     si el host donde se ejecuta figura en esta lista.
+# EN: List of servers where IT authorizes running the program in web mode.
+#     The program only starts if the host it runs on is listed here.
+# PT: Lista de servidores onde a TI autoriza rodar o programa em modo web.
+#
+# Un host por linea: nombre de maquina (hostname), FQDN o IP. Ejemplos:
+#   srv-datos.miempresa.local
+#   10.0.5.20
+# El valor especial  *  autoriza cualquier host (NO recomendado en produccion).
+#
+# Mientras esta lista este vacia (solo comentarios), el servidor corre en modo
+# ABIERTO y avisa. Descomenta/agrega tus servidores para restringir.
+#
+# Alternativa sin archivo: variable de entorno MVDG_AUTHORIZED_HOSTS
+#   set MVDG_AUTHORIZED_HOSTS=srv-datos.miempresa.local,10.0.5.20   (Windows)
+#   export MVDG_AUTHORIZED_HOSTS="srv-datos.miempresa.local,10.0.5.20"  (Linux/Mac)

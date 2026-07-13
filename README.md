@@ -42,8 +42,8 @@ cd landing && python -m http.server 8080   # → http://localhost:8080
 | **`MV_DataGovernance.bat`** | Portable Windows: crea el entorno la primera vez y abre el programa en el navegador |
 | **`packaging\build_exe.bat`** | Construye `MVDataGovernance.exe` (PyInstaller) y el instalador `MVDataGovernance_Setup_v1.0.0.exe` (Inno Setup, trilingüe) |
 | **`MV_DataGovernance_API.bat`** | Levanta la API REST para BI en `http://127.0.0.1:8600` |
-| **`./run.sh`** | Linux / macOS |
-| `streamlit run app/app.py` | Modo web/servidor en cualquier SO |
+| **`MV_DataGovernance_Server.bat`** / **`./run_server.sh`** | Modo servidor web para la empresa: varios usuarios desde el navegador, **solo en servidores autorizados** (`server_authorized.txt` / `MVDG_AUTHORIZED_HOSTS`) |
+| **`./run.sh`** | Linux / macOS (escritorio, abre el navegador local) |
 
 Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
 ¿Qué es el gobierno de datos y cómo lo cubre esta plataforma frente al

@@ -256,8 +256,63 @@ def test_build_release_option_b(tmp_path, monkeypatch):
     assert "MVDataGovernance/MV_DataGovernance.bat" in names
     assert "MVDataGovernance/app/app.py" in names
     assert "MVDataGovernance/requirements.txt" in names
+    # las 3 versiones de arranque viajan en el paquete
+    assert "MVDataGovernance/MV_DataGovernance_Server.bat" in names
+    assert "MVDataGovernance/run_server.sh" in names
+    assert "MVDataGovernance/server_authorized.txt" in names
+    assert "MVDataGovernance/bi_api/main.py" in names
     assert not any(".venv" in n or "__pycache__" in n for n in names)
     assert br.build_option_a() is None  # sin Setup.exe construido
+
+
+# ----------------------------------------------------- modo servidor (web)
+def test_server_authorization_modes():
+    from mvdg.server import authorization_status, parse_authorized
+
+    # sin lista -> modo abierto
+    assert authorization_status([])["mode"] == "open"
+    # comodín -> autorizado
+    assert authorization_status(["*"])["mode"] == "authorized"
+    # host no listado -> denegado
+    assert authorization_status(["srv-datos"], identities={"otro"})["mode"] == "denied"
+    # host listado -> autorizado (case-insensitive)
+    st = authorization_status(["SRV-Datos", "10.0.5.20"], identities={"srv-datos"})
+    assert st["mode"] == "authorized" and st["matched"] == "srv-datos"
+
+
+def test_server_parse_authorized_ignores_comments_and_commas():
+    from mvdg.server import parse_authorized
+    raw = ("# Lista de servidores, con comas en el comentario\n"
+           "srv-datos.empresa.local, 10.0.5.20\n"
+           "  \n"
+           "# otra nota\n"
+           "backup.empresa.local\n")
+    assert parse_authorized(raw) == [
+        "srv-datos.empresa.local", "10.0.5.20", "backup.empresa.local"]
+    # env var en una sola línea
+    assert parse_authorized("a, B ,c") == ["a", "b", "c"]
+
+
+def test_server_run_dry_run_builds_streamlit_argv(monkeypatch):
+    from mvdg import server
+    monkeypatch.setenv("MVDG_SERVER_HOST", "0.0.0.0")
+    monkeypatch.setenv("MVDG_SERVER_PORT", "8555")
+    monkeypatch.setenv("MVDG_AUTHORIZED_HOSTS", "*")  # autoriza para el dry-run
+    argv: list = []
+    rc = server.run_server(argv_out=argv)
+    assert rc == 0
+    assert argv[:3] == ["streamlit", "run", argv[2]]
+    assert argv[argv.index("--server.address") + 1] == "0.0.0.0"
+    assert argv[argv.index("--server.port") + 1] == "8555"
+
+
+def test_server_denied_when_host_not_authorized(monkeypatch):
+    from mvdg import server
+    monkeypatch.setenv("MVDG_AUTHORIZED_HOSTS", "un-host-que-no-soy-yo.local")
+    argv: list = []
+    rc = server.run_server(argv_out=argv)
+    assert rc == 2  # no autorizado: no arranca
+    assert argv == []
 
 
 # ---------------------------------------------------- conectores a base de datos

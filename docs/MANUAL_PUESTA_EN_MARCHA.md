@@ -15,11 +15,33 @@
    [Inno Setup](https://jrsoftware.org/isdl.php), también el instalador
    `dist\MVDataGovernance_Setup_v1.0.0.exe` con accesos directos.
 
-### Opción 3 · Web
+### Opción 3 · Web (servidor de la empresa)
+Corré el programa como servidor web para que varios usuarios lo abran desde
+el navegador, sin instalar nada en cada PC. Solo arranca en **servidores
+autorizados por la empresa**.
+
 ```bash
-./run.sh                      # Linux / macOS
-streamlit run app/app.py      # cualquier SO, para desplegar en servidor
+# Windows: doble clic en
+MV_DataGovernance_Server.bat
+# Linux / macOS:
+./run_server.sh
 ```
+
+- **Host y puerto:** `MVDG_SERVER_HOST` (por defecto `0.0.0.0`, accesible en
+  la red interna) y `MVDG_SERVER_PORT` (por defecto `8501`).
+- **Servidores autorizados:** definí `MVDG_AUTHORIZED_HOSTS` (hostnames o IPs
+  separados por coma) o editá el archivo **`server_authorized.txt`** (un host
+  por línea). Si la lista está vacía, corre en modo abierto y avisa. El valor
+  `*` autoriza cualquier host (no recomendado en producción).
+
+```bash
+# ejemplo: autorizar dos servidores y escuchar en el puerto 8080
+export MVDG_AUTHORIZED_HOSTS="srv-datos.empresa.local,10.0.5.20"
+export MVDG_SERVER_PORT=8080
+./run_server.sh
+```
+
+Todo sigue siendo local a la empresa: nada viaja a internet.
 
 ### API para BI
 Doble clic en **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
@@ -49,11 +71,26 @@ la pestaña **Ayuda**.
    [Inno Setup](https://jrsoftware.org/isdl.php) installed, also the
    `dist\MVDataGovernance_Setup_v1.0.0.exe` installer with shortcuts.
 
-### Option 3 · Web
+### Option 3 · Web (company server)
+Run the program as a web server so multiple users open it from their browser,
+with nothing installed on each PC. It only starts on **company-authorized
+servers**.
+
 ```bash
-./run.sh                      # Linux / macOS
-streamlit run app/app.py      # any OS, for server deployment
+# Windows: double-click
+MV_DataGovernance_Server.bat
+# Linux / macOS:
+./run_server.sh
 ```
+
+- **Host and port:** `MVDG_SERVER_HOST` (default `0.0.0.0`, reachable on the
+  internal network) and `MVDG_SERVER_PORT` (default `8501`).
+- **Authorized servers:** set `MVDG_AUTHORIZED_HOSTS` (comma-separated
+  hostnames or IPs) or edit **`server_authorized.txt`** (one host per line).
+  If the list is empty it runs in open mode with a warning. The value `*`
+  authorizes any host (not recommended in production).
+
+Everything stays local to the company: nothing goes to the internet.
 
 ### BI API
 Double-click **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
@@ -83,11 +120,26 @@ under the **Help** tab.
    [Inno Setup](https://jrsoftware.org/isdl.php) instalado, também o
    instalador `dist\MVDataGovernance_Setup_v1.0.0.exe` com atalhos.
 
-### Opção 3 · Web
+### Opção 3 · Web (servidor da empresa)
+Rode o programa como servidor web para vários usuários abrirem pelo
+navegador, sem instalar nada em cada PC. Só inicia em **servidores
+autorizados pela empresa**.
+
 ```bash
-./run.sh                      # Linux / macOS
-streamlit run app/app.py      # qualquer SO, para implantar em servidor
+# Windows: duplo clique em
+MV_DataGovernance_Server.bat
+# Linux / macOS:
+./run_server.sh
 ```
+
+- **Host e porta:** `MVDG_SERVER_HOST` (padrão `0.0.0.0`, acessível na rede
+  interna) e `MVDG_SERVER_PORT` (padrão `8501`).
+- **Servidores autorizados:** defina `MVDG_AUTHORIZED_HOSTS` (hostnames ou
+  IPs separados por vírgula) ou edite **`server_authorized.txt`** (um host por
+  linha). Se a lista estiver vazia, roda em modo aberto e avisa. O valor `*`
+  autoriza qualquer host (não recomendado em produção).
+
+Tudo continua local à empresa: nada vai para a internet.
 
 ### API para BI
 Duplo clique em **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.

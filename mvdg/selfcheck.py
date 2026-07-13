@@ -118,6 +118,31 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert len(TABLES) == 9
         return f"FastAPI OK, {len(TABLES)} endpoints"
 
+    @check("Modo servidor web (hosts autorizados)")
+    def _():
+        from .server import (authorization_status, parse_authorized,
+                             run_server)
+        assert authorization_status([])["mode"] == "open"
+        assert authorization_status(["*"])["mode"] == "authorized"
+        assert authorization_status(["nope"], identities={"x"})["mode"] == "denied"
+        assert parse_authorized("a, b\n# comentario, con coma\nd") == ["a", "b", "d"]
+        argv: list = []
+        run_server(argv_out=argv)  # dry-run: no lanza el servidor
+        assert "--server.address" in argv and "--server.port" in argv
+        return "autorización por host + arranque server OK"
+
+    @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
+    def _():
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        launchers = ["MV_DataGovernance.bat", "MV_DataGovernance_Server.bat",
+                     "run.sh", "run_server.sh",
+                     os.path.join("packaging", "mvdg_launcher.py"),
+                     os.path.join("packaging", "mvdg.spec")]
+        missing = [f for f in launchers if not os.path.exists(os.path.join(root, f))]
+        assert not missing, f"faltan lanzadores: {missing}"
+        return ".exe (PyInstaller) · .bat portable · web servidor — presentes"
+
     @check("Dashboard importable (sin errores)")
     def _():
         import importlib
