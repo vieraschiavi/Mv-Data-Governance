@@ -38,7 +38,9 @@ DESCARGAS = os.path.join(ROOT, "landing", "descargas")
 _INCLUDE_DIRS = ["app", "mvdg", "bi_api", "assets", "docs", "packaging",
                  "distribucion", "landing", "tests"]
 _INCLUDE_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
-                  "run.sh", "requirements.txt", "README.md", ".gitattributes"]
+                  "MV_DataGovernance_Server.bat", "run.sh", "run_server.sh",
+                  "server_authorized.txt", "requirements.txt", "README.md",
+                  ".gitattributes"]
 _EXCLUDE_PARTS = {"__pycache__", ".venv", ".git", ".pytest_cache", "dist", "build"}
 
 
@@ -46,7 +48,9 @@ _EXCLUDE_PARTS = {"__pycache__", ".venv", ".git", ".pytest_cache", "dist", "buil
 # web de venta ni el video de demo (que pesan y no hacen falta para operar).
 _DEMO_DIRS = ["app", "mvdg", "bi_api", "docs", "packaging", "distribucion"]
 _DEMO_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
-               "run.sh", "requirements.txt", "README.md", ".gitattributes"]
+               "MV_DataGovernance_Server.bat", "run.sh", "run_server.sh",
+               "server_authorized.txt", "requirements.txt", "README.md",
+               ".gitattributes"]
 # solo los iconos de marca, no el video
 _DEMO_BRAND = os.path.join("assets", "brand")
 

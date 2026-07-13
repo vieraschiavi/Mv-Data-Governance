@@ -31,11 +31,13 @@ for _pkg in _PAQUETES:
     except Exception:
         pass
 
-# Código y recursos propios
+# Código y recursos propios. bi_api = API REST para BI (Python/FastAPI); NO se
+# incluye la carpeta api/ (funciones serverless Node.js de MercadoPago, que solo
+# corren en Vercel y no forman parte del programa de escritorio).
 datas += [
     (os.path.join(ROOT, "app"), "app"),
     (os.path.join(ROOT, "mvdg"), "mvdg"),
-    (os.path.join(ROOT, "api"), "api"),
+    (os.path.join(ROOT, "bi_api"), "bi_api"),
     (os.path.join(ROOT, "assets", "brand"), os.path.join("assets", "brand")),
 ]
 
