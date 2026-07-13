@@ -327,14 +327,14 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
 
 <!-- VIDEO -->
 <section class="vsec" id="video"><div class="wrap">
-  <div class="eyebrow" data-i="v_eye">Demo narrada · 1 minuto</div>
+  <div class="eyebrow" data-i="v_eye">Demo narrada · 1 minuto · ES / EN / PT</div>
   <h2 class="h2 h2w" data-i="v_h2">Mirá MV Data Governance en acción</h2>
-  <p class="lead-w" data-i="v_lead">Un minuto, con voz en off: del catálogo al tablero de BI,
-    calidad medida en 6 dimensiones, linaje de punta a punta y exportación en un clic.</p>
+  <p class="lead-w" data-i="v_lead">Un minuto, con voz en off en tu idioma (español, inglés o portugués):
+    del catálogo al tablero de BI, calidad medida en 6 dimensiones, linaje de punta a punta y exportación en un clic.</p>
   <div class="vbox">
-    <video controls preload="metadata" playsinline poster="">
-      <source src="video/MVDataGovernance_Demo.mp4" type="video/mp4">
-      <source src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_Demo.mp4" type="video/mp4">
+    <video id="demoVideo" controls preload="metadata" playsinline poster="">
+      <source id="demoSrc" src="video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
+      <source id="demoSrcCdn" src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
       <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
     </video>
   </div>
@@ -677,8 +677,8 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
   mb1:"Completeness",mb2:"Uniqueness",mb3:"Validity",mb4:"Consistency",mb5:"Timeliness",mb6:"Accuracy",
   mock_foot:"✓ Catalog up to date · 2 quality alerts assigned to the steward",
-  v_eye:"Narrated demo · 1 minute",v_h2:"Watch MV Data Governance in action",
-  v_lead:"One minute, with voice-over: from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
+  v_eye:"Narrated demo · 1 minute · ES / EN / PT",v_h2:"Watch MV Data Governance in action",
+  v_lead:"One minute, with voice-over in your language (Spanish, English or Portuguese): from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
   v_fallback:"Your browser does not support HTML5 video playback.",
   sh_eye:"The real product",sh_h2:"This is what your dashboards look like",
   sh_lead:"Real screenshots of the program — not mockups. This is what your team sees from day one, in the browser or in the desktop app.",
@@ -785,8 +785,8 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
   mb1:"Completude",mb2:"Unicidade",mb3:"Validade",mb4:"Consistência",mb5:"Pontualidade",mb6:"Exatidão",
   mock_foot:"✓ Catálogo atualizado · 2 alertas de qualidade atribuídos ao steward",
-  v_eye:"Demo narrada · 1 minuto",v_h2:"Veja o MV Data Governance em ação",
-  v_lead:"Um minuto, com narração: do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
+  v_eye:"Demo narrada · 1 minuto · ES / EN / PT",v_h2:"Veja o MV Data Governance em ação",
+  v_lead:"Um minuto, com narração no seu idioma (espanhol, inglês ou português): do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
   v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
   sh_eye:"O produto de verdade",sh_h2:"É assim que seus painéis se parecem",
   sh_lead:"Capturas reais do programa — não maquetes. Isto é o que sua equipe vê desde o primeiro dia, no navegador ou no programa de desktop.",
@@ -878,7 +878,20 @@ function setLang(lang){
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;
   try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  setVideoLang(lang);
   renderReviews();
+}
+/* La demo narrada se sirve en el idioma elegido (voz en off ES/EN/PT). */
+function setVideoLang(lang){
+  var vid=document.getElementById('demoVideo');if(!vid)return;
+  var s1=document.getElementById('demoSrc'),s2=document.getElementById('demoSrcCdn');
+  var file='MVDataGovernance_Demo_'+lang+'.mp4';
+  if(s1&&s1.getAttribute('src').indexOf(file)!==-1)return; // ya es el idioma actual
+  var wasPlaying=!vid.paused&&!vid.ended;
+  if(s1)s1.src='video/'+file;
+  if(s2)s2.src='https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/'+file;
+  vid.load();
+  if(wasPlaying){var pr=vid.play();if(pr&&pr.catch)pr.catch(function(){});}
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 
