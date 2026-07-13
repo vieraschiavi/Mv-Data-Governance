@@ -283,11 +283,11 @@ _T: dict[str, dict[str, str]] = {
     },
     "bi_api": {"es": "API REST para BI", "en": "REST API for BI", "pt": "API REST para BI"},
     "bi_api_help": {
-        "es": "Levantá la API con `python -m api.main` (o el .bat) y conectá "
+        "es": "Levantá la API con `python -m bi_api.main` (o el .bat) y conectá "
               "tu BI a estos endpoints (JSON o CSV con `?format=csv`):",
-        "en": "Start the API with `python -m api.main` (or the .bat) and point "
+        "en": "Start the API with `python -m bi_api.main` (or the .bat) and point "
               "your BI tool at these endpoints (JSON, or CSV with `?format=csv`):",
-        "pt": "Inicie a API com `python -m api.main` (ou o .bat) e aponte seu "
+        "pt": "Inicie a API com `python -m bi_api.main` (ou o .bat) e aponte seu "
               "BI para estes endpoints (JSON, ou CSV com `?format=csv`):",
     },
     "bi_guide": {

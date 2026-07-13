@@ -6,7 +6,7 @@
 :root{
   --navy:#081527;--hero-a:#0d2440;--hero-b:#081324;--amber:#f2b441;--amber2:#e39a2e;
   --amber-ink:#1c1305;--ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
-  --green:#00c896;--mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --green:#00c896;--red:#e05c5c;--mono:ui-monospace,"SF Mono",Menlo,monospace;
   --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box}
@@ -19,8 +19,11 @@ body{margin:0;min-height:100vh;background:radial-gradient(700px 420px at 80% -10
 .lang button{background:rgba(255,255,255,.06);border:1px solid var(--line2);color:var(--faint);font-size:11.5px;
   font-weight:800;padding:5px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
 .lang button.on{background:var(--amber);color:var(--amber-ink);border-color:var(--amber)}
-.ok{width:64px;height:64px;border-radius:50%;background:rgba(0,200,150,.14);border:1px solid rgba(0,200,150,.4);
-  display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 18px}
+.ic{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:32px;margin:0 auto 18px}
+.ic.ok{background:rgba(0,200,150,.14);border:1px solid rgba(0,200,150,.4)}
+.ic.wait{background:rgba(242,180,65,.14);border:1px solid rgba(242,180,65,.4)}
+.ic.err{background:rgba(224,92,92,.14);border:1px solid rgba(224,92,92,.4)}
 h1{margin:0 0 10px;font-size:26px;font-weight:850}
 p{color:var(--muted);font-size:15px;margin:0 0 18px}
 .btn{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;border-radius:10px;
@@ -29,42 +32,149 @@ p{color:var(--muted);font-size:15px;margin:0 0 18px}
 .small{font-size:12.5px;color:var(--faint);margin-top:18px}
 .small a{color:var(--amber)}
 .code{font-family:var(--mono);font-size:12px;background:rgba(0,0,0,.25);border:1px solid var(--line2);
-  border-radius:8px;padding:10px 12px;margin-top:14px;color:#cfe3ff;word-break:break-all}
+  border-radius:8px;padding:10px 12px;margin-top:14px;color:#cfe3ff;word-break:break-all;text-align:left}
+.lic-label{font-size:11.5px;color:var(--faint);margin:16px 0 6px;text-align:left}
+.lic-row{display:flex;gap:8px}
+.copy-btn{background:rgba(255,255,255,.06);color:var(--ink);border:1px solid var(--line2);border-radius:8px;
+  padding:0 14px;cursor:pointer;font-size:12.5px;white-space:nowrap;font-family:inherit}
 </style>
-<div class="card">
+<div class="card" id="card">
   <div class="lang">
     <button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button>
   </div>
-  <div class="ok">✓</div>
-  <h1 data-i="h1">¡Gracias por tu compra!</h1>
-  <p data-i="lead">Tu pago con MercadoPago fue confirmado. Descargá MV Data Governance acá abajo. También te enviamos el enlace y la licencia por correo.</p>
-  <a class="btn" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download data-i="btn">⬇ Descargar MV Data Governance</a>
-  <div class="code" data-i="note2">Tu licencia y las instrucciones llegan al email usado en MercadoPago.</div>
-  <div class="small">
-    <span data-i="help">¿Algún problema con la descarga o el pago?</span>
-    <a href="mailto:vieraschiavi@gmail.com?subject=Compra%20MV%20Data%20Governance" data-i="help_link">Escribinos</a> ·
-    <a href="index.html" data-i="home">Volver al inicio</a>
-  </div>
+  <div class="ic wait">⏳</div>
+  <h1 data-i="checking">Verificando tu pago…</h1>
+  <p data-i="checking_p">Un momento, estamos confirmando el pago con MercadoPago.</p>
 </div>
 <script>
 var I18N={
-en:{h1:"Thank you for your purchase!",
-  lead:"Your MercadoPago payment was confirmed. Download MV Data Governance below. We also emailed you the link and license.",
-  btn:"⬇ Download MV Data Governance",
-  note2:"Your license and instructions arrive at the email used in MercadoPago.",
-  help:"Any problem with the download or payment?",help_link:"Contact us",home:"Back to home"},
-pt:{h1:"Obrigado pela sua compra!",
-  lead:"Seu pagamento com MercadoPago foi confirmado. Baixe o MV Data Governance abaixo. Também enviamos o link e a licença por e-mail.",
-  btn:"⬇ Baixar MV Data Governance",
-  note2:"Sua licença e instruções chegam no e-mail usado no MercadoPago.",
-  help:"Algum problema com o download ou pagamento?",help_link:"Fale conosco",home:"Voltar ao início"}};
-var ES={};
-document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
-function setLang(l){var d=l==='es'?null:I18N[l];
-  document.querySelectorAll('[data-i]').forEach(function(el){var k=el.getAttribute('data-i');
-    el.innerHTML=(d&&d[k]!==undefined)?d[k]:ES[k];});
+en:{checking:"Verifying your payment…",checking_p:"One moment, we're confirming the payment with MercadoPago.",
+  ok_h1:"✅ Payment confirmed!",
+  ok_p:"Thanks for your purchase{PLAN}. Download MV Data Governance below.",
+  ok_p_plan:" of the {plan} plan",
+  btn:"⬇ Download MV Data Governance (PC)",
+  ok_note:"Windows installer (.exe) and portable (.bat) included. Step-by-step guide inside the ZIP.",
+  lic_label:"🔑 Your MV Data Governance license (save it, it's your activation proof):",
+  lic_generating:"Your license is being generated — if you don't see it in a few seconds, write to us and we'll send it.",
+  copy:"Copy",copied:"✓ Copied to clipboard",
+  help:"Problems downloading or with the payment?",help_link:"Write to us",home:"Back to home",
+  pending_h1:"⏳ Payment pending",
+  pending_p:"Your payment is being processed by MercadoPago. As soon as it's credited you'll be able to download the program. We'll email you once it's ready.",
+  pending_q:"Questions?",
+  fail_h1:"We couldn't confirm the payment",
+  fail_p:"If you already paid and see this message, write to us with the operation number and we'll sort it out right away.",
+  fail_btn:"Back to plans",
+  fail_conn:"Connection error verifying the payment."},
+pt:{checking:"Verificando seu pagamento…",checking_p:"Um momento, estamos confirmando o pagamento com o MercadoPago.",
+  ok_h1:"✅ Pagamento confirmado!",
+  ok_p:"Obrigado pela sua compra{PLAN}. Baixe o MV Data Governance abaixo.",
+  ok_p_plan:" do plano {plan}",
+  btn:"⬇ Baixar MV Data Governance (PC)",
+  ok_note:"Instalador Windows (.exe) e portátil (.bat) incluídos. Guia passo a passo dentro do ZIP.",
+  lic_label:"🔑 Sua licença MV Data Governance (guarde-a, é seu comprovante de ativação):",
+  lic_generating:"Sua licença está sendo gerada — se não aparecer em alguns segundos, escreva para nós e a enviaremos.",
+  copy:"Copiar",copied:"✓ Copiada para a área de transferência",
+  help:"Algum problema com o download ou pagamento?",help_link:"Fale conosco",home:"Voltar ao início",
+  pending_h1:"⏳ Pagamento pendente",
+  pending_p:"Seu pagamento está sendo processado pelo MercadoPago. Assim que for creditado você poderá baixar o programa. Avisaremos por e-mail quando estiver pronto.",
+  pending_q:"Dúvidas?",
+  fail_h1:"Não conseguimos confirmar o pagamento",
+  fail_p:"Se você já pagou e vê esta mensagem, escreva para nós com o número da operação e resolvemos na hora.",
+  fail_btn:"Voltar aos planos",
+  fail_conn:"Erro de conexão ao verificar o pagamento."}};
+var ES={checking:"Verificando tu pago…",checking_p:"Un momento, estamos confirmando el pago con MercadoPago.",
+  ok_h1:"✅ ¡Pago confirmado!",
+  ok_p:"Gracias por tu compra{PLAN}. Descargá MV Data Governance acá abajo.",
+  ok_p_plan:" del plan {plan}",
+  btn:"⬇ Descargar MV Data Governance (PC)",
+  ok_note:"Incluye instalador Windows (.exe) y portable (.bat). Guía paso a paso adentro del ZIP.",
+  lic_label:"🔑 Tu licencia MV Data Governance (guardala, es tu comprobante de activación):",
+  lic_generating:"Tu licencia se está generando — si no la ves en unos segundos, escribinos y te la mandamos.",
+  copy:"Copiar",copied:"✓ Copiada al portapapeles",
+  help:"¿Algún problema con la descarga o el pago?",help_link:"Escribinos",home:"Volver al inicio",
+  pending_h1:"⏳ Pago pendiente",
+  pending_p:"Tu pago está siendo procesado por MercadoPago. En cuanto se acredite vas a poder descargar el programa. Te avisamos por mail apenas esté listo.",
+  pending_q:"¿Dudas?",
+  fail_h1:"No pudimos confirmar el pago",
+  fail_p:"Si ya pagaste y ves este mensaje, escribinos con el número de operación y lo resolvemos al toque.",
+  fail_btn:"Volver a planes",
+  fail_conn:"Error de conexión verificando el pago."};
+var CUR_LANG='es';
+function T(k){return (I18N[CUR_LANG]&&I18N[CUR_LANG][k]!==undefined)?I18N[CUR_LANG][k]:ES[k];}
+function setLang(l){CUR_LANG=l;
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===l);});
-  document.documentElement.lang=l;try{localStorage.setItem('mvdg_lang',l);}catch(e){}}
+  document.documentElement.lang=l;try{localStorage.setItem('mvdg_lang',l);}catch(e){}
+  render();
+}
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
-try{var s=localStorage.getItem('mvdg_lang');if(s&&s!=='es')setLang(s);}catch(e){}
+try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es')CUR_LANG=sv;}catch(e){}
+
+var PLAN_NAMES={licencia:'Licencia PC',pro:'Professional',cred100:'100 créditos',cred550:'550 créditos',cred2500:'2.500 créditos'};
+function esc(s){return String(s==null?'':s).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+function qp(k){return new URLSearchParams(location.search).get(k);}
+
+var STATE={mode:'checking'};
+function render(){
+  var card=document.getElementById('card');
+  var lang=document.querySelectorAll('.lang button').length?'':'';
+  var langBar='<div class="lang">'+
+    '<button data-lang="es"'+(CUR_LANG==='es'?' class="on"':'')+'>ES</button>'+
+    '<button data-lang="pt"'+(CUR_LANG==='pt'?' class="on"':'')+'>PT</button>'+
+    '<button data-lang="en"'+(CUR_LANG==='en'?' class="on"':'')+'>EN</button></div>';
+
+  if (STATE.mode==='checking') {
+    card.innerHTML=langBar+'<div class="ic wait">⏳</div><h1>'+T('checking')+'</h1><p>'+T('checking_p')+'</p>';
+  } else if (STATE.mode==='ok') {
+    var planName=PLAN_NAMES[STATE.plan]||STATE.plan;
+    var planTxt=STATE.plan?T('ok_p_plan').replace('{plan}','<b>'+esc(planName)+'</b>'):'';
+    var licBlock;
+    if (STATE.license) {
+      licBlock='<div class="lic-label">'+T('lic_label')+'</div>'
+        +'<div class="lic-row"><div class="code" id="licVal" style="flex:1">'+esc(STATE.license)+'</div>'
+        +'<button class="copy-btn" id="copyBtn">'+T('copy')+'</button></div>'
+        +'<div class="small" id="licMsg" style="margin-top:6px"></div>';
+    } else {
+      licBlock='<div class="code">'+T('lic_generating')+'</div>';
+    }
+    card.innerHTML=langBar+'<div class="ic ok">✓</div><h1>'+T('ok_h1')+'</h1>'
+      +'<p>'+T('ok_p').replace('{PLAN}',planTxt)+'</p>'
+      +'<a class="btn" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download>'+T('btn')+'</a>'
+      +'<div class="small">'+T('ok_note')+'</div>'
+      +licBlock
+      +'<div class="small">'+T('help')+' <a href="mailto:vieraschiavi@gmail.com?subject=Compra%20MV%20Data%20Governance">'+T('help_link')+'</a> · '
+      +'<a href="index.html">'+T('home')+'</a></div>';
+    var cb=document.getElementById('copyBtn');
+    if (cb) cb.addEventListener('click', function(){
+      var v=document.getElementById('licVal');
+      navigator.clipboard.writeText(v.textContent).then(function(){
+        var m=document.getElementById('licMsg'); if(m) m.textContent=T('copied');
+      });
+    });
+  } else if (STATE.mode==='pending') {
+    card.innerHTML=langBar+'<div class="ic wait">⏳</div><h1>'+T('pending_h1')+'</h1><p>'+T('pending_p')+'</p>'
+      +'<div class="small">'+T('pending_q')+' <a href="mailto:vieraschiavi@gmail.com">vieraschiavi@gmail.com</a></div>';
+  } else {
+    card.innerHTML=langBar+'<div class="ic err">✕</div><h1>'+T('fail_h1')+'</h1><p>'+(STATE.msg||T('fail_p'))+'</p>'
+      +'<a class="btn" href="index.html#precios">'+T('fail_btn')+'</a>'
+      +'<div class="small"><a href="mailto:vieraschiavi@gmail.com">vieraschiavi@gmail.com</a></div>';
+  }
+  document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
+}
+render();
+
+var paymentId=qp('payment_id') || qp('collection_id');
+var status=qp('status') || qp('collection_status');
+
+if (status==='pending' && !paymentId) { STATE.mode='pending'; render(); }
+else if (!paymentId) { STATE.mode='fail'; render(); }
+else {
+  fetch('/api/verify-payment?payment_id='+encodeURIComponent(paymentId))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.approved) { STATE.mode='ok'; STATE.plan=d.plan; STATE.license=d.license; render(); }
+      else if (d.status==='pending' || d.status==='in_process') { STATE.mode='pending'; render(); }
+      else { STATE.mode='fail'; render(); }
+    })
+    .catch(function(){ STATE.mode='fail'; STATE.msg=T('fail_conn'); render(); });
+}
 </script>

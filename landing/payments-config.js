@@ -1,36 +1,22 @@
 /*
- * MV Data Governance · Configuración de pagos (MercadoPago).
+ * MV Data Governance · Configuración de precios mostrados en la web.
  *
- * COMO CONECTAR TU MERCADOPAGO (una sola vez):
- *   1. Entrá a tu cuenta de MercadoPago → "Cobrar" → "Link de pago"
- *      (o "Botón de pago"). Creá un link por cada producto con su precio.
- *   2. En "Configuración avanzada" del link, poné la URL de retorno
- *      (back_url / "A dónde vuelve el cliente al pagar") apuntando a:
- *         https://mv-data-governance.vercel.app/pago.html
- *      Así, al pagar, el cliente vuelve a la página de descarga.
- *   3. Pegá cada URL de link de pago abajo, entre las comillas.
+ * El COBRO REAL con MercadoPago ya está conectado del lado del servidor
+ * (funciones serverless api/checkout.js y api/verify-payment.js) — no hay
+ * nada que pegar acá. Para activarlo, configurá en Vercel (Project Settings
+ * → Environment Variables) las variables MP_ACCESS_TOKEN y LICENSE_SECRET
+ * (o, sin token, los links MP_LINK_LICENCIA / MP_LINK_PRO / MP_LINK_CRED100
+ * / MP_LINK_CRED550 / MP_LINK_CRED2500). Guía completa: docs/MERCADOPAGO.md
  *
- * Mientras un link esté vacío (""), el botón deriva al contacto por mail
- * (no se muestra ningún checkout falso).
+ * Este archivo solo controla los PRECIOS que se muestran en pantalla — no
+ * contiene ningún dato sensible.
  */
 window.MVDG_PAY = {
-  // Email de contacto para el fallback (mientras no haya link de MP)
-  contactEmail: "vieraschiavi@gmail.com",
-
   // Tasa USD -> UYU para mostrar el precio en pesos al lado (ajustala a la
   // cotizacion del dia; poné 0 para ocultar el precio en UYU).
   uyuRate: 40,
 
-  // --- Links de pago de MercadoPago (pegá los tuyos) ---
-  links: {
-    licencia:  "",   // Licencia PC (pago único)
-    pro:       "",   // Professional (suscripción mensual)
-    cred100:   "",   // Pack 100 créditos
-    cred550:   "",   // Pack 550 créditos
-    cred2500:  ""    // Pack 2500 créditos
-  },
-
-  // --- Precios mostrados en la web (en USD; ajustá si cobrás en $ local) ---
+  // --- Precios mostrados en la web (en USD; deben coincidir con PLANS en api/checkout.js) ---
   prices: {
     licencia:  { amount: 149, unit: "" },        // pago único
     pro:       { amount: 390, unit: "/mes" },     // mensual

@@ -1,0 +1,9 @@
+{
+  "name": "mv-data-governance",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MV Data Governance - landing, demo y funciones serverless de pago (Vercel).",
+  "dependencies": {
+    "botid": "^1.5.11"
+  }
+}

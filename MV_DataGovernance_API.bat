@@ -25,7 +25,7 @@ echo.
 echo  API + docs: http://127.0.0.1:8600/docs
 echo  (ES: para detener la API, cerra esta ventana / EN: to stop, close this window / PT: para parar, feche esta janela)
 echo.
-".venv\Scripts\python.exe" -m api.main
+".venv\Scripts\python.exe" -m bi_api.main
 goto end
 
 :end

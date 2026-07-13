@@ -35,7 +35,7 @@ DESCARGAS = os.path.join(ROOT, "landing", "descargas")
 
 # Qué entra en el ZIP portable (Opción B): todo lo necesario para correr,
 # sin repositorio git, sin builds previos, sin la landing de venta.
-_INCLUDE_DIRS = ["app", "mvdg", "api", "assets", "docs", "packaging",
+_INCLUDE_DIRS = ["app", "mvdg", "bi_api", "assets", "docs", "packaging",
                  "distribucion", "landing", "tests"]
 _INCLUDE_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
                   "run.sh", "requirements.txt", "README.md", ".gitattributes"]
@@ -44,7 +44,7 @@ _EXCLUDE_PARTS = {"__pycache__", ".venv", ".git", ".pytest_cache", "dist", "buil
 
 # Paquete demo web (liviano): corre el programa por los 3 medios, sin la
 # web de venta ni el video de demo (que pesan y no hacen falta para operar).
-_DEMO_DIRS = ["app", "mvdg", "api", "docs", "packaging", "distribucion"]
+_DEMO_DIRS = ["app", "mvdg", "bi_api", "docs", "packaging", "distribucion"]
 _DEMO_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
                "run.sh", "requirements.txt", "README.md", ".gitattributes"]
 # solo los iconos de marca, no el video

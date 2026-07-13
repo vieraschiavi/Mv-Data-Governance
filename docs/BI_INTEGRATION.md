@@ -6,7 +6,7 @@ cualquier herramienta de BI puede usar la que prefiera:
 | Vía | Formatos | Cómo |
 |---|---|---|
 | **Archivos** | CSV · Excel · JSON · Parquet | Pestaña **📤 BI & API** del programa → botones de descarga |
-| **API REST** | JSON · CSV | `MV_DataGovernance_API.bat` (o `python -m api.main`) → `http://127.0.0.1:8600` |
+| **API REST** | JSON · CSV | `MV_DataGovernance_API.bat` (o `python -m bi_api.main`) → `http://127.0.0.1:8600` |
 
 Tablas disponibles: `catalog`, `dictionary`, `quality_results`,
 `quality_by_dataset`, `quality_by_dimension`, `lineage`, `glossary`,
