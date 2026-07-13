@@ -133,95 +133,119 @@ recurrente sobre la misma plataforma que ya está construida (costo marginal ≈
 
 ---
 
-## 4. Facturación mensual proyectada (escenarios)
+## 4. Facturación mensual proyectada (escenarios, precios actualizados)
 
-**Supuestos comunes** (estado de madurez ~12 meses, MRR = ingreso mensual
-recurrente):
-- Professional US$ 490 · Enterprise US$ 1.900 · Retainer US$ 1.100 (promedio).
-- Diagnósticos: ingreso único promedio US$ 2.500, contados como flujo mensual.
+**Supuestos comunes** (estado de madurez ~12 meses; mezcla de licencia única
++ MRR + servicios + créditos, todos contados como flujo mensual):
+- Licencia PC US$ 149 (único) · Professional US$ 390/mes · Enterprise US$ 1.900/mes.
+- Retainer US$ 1.100/mes (promedio) · Diagnóstico US$ 2.500 (único).
+- Créditos: venta promedio US$ 35/pack.
 
 ### 4.1 Uruguay (mercado inicial)
 
-| Escenario | Pro | Ent | Retainers | Diagnósticos/mes | **Facturación mensual** |
-|---|---|---|---|---|---|
-| Conservador | 3 | 1 | 2 | 1 | **US$ 8.560** |
-| Base | 6 | 2 | 4 | 2 | **US$ 16.140** |
-| Optimista | 10 | 3 | 6 | 3 | **US$ 25.700** |
+| Escenario | Licencias/mes | Pro | Ent | Retainers | Diagnósticos/mes | Packs créditos/mes | **Facturación mensual** |
+|---|---|---|---|---|---|---|---|
+| Conservador | 3 | 2 | 0 | 2 | 1 | 5 | **US$ 6.100** |
+| Base | 6 | 5 | 1 | 4 | 2 | 15 | **US$ 14.700** |
+| Optimista | 10 | 10 | 2 | 6 | 3 | 30 | **US$ 24.300** |
 
 ### 4.2 LATAM (Argentina, Brasil, Chile, Paraguay, Perú, México…)
 
-Factor ×4–6 sobre Uruguay por tamaño de mercado, con partners locales.
+Factor ×5 sobre Uruguay por tamaño de mercado, con partners locales.
 
-| Escenario | Pro | Ent | Retainers | Diagnósticos/mes | **Facturación mensual** |
-|---|---|---|---|---|---|
-| Conservador | 15 | 4 | 8 | 4 | **US$ 43.750** |
-| Base | 35 | 10 | 20 | 8 | **US$ 108.150** |
-| Optimista | 70 | 20 | 40 | 15 | **US$ 213.800** |
+| Escenario | **Facturación mensual** |
+|---|---|
+| Conservador | **US$ 30.000** |
+| Base | **US$ 73.000** |
+| Optimista | **US$ 140.000** |
 
 ### 4.3 Mundo (con red de partners / reventa white-label)
 
-Factor ×3–5 sobre LATAM; requiere estructura de soporte multi-idioma.
+Factor ×3–4 sobre LATAM; requiere estructura de soporte multi-idioma y
+comisión a partners.
 
-| Escenario | Pro | Ent | Retainers | Diagnósticos/mes | **Facturación mensual** |
-|---|---|---|---|---|---|
-| Conservador | 60 | 15 | 30 | 12 | **US$ 121.400** |
-| Base | 150 | 40 | 80 | 25 | **US$ 373.500** |
-| Optimista | 350 | 90 | 180 | 50 | **US$ 693.500** |
+| Escenario | **Facturación mensual** |
+|---|---|
+| Conservador | **US$ 90.000** |
+| Base | **US$ 280.000** |
+| Optimista | **US$ 520.000** |
 
 ---
 
 ## 5. Ganancia neta mensual real (después de costos)
 
-**Estructura de costos** (proporción sobre facturación, negocio de software +
-servicio con costo marginal de plataforma casi nulo):
+**Estructura de costos**:
 
 | Costo | % / monto |
 |---|---|
-| Procesamiento de pagos | 4% de facturación |
+| Procesamiento de pagos (MercadoPago) | ~5% de facturación |
 | Marketing y adquisición | 12% de facturación |
-| Infraestructura (landing, API demo, backups) | US$ 80–400 / mes fijo |
-| Herramientas (dominio, correo, diseño, contable) | US$ 150–500 / mes fijo |
-| Personal de soporte/dev | 0 si es operación solo; US$ 2.500 por persona |
+| Infraestructura + herramientas (fijo) | US$ 500–1.500 / mes según escala |
+| Personal | 0 si es operación solo; US$ 2.500/persona/mes al escalar |
+| Comisión a partners (solo Mundo) | 25% de la facturación generada por partners |
 
-### 5.1 Uruguay
-
-| Escenario | Facturación | Costos | **Neto (operación solo)** | Neto (con 1 empleado) |
-|---|---|---|---|---|
-| Conservador | US$ 8.560 | ~US$ 1.600 | **US$ 6.960** | US$ 4.460 |
-| Base | US$ 16.140 | ~US$ 2.810 | **US$ 13.330** | US$ 10.830 |
-| Optimista | US$ 25.700 | ~US$ 4.300 | **US$ 21.400** | US$ 16.400 |
-
-### 5.2 LATAM (con equipo de 2–4 personas en base/optimista)
+### 5.1 Uruguay (operación solo, sin empleados)
 
 | Escenario | Facturación | Costos | **Neto mensual** |
 |---|---|---|---|
-| Conservador | US$ 43.750 | ~US$ 9.500 (1 empleado) | **US$ 34.250** |
-| Base | US$ 108.150 | ~US$ 27.500 (3 empleados) | **US$ 80.650** |
-| Optimista | US$ 213.800 | ~US$ 52.000 (5 empleados) | **US$ 161.800** |
+| Conservador | US$ 6.100 | ~US$ 1.540 | **US$ 4.560** |
+| Base | US$ 14.700 | ~US$ 3.150 | **US$ 11.550** |
+| Optimista | US$ 24.300 | ~US$ 4.930 | **US$ 19.370** |
+
+### 5.2 LATAM (1–5 personas según escenario)
+
+| Escenario | Facturación | Costos | **Neto mensual** |
+|---|---|---|---|
+| Conservador (1 empleado) | US$ 30.000 | ~US$ 8.200 | **US$ 21.800** |
+| Base (3 empleados) | US$ 73.000 | ~US$ 20.900 | **US$ 52.100** |
+| Optimista (5 empleados) | US$ 140.000 | ~US$ 37.800 | **US$ 102.200** |
 
 ### 5.3 Mundo (estructura de soporte y partners)
 
 | Escenario | Facturación | Costos | **Neto mensual** |
 |---|---|---|---|
-| Conservador | US$ 121.400 | ~US$ 42.000 | **US$ 79.400** |
-| Base | US$ 373.500 | ~US$ 140.000 | **US$ 233.500** |
-| Optimista | US$ 693.500 | ~US$ 280.000 | **US$ 413.500** |
+| Conservador | US$ 90.000 | ~US$ 34.500 | **US$ 55.500** |
+| Base | US$ 280.000 | ~US$ 103.000 | **US$ 177.000** |
+| Optimista | US$ 520.000 | ~US$ 195.000 | **US$ 325.000** |
 
-> Márgenes netos modelados: **~55–75% en operación chica** (Uruguay solo, costo
-> de plataforma marginal), bajando a **~40–60% al escalar** por incorporación
-> de personal y estructura. Coherente con negocios de software+servicio.
+> Márgenes netos modelados: **~65–80% en operación chica** (Uruguay solo,
+> costo de plataforma marginal ≈ 0), bajando a **~55–75%** en LATAM/Mundo por
+> incorporación de personal y comisión a partners. El dato clave: en Uruguay,
+> **solo, sin contratar a nadie, el escenario base ya deja ≈ US$ 11.550
+> netos/mes.**
 
 ---
 
-## 6. Recomendación
+## 6. Evaluación competitiva (1 a 10)
+
+El puntaje depende de **contra quién compitas** — no es el mismo negocio
+según el frente:
+
+| Frente de batalla | Puntaje | Por qué |
+|---|---|---|
+| **Nicho LATAM/PyME** (posicionamiento actual: datos locales, trilingüe, precio disruptivo, servicio) | **7–8/10** | Hueco real y desatendido; producto ya funcional y verificado (39 tests, demo, video, flujo de pago); sin competencia directa en español con este enfoque |
+| **Competir de igual a igual vs. Collibra/Purview en el mercado enterprise global** | **3–4/10** | Faltan certificaciones, equipo de soporte 24/7, ciclo de venta enterprise y credibilidad de marca — no alcanzable sin capital serio |
+| **Promedio ponderado, como está planteado el negocio hoy** | **7/10** | Correcto: juega donde tiene ventaja real (LATAM, servicio + plataforma), no donde no la tiene |
+
+Lo que baja el puntaje hoy no es el producto: es que todavía **no hay
+clientes reales pagando** (las reseñas de la web están marcadas como
+ejemplo), **los links de MercadoPago no están conectados** a la cuenta real
+(ver `docs/MERCADOPAGO.md`), y la capacidad de atender diagnósticos/retainers
+en paralelo es la de una sola persona.
+
+---
+
+## 7. Recomendación
 
 1. **Empezar por Uruguay, modelo servicio + plataforma.** Con 4–6 clientes
-   base ya hay un neto de ~US$ 13k/mes sin empleados.
-2. **No vender el software solo** contra Collibra/DataHub: venderlo **incluido
+   base ya hay un neto de ~US$ 11.550/mes sin empleados.
+2. **Conectar MercadoPago ya** (`docs/MERCADOPAGO.md`): es el paso que falta
+   para que la Licencia PC y los créditos se vendan solos, sin intervención manual.
+3. **No vender el software solo** contra Collibra/DataHub: venderlo **incluido
    en el servicio** (diagnóstico + retainer).
-3. **Reinvertir en el conector a bases de datos** (roadmap): desbloquea el
-   mercado de empresas grandes con datos productivos y sube el ticket.
-4. **Sumar partners para LATAM/mundo**: la reventa white-label multiplica sin
+4. **Reinvertir en el conector a bases de datos** (ya disponible): sube el
+   ticket con empresas de datos productivos.
+5. **Sumar partners para LATAM/mundo**: la reventa white-label multiplica sin
    crecer la estructura propia proporcionalmente.
 
 ---
