@@ -65,6 +65,7 @@ su restricción y recomienda el paquete automáticamente.
 | Módulo | Qué resuelve |
 |---|---|
 | 📊 **Panorama** | KPIs de gobierno: índice de calidad, reglas, PII, stewards, evolución 12 meses |
+| 🧪 **Laboratorio** | Caso completo de punta a punta (empresa retail ficticia): las 7 etapas de un proyecto de gobierno de datos —catalogar, medir ANTES, gobernar, corregir y medir DESPUÉS, linaje, políticas, publicar a BI— con teoría en criollo + técnica y dashboards reales en cada paso |
 | 📚 **Catálogo** | Inventario de datasets con dueño, steward, dominio, clasificación (PII), frescura + diccionario de columnas |
 | ✅ **Calidad** | Motor de reglas en 6 dimensiones (completitud, unicidad, validez, consistencia, puntualidad, exactitud) con umbrales, estados y mapa de calor |
 | 🧬 **Linaje** | Grafo interactivo fuente → cruda → curada → mart → BI, con foco aguas arriba/abajo |
