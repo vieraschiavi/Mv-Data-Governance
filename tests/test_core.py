@@ -363,6 +363,39 @@ def test_connectors_guards():
     assert ok is False and "driver" in msg.lower()
 
 
+# ------------------------------------------------------------- tutorial DMBOK
+@pytest.mark.parametrize("lang", LANGS)
+def test_dmbok_content_complete(lang):
+    from mvdg import dmbok
+    assert len(dmbok.areas(lang)) == 11
+    assert len(dmbok.principles(lang)) == 6
+    assert len(dmbok.concepts(lang)) == 14
+    assert len(dmbok.roles(lang)) == 3
+    assert len(dmbok.maturity(lang)) == 5
+    assert len(dmbok.lifecycle(lang)) == 6
+    for a in dmbok.areas(lang):
+        assert a["area"] and a["plain"] and a["tech"] and a["deliverables"]
+        assert a["coverage"] in ("covered", "partial", "out")
+        assert 0 <= a["score"] <= 100
+    for c in dmbok.concepts(lang):
+        assert c["term"] and c["def"] and c["cat"]
+
+
+def test_dmbok_coverage_and_radar():
+    from mvdg import dmbok
+    cov = dmbok.coverage_summary()
+    assert cov["covered"] + cov["partial"] + cov["out"] == 11
+    radar = dmbok.coverage_scores("es")
+    assert len(radar) == 11 and all(0 <= s <= 100 for _, s in radar)
+
+
+def test_dmbok_translations_differ():
+    from mvdg import dmbok
+    es = [a["area"] for a in dmbok.areas("es")]
+    en = [a["area"] for a in dmbok.areas("en")]
+    assert es != en  # están realmente traducidas
+
+
 # ------------------------------------------------------------- auto-diagnostico
 def test_selfcheck_all_pass():
     from mvdg.selfcheck import run_checks

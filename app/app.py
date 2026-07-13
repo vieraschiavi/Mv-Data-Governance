@@ -27,8 +27,9 @@ from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
 from mvdg.connectors import (ENGINES, delete_connection, list_tables,
                              load_connections, load_table, run_query,
                              save_connection, stored_password, test_connection)
-from mvdg.help_center import automation_rows, dmbok_rows, speeches
+from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
+from mvdg import dmbok
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -99,9 +100,9 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_lab, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
+(tab_ov, tab_lab, tab_dk, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
  tab_cl, tab_h) = st.tabs([
-    t("tab_overview", lang), t("tab_lab", lang),
+    t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
@@ -296,6 +297,106 @@ with tab_lab:
     r2.metric(t("lab_rows_cut", lang), f"-{lab['reduccion_filas_pct']}%",
              help=f"{b['filas_afectadas']:,} → {a['filas_afectadas']:,}")
     st.caption(t("lab_reproducible", lang))
+
+# ----------------------------------------------------------- Tutorial DMBOK
+with tab_dk:
+    st.info(t("dk_intro", lang), icon="📘")
+
+    # --- Teoría: qué es el DMBOK ---
+    st.subheader(t("dk_what", lang))
+    st.markdown(t("dk_what_p", lang))
+
+    # --- Principios rectores ---
+    st.subheader(t("dk_principles", lang))
+    pr_cols = st.columns(3)
+    for i, pr in enumerate(dmbok.principles(lang)):
+        with pr_cols[i % 3]:
+            st.markdown(f"**{pr['title']}**  \n{pr['text']}")
+
+    # --- Dashboard 1: radar de cobertura por área ---
+    st.subheader(t("dk_radar", lang))
+    cov = dmbok.coverage_summary()
+    k1, k2, k3 = st.columns(3)
+    k1.metric(t("dk_covered", lang), cov["covered"])
+    k2.metric(t("dk_partial", lang), cov["partial"])
+    k3.metric(t("dk_out", lang), cov["out"])
+    radar = dmbok.coverage_scores(lang)
+    r_theta = [name for name, _ in radar] + [radar[0][0]]
+    r_r = [score for _, score in radar] + [radar[0][1]]
+    fig = go.Figure(go.Scatterpolar(r=r_r, theta=r_theta, fill="toself",
+                                    line={"color": BRAND["amber"]},
+                                    fillcolor="rgba(242,180,65,.25)"))
+    fig.update_layout(**_PLOTLY_LAYOUT, height=460,
+                      polar={"radialaxis": {"range": [0, 100], "color": BRAND["muted"]},
+                             "bgcolor": "rgba(255,255,255,.03)"})
+    st.plotly_chart(fig, width="stretch", key="dk_radar")
+
+    # --- Las 11 áreas (expandibles, teoría + entregables + cobertura) ---
+    st.subheader(t("dk_areas", lang))
+    _COV_LABEL = {"covered": t("h_dmbok_covered", lang),
+                  "partial": t("h_dmbok_partial", lang),
+                  "out": t("h_dmbok_out", lang)}
+    for ar in dmbok.areas(lang):
+        with st.expander(f"{ar['n']}. {_COV_LABEL[ar['coverage']]} — {ar['area']}"):
+            st.markdown(f"**{t('dk_plain', lang)}:** {ar['plain']}")
+            st.markdown(f"**{t('dk_tech', lang)}:** {ar['tech']}")
+            st.markdown(f"**{t('dk_deliverables', lang)}:** {ar['deliverables']}")
+            st.caption(ar["note"])
+
+    # --- Conceptos clave (glosario buscable) ---
+    st.subheader(t("dk_concepts", lang))
+    cq = st.text_input(t("dk_concept_search", lang), "", key="dk_cq")
+    cdf = pd.DataFrame(dmbok.concepts(lang))[["cat", "term", "def"]]
+    if cq:
+        mask = cdf.apply(lambda r: cq.lower() in " ".join(map(str, r)).lower(), axis=1)
+        cdf = cdf[mask]
+    st.dataframe(cdf.rename(columns={
+        "cat": t("p_category", lang), "term": t("g_term", lang),
+        "def": t("g_definition", lang)}), width="stretch", hide_index=True)
+
+    # --- Roles del gobierno de datos ---
+    st.subheader(t("dk_roles", lang))
+    rdf = pd.DataFrame(dmbok.roles(lang))[["term", "def"]]
+    st.dataframe(rdf.rename(columns={
+        "term": t("dk_role", lang), "def": t("dk_responsibility", lang)}),
+        width="stretch", hide_index=True)
+
+    # --- Dashboard 2: modelo de madurez ---
+    st.subheader(t("dk_maturity", lang))
+    st.markdown(t("dk_maturity_note", lang))
+    mat = dmbok.maturity(lang)
+    mat_df = pd.DataFrame(mat)
+    fig = px.bar(mat_df, x="level", y=[1] * len(mat_df), text="name",
+                 color="level", color_continuous_scale=["#e05c5c", "#f2b441", "#00c896"],
+                 title=None)
+    fig.update_traces(textposition="inside", insidetextanchor="middle",
+                      hovertemplate="%{text}")
+    fig.update_layout(**_PLOTLY_LAYOUT, height=180, showlegend=False,
+                      coloraxis_showscale=False, yaxis={"visible": False},
+                      xaxis={"title": None, "tickmode": "linear"})
+    st.plotly_chart(fig, width="stretch", key="dk_maturity_bar")
+    for m in mat:
+        st.markdown(f"**{t('dk_level', lang)} {m['level']} · {m['name']}** — {m['desc']}")
+
+    # --- Ciclo de vida (POSMAD) ---
+    st.subheader(t("dk_lifecycle", lang))
+    st.markdown(t("dk_lifecycle_note", lang))
+    lc_cols = st.columns(len(dmbok.lifecycle(lang)))
+    for i, ph in enumerate(dmbok.lifecycle(lang)):
+        with lc_cols[i]:
+            st.markdown(f"**{i+1}. {ph['phase']}**")
+            st.caption(ph["desc"])
+
+    # --- Dashboard 3: las 6 dimensiones de calidad medidas en vivo ---
+    st.subheader(t("dk_quality_dims", lang))
+    by_dim = quality_by_dimension(results)
+    by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
+    fig = px.bar(by_dim, x="dimension", y="quality_index", text="quality_index",
+                 color_discrete_sequence=[BRAND["green"]])
+    fig.update_traces(texttemplate="%{text:.1f}")
+    fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
+                      xaxis_title=None, yaxis_title=None)
+    st.plotly_chart(fig, width="stretch", key="dk_quality_dims")
 
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
@@ -678,16 +779,6 @@ with tab_cl:
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
     st.info(t("h_intro", lang), icon="❓")
-
-    st.subheader(t("h_dmbok", lang))
-    st.markdown(t("h_dmbok_note", lang))
-    _COVERAGE_LABEL = {"covered": t("h_dmbok_covered", lang), "partial": t("h_dmbok_partial", lang),
-                        "out": t("h_dmbok_out", lang)}
-    for row in dmbok_rows(lang):
-        with st.expander(f"{_COVERAGE_LABEL[row['coverage']]} — {row['area']}"):
-            st.markdown(f"**{t('h_dmbok_plain', lang)}:** {row['plain']}")
-            st.markdown(f"**{t('h_dmbok_tech', lang)}:** {row['tech']}")
-            st.caption(row["note"])
 
     st.subheader(t("h_matrix", lang))
     st.markdown(t("h_matrix_note", lang))

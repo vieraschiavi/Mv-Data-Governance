@@ -15,8 +15,16 @@ maestros, arquitectura) — sin pretender cubrir las que son responsabilidad
 de otro equipo o herramienta (modelado, almacenamiento, gestión documental).
 Esta guía existe para que tanto **quien no es técnico** como **quien sí lo
 es** entiendan de qué se trata cada área y qué hace exactamente la
-plataforma en cada una. El mismo contenido está disponible dentro del
-programa, en la pestaña **Ayuda → "Marco DAMA-DMBOK"**.
+plataforma en cada una.
+
+> **Tutorial completo dentro del programa:** la pestaña **📘 DMBOK** trae un
+> tutorial interactivo con teoría y tableros: los principios rectores, las
+> 11 áreas (con entregables típicos y cobertura), un glosario de conceptos
+> clave (dueño vs. steward vs. custodio, MDM, golden record, metadato,
+> linaje, POSMAD…), los roles del gobierno de datos, el modelo de madurez
+> de 5 niveles y el ciclo de vida del dato — con un radar de cobertura por
+> área y el tablero de las 6 dimensiones de calidad medidas en vivo. Todo
+> trilingüe (ES/EN/PT).
 
 ### 🙋 Si no sos técnico
 

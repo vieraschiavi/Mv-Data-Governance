@@ -66,6 +66,7 @@ su restricción y recomienda el paquete automáticamente.
 |---|---|
 | 📊 **Panorama** | KPIs de gobierno: índice de calidad, reglas, PII, stewards, evolución 12 meses |
 | 🧪 **Laboratorio** | Caso completo de punta a punta (empresa retail ficticia): las 7 etapas de un proyecto de gobierno de datos —catalogar, medir ANTES, gobernar, corregir y medir DESPUÉS, linaje, políticas, publicar a BI— con teoría en criollo + técnica y dashboards reales en cada paso |
+| 📘 **DMBOK** | Tutorial completo del estándar **DAMA-DMBOK**: las 11 áreas de conocimiento (con entregables y cobertura honesta), principios rectores, glosario de conceptos clave, roles (dueño/steward/custodio), modelo de madurez (5 niveles) y ciclo de vida del dato (POSMAD) — con tableros (radar de cobertura, madurez, 6 dimensiones de calidad). Para entender el proceso y demostrar conocimiento |
 | 📚 **Catálogo** | Inventario de datasets con dueño, steward, dominio, clasificación (PII), frescura + diccionario de columnas |
 | ✅ **Calidad** | Motor de reglas en 6 dimensiones (completitud, unicidad, validez, consistencia, puntualidad, exactitud) con umbrales, estados y mapa de calor |
 | 🧬 **Linaje** | Grafo interactivo fuente → cruda → curada → mart → BI, con foco aguas arriba/abajo |
@@ -74,7 +75,7 @@ su restricción y recomienda el paquete automáticamente.
 | 🔎 **Mis datos** | Subí tu CSV/Excel **o conectate directo a tu base de datos** (PostgreSQL, MySQL, SQL Server, Oracle, SQLite): perfil por columna, duplicados, PII detectada y reglas sugeridas |
 | 📤 **BI & API** | Exportación CSV/Excel/JSON/Parquet + paquete Excel multi-hoja + API REST |
 | 🏢 **Empresas** | Fichas de empresas clientes **que se guardan en disco** (contacto, BI, restricción de TI → recomienda Opción A o B, madurez, notas) con exportación |
-| ❓ **Ayuda** | Marco **DAMA-DMBOK** (las 11 áreas, explicadas en criollo y técnicamente) + qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |
+| ❓ **Ayuda** | Qué se automatiza y qué no + **speeches IA** listos (dirección, dueños de datos, TI, comité, origen) para lograr la parte no automatizable y cerrar el círculo |
 
 ## 📊 Compatibilidad BI
 

@@ -112,6 +112,18 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert len(SPEECHES) == 5 and len(automation_rows("es")) >= 6
         return f"{len(SPEECHES)} speeches, matriz de automatización"
 
+    @check("Tutorial DAMA-DMBOK (11 áreas + teoría)")
+    def _():
+        from . import dmbok
+        assert len(dmbok.areas("es")) == 11
+        assert len(dmbok.principles("es")) == 6
+        assert len(dmbok.concepts("es")) >= 12
+        assert len(dmbok.maturity("es")) == 5 and len(dmbok.lifecycle("es")) == 6
+        cov = dmbok.coverage_summary()
+        assert cov["covered"] + cov["partial"] + cov["out"] == 11
+        return (f"11 áreas, {len(dmbok.concepts('es'))} conceptos, "
+                f"{cov['covered']} cubiertas / {cov['partial']} parciales")
+
     @check("API REST importable")
     def _():
         from bi_api.main import TABLES, app  # noqa: F401
