@@ -112,6 +112,18 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert len(SPEECHES) == 5 and len(automation_rows("es")) >= 6
         return f"{len(SPEECHES)} speeches, matriz de automatización"
 
+    @check("Tutorial DAMA-DMBOK (11 áreas + teoría)")
+    def _():
+        from . import dmbok
+        assert len(dmbok.areas("es")) == 11
+        assert len(dmbok.principles("es")) == 6
+        assert len(dmbok.concepts("es")) >= 12
+        assert len(dmbok.maturity("es")) == 5 and len(dmbok.lifecycle("es")) == 6
+        cov = dmbok.coverage_summary()
+        assert cov["covered"] + cov["partial"] + cov["out"] == 11
+        return (f"11 áreas, {len(dmbok.concepts('es'))} conceptos, "
+                f"{cov['covered']} cubiertas / {cov['partial']} parciales")
+
     @check("API REST importable")
     def _():
         from bi_api.main import TABLES, app  # noqa: F401
@@ -130,6 +142,22 @@ def run_checks() -> list[tuple[str, bool, str]]:
         run_server(argv_out=argv)  # dry-run: no lanza el servidor
         assert "--server.address" in argv and "--server.port" in argv
         return "autorización por host + arranque server OK"
+
+    @check("Dataset de ejemplo real (rotulado de alimentos)")
+    def _():
+        import os
+        import pandas as pd
+        from .profiler import profile_table, summary
+        root = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, "assets", "samples",
+                            "rotulado_de_alimentos_2026.csv")
+        assert os.path.exists(path), "falta el CSV de ejemplo"
+        df = pd.read_csv(path)
+        info = summary(df)
+        assert info["rows"] == 284 and info["columns"] == 12
+        assert len(profile_table(df)) == 12
+        return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
 
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():

@@ -52,6 +52,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_clients": {"es": "🏢 Empresas", "en": "🏢 Companies", "pt": "🏢 Empresas"},
     "tab_help": {"es": "❓ Ayuda", "en": "❓ Help", "pt": "❓ Ajuda"},
     "tab_lab": {"es": "🧪 Laboratorio", "en": "🧪 Lab", "pt": "🧪 Laboratório"},
+    "tab_dmbok": {"es": "📘 DMBOK", "en": "📘 DMBOK", "pt": "📘 DMBOK"},
     # ------------------------------------------------------------- overview
     "kpi_datasets": {"es": "Datasets gobernados", "en": "Governed datasets", "pt": "Datasets governados"},
     "kpi_columns": {"es": "Columnas documentadas", "en": "Documented columns", "pt": "Colunas documentadas"},
@@ -212,6 +213,42 @@ _T: dict[str, dict[str, str]] = {
     "pr_source": {"es": "Fuente de datos", "en": "Data source", "pt": "Fonte de dados"},
     "pr_src_file": {"es": "📄 Archivo (CSV/Excel)", "en": "📄 File (CSV/Excel)", "pt": "📄 Arquivo (CSV/Excel)"},
     "pr_src_db": {"es": "🗄️ Base de datos", "en": "🗄️ Database", "pt": "🗄️ Banco de dados"},
+    "pr_src_example": {"es": "🧪 Dataset de ejemplo (real)", "en": "🧪 Example dataset (real)", "pt": "🧪 Dataset de exemplo (real)"},
+    "pr_example_title": {
+        "es": "Rotulado de alimentos 2026 — control bromatológico (dataset público real)",
+        "en": "Food labeling 2026 — food-safety control (real public dataset)",
+        "pt": "Rotulagem de alimentos 2026 — controle bromatológico (dataset público real)",
+    },
+    "pr_example_desc": {
+        "es": "284 análisis de productos alimenticios (dulce de leche, agua mineral, etc.) con su "
+              "clasificación, marca, habilitación, vencimiento, lote y contenido neto. Un caso "
+              "real para ver la plataforma perfilando datos que no son de demostración.",
+        "en": "284 food-product analyses (dulce de leche, mineral water, etc.) with their "
+              "classification, brand, authorization, expiry, batch and net content. A real case "
+              "to watch the platform profiling non-demo data.",
+        "pt": "284 análises de produtos alimentícios (doce de leite, água mineral, etc.) com sua "
+              "classificação, marca, habilitação, vencimento, lote e conteúdo líquido. Um caso "
+              "real para ver a plataforma perfilando dados que não são de demonstração.",
+    },
+    "pr_example_missing": {
+        "es": "No se encontró el dataset de ejemplo en el paquete.",
+        "en": "The example dataset was not found in the package.",
+        "pt": "O dataset de exemplo não foi encontrado no pacote.",
+    },
+    "pr_example_source": {
+        "es": "📛 Nombre: **Rotulado de alimentos 2026** · Archivo: `rotulado_de_alimentos_2026.csv` · "
+              "Origen: datos públicos de **control bromatológico de alimentos (Uruguay, 2026)** — "
+              "análisis de rotulado y composición según el Reglamento Bromatológico Nacional (referencias "
+              "a RUNAEV, Decreto 466/009). Provisto por el usuario a partir de datos abiertos de gobierno.",
+        "en": "📛 Name: **Food labeling 2026** · File: `rotulado_de_alimentos_2026.csv` · "
+              "Origin: public **food-safety (bromatological) control data (Uruguay, 2026)** — labeling and "
+              "composition analyses under the National Food Regulation (references to RUNAEV, Decree 466/009). "
+              "Provided by the user from open government data.",
+        "pt": "📛 Nome: **Rotulagem de alimentos 2026** · Arquivo: `rotulado_de_alimentos_2026.csv` · "
+              "Origem: dados públicos de **controle bromatológico de alimentos (Uruguai, 2026)** — análises "
+              "de rotulagem e composição conforme o Regulamento Bromatológico Nacional (referências a RUNAEV, "
+              "Decreto 466/009). Fornecido pelo usuário a partir de dados abertos de governo.",
+    },
     # ------------------------------------------------------------- connectors
     "db_intro": {
         "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "
@@ -397,32 +434,80 @@ _T: dict[str, dict[str, str]] = {
               "empresas que bloqueiam .exe mas permitem Python). Mesmas "
               "funcionalidades em ambas. Detalhes na pasta distribucion/.",
     },
-    "h_dmbok": {"es": "Marco DAMA-DMBOK: las 11 áreas del gobierno de datos",
-                "en": "DAMA-DMBOK framework: the 11 data-governance areas",
-                "pt": "Marco DAMA-DMBOK: as 11 áreas da governança de dados"},
-    "h_dmbok_note": {
-        "es": "El DMBOK (Data Management Body of Knowledge) es el estándar de "
-              "referencia de la industria en gobierno de datos, publicado por "
-              "DAMA International. Acá está explicado dos veces: en criollo, "
-              "para quien no es técnico, y con el detalle técnico. Con qué "
-              "color cubre esta plataforma cada área, sin exagerar.",
-        "en": "The DMBOK (Data Management Body of Knowledge) is the industry "
-              "reference standard for data governance, published by DAMA "
-              "International. It's explained twice here: in plain words, for "
-              "non-technical readers, and with technical detail. Color-coded "
-              "with how much this platform actually covers each area.",
-        "pt": "O DMBOK (Data Management Body of Knowledge) é o padrão de "
-              "referência da indústria em governança de dados, publicado pela "
-              "DAMA International. Está explicado duas vezes aqui: em "
-              "linguagem simples, para quem não é técnico, e com o detalhe "
-              "técnico. Com a cor de quanto esta plataforma cobre cada área, "
-              "sem exagerar.",
-    },
-    "h_dmbok_plain": {"es": "En criollo", "en": "In plain words", "pt": "Em linguagem simples"},
-    "h_dmbok_tech": {"es": "Detalle técnico", "en": "Technical detail", "pt": "Detalhe técnico"},
     "h_dmbok_covered": {"es": "✅ Cubierta", "en": "✅ Covered", "pt": "✅ Coberta"},
     "h_dmbok_partial": {"es": "🟡 Parcial", "en": "🟡 Partial", "pt": "🟡 Parcial"},
     "h_dmbok_out": {"es": "⬜ Fuera de alcance", "en": "⬜ Out of scope", "pt": "⬜ Fora de escopo"},
+    # -------------------------------------------------- tutorial DMBOK
+    "dk_intro": {
+        "es": "Tutorial completo del estándar **DAMA-DMBOK** (Data Management Body of "
+              "Knowledge): teoría, conceptos, roles, madurez y el ciclo de vida del dato, "
+              "con tableros. Explicado en criollo y técnico, en los 3 idiomas.",
+        "en": "Complete tutorial of the **DAMA-DMBOK** standard (Data Management Body of "
+              "Knowledge): theory, concepts, roles, maturity and the data lifecycle, with "
+              "dashboards. Explained plainly and technically, in 3 languages.",
+        "pt": "Tutorial completo do padrão **DAMA-DMBOK** (Data Management Body of "
+              "Knowledge): teoria, conceitos, papéis, maturidade e o ciclo de vida do "
+              "dado, com painéis. Explicado em linguagem simples e técnica, nos 3 idiomas.",
+    },
+    "dk_what": {"es": "¿Qué es el DAMA-DMBOK?", "en": "What is DAMA-DMBOK?", "pt": "O que é o DAMA-DMBOK?"},
+    "dk_what_p": {
+        "es": "El DMBOK es el estándar de referencia mundial en gestión de datos, "
+              "publicado por DAMA International. Organiza la disciplina en 11 áreas de "
+              "conocimiento (la 'Rueda DAMA'), con el gobierno de datos en el centro "
+              "coordinando a las otras 10. Este tutorial recorre las 11 áreas, los "
+              "principios, los conceptos clave, los roles, el modelo de madurez y el "
+              "ciclo de vida del dato — y marca, con honestidad, qué cubre esta plataforma.",
+        "en": "The DMBOK is the world reference standard for data management, published "
+              "by DAMA International. It organizes the discipline into 11 knowledge areas "
+              "(the 'DAMA Wheel'), with data governance at the center coordinating the "
+              "other 10. This tutorial covers the 11 areas, the principles, key concepts, "
+              "roles, the maturity model and the data lifecycle — and honestly marks what "
+              "this platform covers.",
+        "pt": "O DMBOK é o padrão de referência mundial em gestão de dados, publicado "
+              "pela DAMA International. Organiza a disciplina em 11 áreas de conhecimento "
+              "(a 'Roda DAMA'), com a governança de dados no centro coordenando as outras "
+              "10. Este tutorial percorre as 11 áreas, os princípios, os conceitos-chave, "
+              "os papéis, o modelo de maturidade e o ciclo de vida do dado — e marca, com "
+              "honestidade, o que esta plataforma cobre.",
+    },
+    "dk_principles": {"es": "Principios rectores", "en": "Guiding principles", "pt": "Princípios norteadores"},
+    "dk_radar": {"es": "Cobertura por área (qué tanto cubre la plataforma)",
+                 "en": "Coverage by area (how much the platform covers)",
+                 "pt": "Cobertura por área (quanto a plataforma cobre)"},
+    "dk_areas": {"es": "Las 11 áreas de conocimiento", "en": "The 11 knowledge areas", "pt": "As 11 áreas de conhecimento"},
+    "dk_covered": {"es": "Áreas cubiertas", "en": "Covered areas", "pt": "Áreas cobertas"},
+    "dk_partial": {"es": "Cobertura parcial", "en": "Partial coverage", "pt": "Cobertura parcial"},
+    "dk_out": {"es": "Fuera de alcance", "en": "Out of scope", "pt": "Fora de escopo"},
+    "dk_deliverables": {"es": "Entregables típicos", "en": "Typical deliverables", "pt": "Entregáveis típicos"},
+    "dk_plain": {"es": "🙋 En criollo", "en": "🙋 In plain words", "pt": "🙋 Em linguagem simples"},
+    "dk_tech": {"es": "🛠️ Técnico", "en": "🛠️ Technical", "pt": "🛠️ Técnico"},
+    "dk_concepts": {"es": "Conceptos clave (glosario del estándar)", "en": "Key concepts (standard glossary)", "pt": "Conceitos-chave (glossário do padrão)"},
+    "dk_concept_search": {"es": "Buscar concepto…", "en": "Search a concept…", "pt": "Buscar conceito…"},
+    "dk_roles": {"es": "Roles del gobierno de datos", "en": "Data governance roles", "pt": "Papéis da governança de dados"},
+    "dk_role": {"es": "Rol", "en": "Role", "pt": "Papel"},
+    "dk_responsibility": {"es": "Responsabilidad", "en": "Responsibility", "pt": "Responsabilidade"},
+    "dk_maturity": {"es": "Modelo de madurez del gobierno de datos", "en": "Data governance maturity model", "pt": "Modelo de maturidade da governança de dados"},
+    "dk_maturity_note": {
+        "es": "5 niveles, de 'cada uno con su planilla' a 'los datos como activo estratégico'. "
+              "El objetivo de un proyecto de gobierno es subir de nivel de forma medible.",
+        "en": "5 levels, from 'everyone with their own spreadsheet' to 'data as a strategic "
+              "asset'. A governance project aims to climb levels measurably.",
+        "pt": "5 níveis, de 'cada um com sua planilha' a 'dados como ativo estratégico'. "
+              "Um projeto de governança busca subir de nível de forma mensurável.",
+    },
+    "dk_level": {"es": "Nivel", "en": "Level", "pt": "Nível"},
+    "dk_lifecycle": {"es": "Ciclo de vida del dato (POSMAD)", "en": "Data lifecycle (POSMAD)", "pt": "Ciclo de vida do dado (POSMAD)"},
+    "dk_lifecycle_note": {
+        "es": "El dato se gobierna en todo su recorrido, no solo cuando se usa: "
+              "Planificar → Obtener → Almacenar → Mantener → Aplicar → Disponer.",
+        "en": "Data is governed across its whole journey, not only when used: "
+              "Plan → Obtain → Store → Maintain → Apply → Dispose.",
+        "pt": "O dado é governado em todo o seu percurso, não só quando usado: "
+              "Planejar → Obter → Armazenar → Manter → Aplicar → Descartar.",
+    },
+    "dk_quality_dims": {"es": "Las 6 dimensiones de calidad (DAMA), medidas en tus datos",
+                        "en": "The 6 quality dimensions (DAMA), measured on your data",
+                        "pt": "As 6 dimensões de qualidade (DAMA), medidas nos seus dados"},
     # -------------------------------------------------------- laboratorio
     "lab_intro": {
         "es": "Un caso completo de punta a punta, con teoría y dashboards reales: la misma empresa retail recorre las 7 etapas de un proyecto de gobierno de datos, del catálogo a la publicación en BI.",

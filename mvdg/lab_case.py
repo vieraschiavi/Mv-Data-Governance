@@ -102,8 +102,8 @@ def lab_measure(lang: str = "es") -> dict:
 # ---------------------------------------------------------------------------
 # Teoría por etapa: cada paso del laboratorio explicado en criollo y técnico,
 # más qué se ve concretamente en el programa en ese paso. dmbok_area referencia
-# la sección de mvdg.help_center.DMBOK_AREAS para que el usuario pueda cruzar
-# ambas pantallas.
+# el área correspondiente del tab DMBOK (mvdg.dmbok) para que el usuario pueda
+# cruzar ambas pantallas.
 # ---------------------------------------------------------------------------
 LAB_STEPS: list[dict] = [
     {

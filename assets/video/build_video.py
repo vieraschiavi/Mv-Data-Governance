@@ -1,21 +1,32 @@
 """
-MV Data Governance · Generador del video de demo (PIL + imageio-ffmpeg)
-con narración en voz rioplatense (Piper TTS, voz es_AR "daniela").
+MV Data Governance · Generador del video de demo (PIL + imageio-ffmpeg) con
+narración en voz por idioma (Piper TTS): español (es_AR "daniela"), inglés
+(en_US "amy") y portugués (pt_BR "faber").
 
-Produce ``assets/video/MVDataGovernance_Demo.mp4`` (1280×720) con las escenas
-del recorrido del producto y la voz en off sincronizada escena por escena
-(la duración de cada escena se ajusta a su narración: sin desfases), y lo
-copia a ``landing/video/`` para que la landing lo sirva.
+Produce UN video por idioma, cada uno hablado en ese idioma:
+    assets/video/MVDataGovernance_Demo_es.mp4
+    assets/video/MVDataGovernance_Demo_en.mp4
+    assets/video/MVDataGovernance_Demo_pt.mp4
+y una copia por defecto assets/video/MVDataGovernance_Demo.mp4 (= español) para
+compatibilidad. Todos se copian a landing/video/ para que la landing sirva el
+que corresponda al idioma elegido por el visitante.
+
+La voz va sincronizada escena por escena (la duración de cada escena se ajusta a
+su narración, sin desfases). El texto en pantalla se mantiene trilingüe.
 
 Ejecutar desde la raíz del repo:
     python assets/video/build_video.py
 
-Voz (opcional pero recomendada): descargar el modelo una vez y exportar
-MVDG_VOICE_ONNX con su ruta; si no está, el video sale sin narración.
+Voces (opcional pero recomendado): descargá cada modelo una vez y exportá su
+ruta. Sin modelo para un idioma, ese video sale sin narración (pero se genera).
     pip install piper-tts
-    curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_AR/daniela/high/es_AR-daniela-high.onnx
-    curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_AR/daniela/high/es_AR-daniela-high.onnx.json
-    MVDG_VOICE_ONNX=./es_AR-daniela-high.onnx python assets/video/build_video.py
+    # es_AR-daniela-high, en_US-amy-medium, pt_BR-faber-medium (HuggingFace):
+    #   https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/...
+    MVDG_VOICE_ONNX_ES=./es_AR-daniela-high.onnx \
+    MVDG_VOICE_ONNX_EN=./en_US-amy-medium.onnx \
+    MVDG_VOICE_ONNX_PT=./pt_BR-faber-medium.onnx \
+    python assets/video/build_video.py
+    # MVDG_VOICE_ONNX (sin sufijo) sigue valiendo como alias del modelo español.
 """
 from __future__ import annotations
 
@@ -43,8 +54,21 @@ FAINT = (108, 127, 153)
 
 _FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUT = os.path.join(ROOT, "assets", "video", "MVDataGovernance_Demo.mp4")
-LANDING_COPY = os.path.join(ROOT, "landing", "video", "MVDataGovernance_Demo.mp4")
+VIDEO_DIR = os.path.join(ROOT, "assets", "video")
+LANDING_DIR = os.path.join(ROOT, "landing", "video")
+
+LANGS = ["es", "en", "pt"]
+# variable de entorno con el modelo de voz Piper de cada idioma
+_VOICE_ENV = {"es": "MVDG_VOICE_ONNX_ES", "en": "MVDG_VOICE_ONNX_EN",
+              "pt": "MVDG_VOICE_ONNX_PT"}
+
+
+def _voice_model(lang: str) -> str:
+    """Ruta al modelo Piper del idioma (o '' si no está configurado)."""
+    path = os.environ.get(_VOICE_ENV[lang], "")
+    if not path and lang == "es":  # alias histórico: MVDG_VOICE_ONNX == español
+        path = os.environ.get("MVDG_VOICE_ONNX", "")
+    return path if path and os.path.exists(path) else ""
 
 
 def font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
@@ -271,40 +295,82 @@ def scene_outro(p: float) -> Image.Image:
     return img
 
 
-# (escena, duración mínima visual, narración rioplatense)
+# (escena, duración mínima visual, narración por idioma {es, en, pt})
 SCENES = [
-    (scene_intro, 6.0,
-     "MV Data Governance: gobierno de datos claro, medible y listo para BI. "
-     "Cien por ciento web y PC, en español, inglés y portugués."),
-    (scene_quality, 8.0,
-     "La calidad de tus datos, medida en seis dimensiones: completitud, "
-     "unicidad, validez, consistencia, puntualidad y exactitud. Diecisiete "
-     "reglas corren solas y te muestran exactamente dónde está el problema "
-     "y cuántas filas afecta."),
-    (scene_catalog, 8.0,
-     "Un catálogo único para toda la empresa: cada dataset con su dueño, su "
-     "steward y su clasificación. Los datos personales quedan identificados "
-     "y protegidos desde el primer día."),
-    (scene_lineage, 8.0,
-     "Linaje de punta a punta: seguí el recorrido del dato desde la fuente "
-     "hasta el tablero de BI, aguas arriba y aguas abajo, con un clic."),
-    (scene_bi, 7.0,
-     "Y todo se conecta con la herramienta que ya usás: Power BI, Tableau, "
-     "Looker, MicroStrategy, Qlik o Excel. Por archivo o por API: el formato "
-     "lo elegís vos."),
-    (scene_outro, 5.0,
-     "MV Data Governance. Tus datos gobernados, tus decisiones confiables. "
-     "Descargalo hoy: sin APK, y sin que tus datos salgan de tu empresa."),
+    (scene_intro, 6.0, {
+        "es": "MV Data Governance: gobierno de datos claro, medible y listo "
+              "para BI. Cien por ciento web y PC, en español, inglés y portugués.",
+        "en": "MV Data Governance: clear, measurable, BI-ready data governance. "
+              "One hundred percent web and desktop, in Spanish, English and "
+              "Portuguese.",
+        "pt": "MV Data Governance: governança de dados clara, mensurável e "
+              "pronta para BI. Cem por cento web e desktop, em espanhol, inglês "
+              "e português.",
+    }),
+    (scene_quality, 8.0, {
+        "es": "La calidad de tus datos, medida en seis dimensiones: completitud, "
+              "unicidad, validez, consistencia, puntualidad y exactitud. Diecisiete "
+              "reglas corren solas y te muestran exactamente dónde está el problema "
+              "y cuántas filas afecta.",
+        "en": "Your data quality, measured across six dimensions: completeness, "
+              "uniqueness, validity, consistency, timeliness and accuracy. Seventeen "
+              "rules run on their own and show you exactly where the problem is and "
+              "how many rows it affects.",
+        "pt": "A qualidade dos seus dados, medida em seis dimensões: completude, "
+              "unicidade, validade, consistência, atualidade e exatidão. Dezessete "
+              "regras rodam sozinhas e mostram exatamente onde está o problema e "
+              "quantas linhas ele afeta.",
+    }),
+    (scene_catalog, 8.0, {
+        "es": "Un catálogo único para toda la empresa: cada dataset con su dueño, "
+              "su steward y su clasificación. Los datos personales quedan "
+              "identificados y protegidos desde el primer día.",
+        "en": "A single catalog for the whole company: every dataset with its "
+              "owner, its steward and its classification. Personal data is "
+              "identified and protected from day one.",
+        "pt": "Um catálogo único para toda a empresa: cada dataset com seu dono, "
+              "seu steward e sua classificação. Os dados pessoais ficam "
+              "identificados e protegidos desde o primeiro dia.",
+    }),
+    (scene_lineage, 8.0, {
+        "es": "Linaje de punta a punta: seguí el recorrido del dato desde la "
+              "fuente hasta el tablero de BI, aguas arriba y aguas abajo, con un clic.",
+        "en": "End-to-end lineage: follow the data's journey from the source all "
+              "the way to the BI dashboard, upstream and downstream, with one click.",
+        "pt": "Linhagem de ponta a ponta: siga o caminho do dado desde a origem "
+              "até o painel de BI, para cima e para baixo, com um clique.",
+    }),
+    (scene_bi, 7.0, {
+        "es": "Y todo se conecta con la herramienta que ya usás: Power BI, Tableau, "
+              "Looker, MicroStrategy, Qlik o Excel. Por archivo o por API: el "
+              "formato lo elegís vos.",
+        "en": "And it all connects to the tool you already use: Power BI, Tableau, "
+              "Looker, MicroStrategy, Qlik or Excel. By file or by API — you choose "
+              "the format.",
+        "pt": "E tudo se conecta com a ferramenta que você já usa: Power BI, "
+              "Tableau, Looker, MicroStrategy, Qlik ou Excel. Por arquivo ou por "
+              "API — o formato você escolhe.",
+    }),
+    (scene_outro, 5.0, {
+        "es": "MV Data Governance. Tus datos gobernados, tus decisiones confiables. "
+              "Descargalo hoy: sin APK, y sin que tus datos salgan de tu empresa.",
+        "en": "MV Data Governance. Your data governed, your decisions trustworthy. "
+              "Download it today: no APK, and without your data ever leaving your "
+              "company.",
+        "pt": "MV Data Governance. Seus dados governados, suas decisões confiáveis. "
+              "Baixe hoje: sem APK, e sem que seus dados saiam da sua empresa.",
+    }),
 ]
 FADE = 0.5        # segundos de fundido entre escenas
 VOICE_LEAD = 0.4  # la voz entra apenas después del corte de escena
 VOICE_TAIL = 0.9  # aire después de cada frase
 
 
-def _synth_narrations(tmpdir: str) -> list[str] | None:
-    """Genera un WAV por escena con Piper (voz es_AR). None si no hay modelo."""
-    model = os.environ.get("MVDG_VOICE_ONNX", "")
-    if not model or not os.path.exists(model):
+def _synth_narrations(tmpdir: str, lang: str) -> list[str] | None:
+    """Genera un WAV por escena con Piper en el idioma dado. None si no hay
+    modelo de voz configurado para ese idioma."""
+    model = _voice_model(lang)
+    if not model:
         return None
     try:
         from piper import PiperVoice
@@ -312,8 +378,9 @@ def _synth_narrations(tmpdir: str) -> list[str] | None:
         return None
     voice = PiperVoice.load(model)
     paths = []
-    for i, (_, _, text) in enumerate(SCENES):
-        path = os.path.join(tmpdir, f"nar_{i}.wav")
+    for i, (_, _, narration) in enumerate(SCENES):
+        text = narration[lang]
+        path = os.path.join(tmpdir, f"nar_{lang}_{i}.wav")
         with wave.open(path, "wb") as w:
             voice.synthesize_wav(text, w)
         paths.append(path)
@@ -358,12 +425,13 @@ def _mix_audio_track(narrations: list[str], secs: list[float],
         w.writeframes(total.tobytes())
 
 
-def build() -> str:
-    tmpdir = tempfile.mkdtemp(prefix="mvdg_video_")
-    narrations = _synth_narrations(tmpdir)
+def build_one(lang: str, tmpdir: str) -> tuple[str, bool]:
+    """Genera el video de un idioma. Devuelve (ruta, tiene_voz)."""
+    out = os.path.join(VIDEO_DIR, f"MVDataGovernance_Demo_{lang}.mp4")
+    narrations = _synth_narrations(tmpdir, lang)
     secs_list = _scene_seconds(narrations)
 
-    video_only = os.path.join(tmpdir, "video_sin_audio.mp4") if narrations else OUT
+    video_only = os.path.join(tmpdir, f"video_{lang}.mp4") if narrations else out
     writer = imageio.get_writer(video_only, fps=FPS, codec="libx264",
                                 quality=7, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
@@ -385,22 +453,42 @@ def build() -> str:
 
     if narrations:
         # pista de voz alineada a los cortes de escena + mux con ffmpeg
-        track = os.path.join(tmpdir, "narracion.wav")
+        track = os.path.join(tmpdir, f"narracion_{lang}.wav")
         _mix_audio_track(narrations, secs_list, track)
         from imageio_ffmpeg import get_ffmpeg_exe
         subprocess.run([get_ffmpeg_exe(), "-y", "-i", video_only, "-i", track,
                         "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-                        "-shortest", OUT],
+                        "-shortest", out],
                        check=True, capture_output=True)
 
-    os.makedirs(os.path.dirname(LANDING_COPY), exist_ok=True)
-    shutil.copyfile(OUT, LANDING_COPY)
-    shutil.rmtree(tmpdir, ignore_errors=True)
-    return OUT
+    return out, bool(narrations)
+
+
+def build() -> list[tuple[str, str, bool]]:
+    """Genera un video por idioma (es/en/pt), los copia a landing/video/ y
+    deja una copia por defecto (= español). Devuelve [(lang, ruta, con_voz)]."""
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+    os.makedirs(LANDING_DIR, exist_ok=True)
+    results = []
+    for lang in LANGS:
+        tmpdir = tempfile.mkdtemp(prefix=f"mvdg_video_{lang}_")
+        try:
+            path, has_voice = build_one(lang, tmpdir)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        shutil.copyfile(path, os.path.join(LANDING_DIR, os.path.basename(path)))
+        results.append((lang, path, has_voice))
+    # copia por defecto (compatibilidad con el <source> histórico): español
+    es_path = os.path.join(VIDEO_DIR, "MVDataGovernance_Demo_es.mp4")
+    if os.path.exists(es_path):
+        default = os.path.join(VIDEO_DIR, "MVDataGovernance_Demo.mp4")
+        shutil.copyfile(es_path, default)
+        shutil.copyfile(es_path, os.path.join(LANDING_DIR, "MVDataGovernance_Demo.mp4"))
+    return results
 
 
 if __name__ == "__main__":
-    path = build()
-    size_mb = os.path.getsize(path) / 1e6
-    voz = "con voz es_AR" if os.environ.get("MVDG_VOICE_ONNX") else "sin voz"
-    print(f"Video generado ({voz}): {path} ({size_mb:.1f} MB) · copiado a landing/video/")
+    for lang, path, has_voice in build():
+        size_mb = os.path.getsize(path) / 1e6
+        voz = f"con voz ({lang})" if has_voice else "SIN voz (falta modelo)"
+        print(f"[{lang}] {os.path.basename(path)} ({size_mb:.1f} MB) · {voz} · copiado a landing/video/")
