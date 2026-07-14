@@ -363,6 +363,71 @@ def test_connectors_guards():
     assert ok is False and "driver" in msg.lower()
 
 
+# ------------------------------------------------- conectores Cloud DW/Lake
+def test_connectors_cloud_engines_registered():
+    from mvdg import connectors as C
+    assert {"synapse", "snowflake", "bigquery", "databricks"} <= set(C.ENGINES)
+    assert set(C.CLOUD_ENGINES) == {"snowflake", "bigquery", "databricks"}
+    for eng in C.CLOUD_ENGINES:
+        assert eng in C.EXTRA_EXAMPLE and C.ENGINES[eng]["pip"]
+
+
+def test_connectors_snowflake_url():
+    from mvdg import connectors as C
+    profile = {"engine": "snowflake", "user": "u", "database": "DB",
+              "extra": {"account": "xy123.us-east-1", "warehouse": "WH",
+                       "role": "SYSADMIN", "schema": "PUBLIC"}}
+    url = str(C.build_url(profile, password="pw"))
+    assert url.startswith("snowflake://u:")
+    assert "xy123.us-east-1" in url and "DB/PUBLIC" in url
+    assert "warehouse=WH" in url and "role=SYSADMIN" in url
+
+
+def test_connectors_bigquery_url():
+    from mvdg import connectors as C
+    profile = {"engine": "bigquery",
+              "extra": {"project": "my-proj", "dataset": "my_ds",
+                       "credentials_path": "/tmp/creds.json"}}
+    url = str(C.build_url(profile))
+    assert url == "bigquery://my-proj/my_ds"
+    # sin dataset -> solo project
+    url2 = str(C.build_url({"engine": "bigquery", "extra": {"project": "my-proj"}}))
+    assert url2 == "bigquery://my-proj"
+
+
+def test_connectors_databricks_url():
+    from mvdg import connectors as C
+    profile = {"engine": "databricks",
+              "extra": {"server_hostname": "adb-1.azuredatabricks.net",
+                       "http_path": "/sql/1.0/warehouses/abc", "catalog": "main",
+                       "schema": "default"}}
+    url = str(C.build_url(profile, password="dapiTOKEN"))
+    assert url.startswith("databricks://token:")
+    assert "adb-1.azuredatabricks.net" in url
+    assert "catalog=main" in url and "schema=default" in url
+
+
+def test_connectors_synapse_reuses_mssql_driver():
+    from mvdg import connectors as C
+    assert C.ENGINES["synapse"]["driver"] == C.ENGINES["sqlserver"]["driver"]
+    profile = {"engine": "synapse", "host": "myws.sql.azuresynapse.net",
+              "port": 1433, "database": "mydb", "user": "admin"}
+    url = str(C.build_url(profile, password="pw"))
+    assert url.startswith("mssql+pyodbc://admin:")
+    assert "myws.sql.azuresynapse.net:1433/mydb" in url
+
+
+def test_connectors_save_connection_persists_extra(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import connectors as C
+    profile = {"name": "sf-demo", "engine": "snowflake", "user": "u",
+              "database": "DB", "password": "pw",
+              "extra": {"account": "xy123", "warehouse": "WH"}}
+    saved = C.save_connection(profile, save_password=True)
+    reloaded = C.load_connections()[0]
+    assert reloaded["extra"] == {"account": "xy123", "warehouse": "WH"}
+
+
 # ------------------------------------------------------------- tutorial DMBOK
 @pytest.mark.parametrize("lang", LANGS)
 def test_dmbok_content_complete(lang):

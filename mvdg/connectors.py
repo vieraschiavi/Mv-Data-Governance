@@ -2,16 +2,35 @@
 MV Data Governance · Conectores directos a bases de datos.
 
 Además de CSV/Excel, MV Data Governance se conecta directo a cualquier base de
-datos vía SQLAlchemy: PostgreSQL, MySQL/MariaDB, SQL Server, Oracle y SQLite.
-El usuario carga servidor, puerto, base, usuario y contraseña, prueba la
-conexión, lista las tablas y trae una tabla (o el resultado de una consulta)
-al mismo motor de gobierno que usa para archivos.
+datos vía SQLAlchemy: PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, SQLite,
+y los data warehouse/lake de nube más usados — Snowflake, Google BigQuery,
+Databricks SQL Warehouse y Azure Synapse (SQL pool, vía el mismo driver que
+SQL Server, con el que es compatible por protocolo). El usuario carga
+servidor, puerto, base, usuario y contraseña (o los parámetros que
+correspondan a cada nube — ver ``extra`` más abajo), prueba la conexión,
+lista las tablas y trae una tabla (o el resultado de una consulta) al mismo
+motor de gobierno que usa para archivos.
 
 Las conexiones se guardan en disco y persisten entre sesiones:
     ~/.mv_data_governance/conexiones.json
-La contraseña se guarda solo si el usuario lo pide, ofuscada (no en texto
-plano a simple vista). Es un almacenamiento LOCAL, en el equipo del usuario —
-igual que cualquier cliente de base de datos de escritorio.
+La contraseña (o el token de acceso, según el motor) se guarda solo si el
+usuario lo pide, ofuscada (no en texto plano a simple vista). Es un
+almacenamiento LOCAL, en el equipo del usuario — igual que cualquier
+cliente de base de datos de escritorio.
+
+Sobre Snowflake / BigQuery / Databricks: a diferencia de los motores SQL
+"clásicos", estos tres NO usan el modelo simple host+puerto+usuario+
+contraseña — cada uno tiene su propio esquema de conexión (cuenta +
+warehouse en Snowflake, proyecto + credenciales de service account en
+BigQuery, hostname + HTTP path + token en Databricks). En vez de armar un
+formulario distinto por cada uno, esos parámetros extra se cargan como un
+dict (``profile["extra"]``) — en la interfaz, un campo de texto en formato
+JSON. Implementado contra el dialecto SQLAlchemy oficial y documentado de
+cada proveedor (``snowflake-sqlalchemy``, ``sqlalchemy-bigquery``,
+``databricks-sqlalchemy``) — igual que con la Metadata API de Tableau, esto
+NO se probó contra una cuenta real de ninguna de las tres nubes (no
+disponible en este entorno de desarrollo); antes de confiar en un motor
+nuevo, usá el botón "Probar conexión" contra tu cuenta real.
 """
 from __future__ import annotations
 
@@ -36,6 +55,30 @@ ENGINES: dict[str, dict] = {
                "port": 1521, "pip": "oracledb"},
     "sqlite": {"label": "SQLite (archivo)", "driver": "sqlite",
                "port": None, "pip": None},
+    "synapse": {"label": "Azure Synapse (SQL pool)", "driver": "mssql+pyodbc",
+               "port": 1433, "pip": "pyodbc"},
+    "snowflake": {"label": "Snowflake", "driver": "snowflake",
+                 "port": None, "pip": "snowflake-sqlalchemy"},
+    "bigquery": {"label": "Google BigQuery", "driver": "bigquery",
+                "port": None, "pip": "sqlalchemy-bigquery"},
+    "databricks": {"label": "Databricks SQL Warehouse", "driver": "databricks",
+                   "port": None, "pip": "databricks-sqlalchemy"},
+}
+
+# motores cuya conexión no sigue el modelo host+puerto+usuario+contraseña —
+# usan ``profile["extra"]`` (dict) para sus parámetros propios.
+CLOUD_ENGINES = ("snowflake", "bigquery", "databricks")
+
+# ejemplo de "extra" por motor cloud, para mostrar como placeholder en la UI
+# y en la documentación — no son valores reales.
+EXTRA_EXAMPLE: dict[str, dict] = {
+    "snowflake": {"account": "xy12345.us-east-1", "warehouse": "COMPUTE_WH",
+                 "role": "SYSADMIN", "schema": "PUBLIC"},
+    "bigquery": {"project": "mi-proyecto-gcp", "dataset": "mi_dataset",
+                "credentials_path": "/ruta/a/service-account.json"},
+    "databricks": {"server_hostname": "adb-1234567890.azuredatabricks.net",
+                   "http_path": "/sql/1.0/warehouses/abc123", "catalog": "main",
+                   "schema": "default"},
 }
 
 MAX_ROWS = 100_000  # tope de seguridad al traer una tabla
@@ -90,6 +133,7 @@ def save_connection(profile: dict, save_password: bool = True) -> dict:
         "user": profile.get("user", "").strip(),
         "save_password": bool(save_password),
         "password_enc": _obfuscate(profile.get("password", "")) if save_password else "",
+        "extra": profile.get("extra") or {},
     }
     for i, c in enumerate(conns):
         if c.get("conn_id") == cid:
@@ -117,15 +161,49 @@ def stored_password(profile: dict) -> str:
 
 # -------------------------------------------------------------------- URL
 def build_url(profile: dict, password: str | None = None):
-    """Arma la URL SQLAlchemy. Para SQLite, ``database`` es la ruta al archivo."""
+    """Arma la URL SQLAlchemy. Para SQLite, ``database`` es la ruta al archivo.
+
+    Snowflake/BigQuery/Databricks no siguen el modelo host+puerto+usuario+
+    contraseña — leen sus parámetros propios de ``profile["extra"]`` (ver
+    ``EXTRA_EXAMPLE`` para la forma esperada de cada uno)."""
     from sqlalchemy.engine import URL
 
-    eng = ENGINES.get(profile.get("engine"))
+    engine_key = profile.get("engine")
+    eng = ENGINES.get(engine_key)
     if eng is None:
-        raise ValueError(f"Motor desconocido: {profile.get('engine')}")
-    if profile["engine"] == "sqlite":
+        raise ValueError(f"Motor desconocido: {engine_key}")
+    if engine_key == "sqlite":
         return f"sqlite:///{profile.get('database', '')}"
+
     pwd = password if password is not None else stored_password(profile)
+    extra = profile.get("extra") or {}
+
+    if engine_key == "snowflake":
+        query = {k: v for k, v in (("warehouse", extra.get("warehouse")),
+                                   ("role", extra.get("role"))) if v}
+        database = profile.get("database") or None
+        schema = extra.get("schema")
+        db_part = f"{database}/{schema}" if database and schema else database
+        return URL.create("snowflake", username=profile.get("user") or None,
+                          password=pwd or None, host=extra.get("account") or None,
+                          database=db_part, query=query)
+
+    if engine_key == "bigquery":
+        # bigquery://project/dataset — la autenticación va aparte, vía
+        # GOOGLE_APPLICATION_CREDENTIALS o credentials_path en create_engine().
+        project = extra.get("project") or profile.get("database") or ""
+        dataset = extra.get("dataset") or ""
+        return f"bigquery://{project}/{dataset}" if dataset else f"bigquery://{project}"
+
+    if engine_key == "databricks":
+        query = {"http_path": extra.get("http_path", "")}
+        for k in ("catalog", "schema"):
+            if extra.get(k):
+                query[k] = extra[k]
+        return URL.create("databricks", username="token", password=pwd or None,
+                          host=extra.get("server_hostname") or profile.get("host") or None,
+                          query=query)
+
     return URL.create(
         eng["driver"],
         username=profile.get("user") or None,
@@ -138,7 +216,12 @@ def build_url(profile: dict, password: str | None = None):
 
 def _engine(profile: dict, password: str | None = None):
     from sqlalchemy import create_engine
-    return create_engine(build_url(profile, password), pool_pre_ping=True)
+    kwargs = {"pool_pre_ping": True}
+    if profile.get("engine") == "bigquery":
+        creds = (profile.get("extra") or {}).get("credentials_path")
+        if creds:
+            kwargs["credentials_path"] = creds
+    return create_engine(build_url(profile, password), **kwargs)
 
 
 # --------------------------------------------------------------- operaciones

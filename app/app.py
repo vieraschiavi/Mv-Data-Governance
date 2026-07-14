@@ -6,6 +6,7 @@ con `streamlit run app/app.py` o empaquetado como .exe (PyInstaller).
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -24,7 +25,8 @@ from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
 from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
                           recommended_pack, save_client)
-from mvdg.connectors import (ENGINES, delete_connection, list_tables,
+from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
+                             delete_connection, list_tables,
                              load_connections, load_table, run_query,
                              save_connection, stored_password, test_connection)
 from mvdg.help_center import automation_rows, speeches
@@ -840,33 +842,60 @@ with tab_pr:
 
         engine_keys = list(ENGINES.keys())
         e1, e2, e3 = st.columns(3)
-        engine = e1.selectbox(t("db_engine", lang), engine_keys,
+        engine = e1.selectbox(t("db_engine", lang), engine_keys, key="db_engine_pick",
                               index=engine_keys.index((editing or {}).get("engine", "postgresql"))
                               if (editing or {}).get("engine") in engine_keys else 0,
                               format_func=lambda k: ENGINES[k]["label"])
         conn_name = e2.text_input(t("db_name", lang), (editing or {}).get("name", ""))
         is_sqlite = engine == "sqlite"
+        is_cloud = engine in CLOUD_ENGINES
+        extra_raw = ""
         if is_sqlite:
             database = st.text_input(t("db_sqlite_path", lang), (editing or {}).get("database", ""))
             host = ""; port = None; user = ""; pwd = ""
         else:
-            port = e3.text_input(t("db_port", lang),
-                                 str((editing or {}).get("port") or ENGINES[engine]["port"]))
-            h1, h2 = st.columns([2, 1])
-            host = h1.text_input(t("db_host", lang), (editing or {}).get("host", ""))
-            database = h2.text_input(t("db_database", lang), (editing or {}).get("database", ""))
+            if is_cloud:
+                e3.caption(t("db_cloud_no_port", lang))
+                port = None
+                h1, h2 = st.columns([2, 1])
+                host = h1.text_input(t("db_host", lang), (editing or {}).get("host", ""))
+                database = h2.text_input(t("db_database", lang), (editing or {}).get("database", ""))
+            else:
+                port = e3.text_input(t("db_port", lang),
+                                     str((editing or {}).get("port") or ENGINES[engine]["port"]))
+                h1, h2 = st.columns([2, 1])
+                host = h1.text_input(t("db_host", lang), (editing or {}).get("host", ""))
+                database = h2.text_input(t("db_database", lang), (editing or {}).get("database", ""))
             u1, u2 = st.columns(2)
             user = u1.text_input(t("db_user", lang), (editing or {}).get("user", ""))
             _has_pwd = bool((editing or {}).get("save_password"))
             pwd = u2.text_input(t("db_password", lang),
                                 value=stored_password(editing) if editing else "",
                                 type="password")
+            if is_cloud:
+                _extra_default = (editing or {}).get("extra") or EXTRA_EXAMPLE.get(engine, {})
+                extra_raw = st.text_area(
+                    t("db_extra_params", lang),
+                    json.dumps(_extra_default, ensure_ascii=False, indent=2),
+                    height=130)
+                st.caption(t("db_extra_hint", lang).format(
+                    example=json.dumps(EXTRA_EXAMPLE.get(engine, {}), ensure_ascii=False)))
         save_pwd = st.checkbox(t("db_save_pwd", lang), value=bool((editing or {}).get("save_password", True)))
+
+        extra_parsed = {}
+        if is_cloud and extra_raw.strip():
+            try:
+                extra_parsed = json.loads(extra_raw)
+                if not isinstance(extra_parsed, dict):
+                    raise ValueError
+            except ValueError:
+                st.error(t("db_extra_invalid_json", lang))
 
         profile = {"conn_id": (editing or {}).get("conn_id"), "name": conn_name,
                    "engine": engine, "host": host,
-                   "port": (port if not is_sqlite else None),
-                   "database": database, "user": user, "password": pwd}
+                   "port": (port if not is_sqlite and not is_cloud else None),
+                   "database": database, "user": user, "password": pwd,
+                   "extra": extra_parsed}
 
         b1, b2, b3 = st.columns(3)
         if b1.button(t("db_test", lang)):
@@ -884,7 +913,7 @@ with tab_pr:
         st.caption(t("db_local_note", lang))
 
         # Traer tablas: usa la conexión guardada (o la que se está probando)
-        active = editing or (profile if (database or host) else None)
+        active = editing or (profile if (database or host or extra_parsed) else None)
         if active is not None:
             try:
                 tables = list_tables(active, password=pwd or None)
