@@ -64,6 +64,17 @@ ejemplo") cada falla muestra, además de la sugerencia local, un botón
 **"✨ Pedir sugerencia a Claude (Anthropic)"** (o ChatGPT/Gemini según
 corresponda) que trae una segunda opinión generada en vivo.
 
+## También audita y refactoriza DAX (pestaña 🔷 Power BI)
+
+La misma key opcional habilita un segundo uso: en la pestaña **🔷 Power BI**,
+cada medida de tu modelo `.pbip` trae un botón **"✨ Refactor DAX con
+{proveedor}"** que le pide al modelo evaluar anti-patrones (iteradores
+innecesarios, `FILTER` sobre tablas enteras, columnas calculadas que
+deberían ser medidas, falta de variables) y proponer una versión mejorada.
+Mismas reglas de diseño: solo se manda el nombre de la medida, la tabla y su
+expresión DAX — **nunca datos reales** — y cualquier error cae en silencio
+sin bloquear la pantalla.
+
 ## ¿Por qué no está GitHub Copilot en la lista?
 
 Copilot no expone una API REST simple de "pedime un texto" con solo una API

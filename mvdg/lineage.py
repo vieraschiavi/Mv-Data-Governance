@@ -58,47 +58,83 @@ def lineage_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def upstream(node_id: str) -> set[str]:
+def upstream(node_id: str, edges: list[tuple[str, str]] | None = None) -> set[str]:
     """Todos los ancestros (recursivo) de un nodo."""
+    edges = EDGES if edges is None else edges
     out, frontier = set(), {node_id}
     while frontier:
-        parents = {a for a, b in EDGES if b in frontier} - out
+        parents = {a for a, b in edges if b in frontier} - out
         out |= parents
         frontier = parents
     return out
 
 
-def downstream(node_id: str) -> set[str]:
+def downstream(node_id: str, edges: list[tuple[str, str]] | None = None) -> set[str]:
     """Todos los descendientes (recursivo) de un nodo."""
+    edges = EDGES if edges is None else edges
     out, frontier = set(), {node_id}
     while frontier:
-        children = {b for a, b in EDGES if a in frontier} - out
+        children = {b for a, b in edges if a in frontier} - out
         out |= children
         frontier = children
     return out
 
 
-def _positions() -> dict[str, tuple[float, float]]:
+def _layer_order(nodes: list[dict]) -> list[str]:
+    """Capas presentes, en el orden canónico (LAYERS) primero y luego extras."""
+    present = list(dict.fromkeys(n["layer"] for n in nodes))
+    known = [l for l in LAYERS if l in present]
+    extra = [l for l in present if l not in LAYERS]
+    return known + extra
+
+
+def _positions(nodes: list[dict] | None = None) -> dict[str, tuple[float, float]]:
+    nodes = NODES if nodes is None else nodes
     pos = {}
-    for lx, layer in enumerate(LAYERS):
-        ids = [n["id"] for n in NODES if n["layer"] == layer]
+    for lx, layer in enumerate(_layer_order(nodes)):
+        ids = [n["id"] for n in nodes if n["layer"] == layer]
         for i, nid in enumerate(ids):
             y = -(i - (len(ids) - 1) / 2)  # centrado vertical por capa
             pos[nid] = (float(lx), y * 1.15)
     return pos
 
 
+def graph_from_lineage(edges_df: pd.DataFrame) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Convierte una tabla de linaje (columnas de ``lineage_df``) en el par
+    ``(nodes, edges)`` que consume ``lineage_figure``. Sirve para dibujar
+    linaje dinámico (p.ej. el que devuelve ``powerbi_meta.to_lineage``) sin
+    tocar el grafo de demo."""
+    nodes: dict[str, dict] = {}
+    edges: list[tuple[str, str]] = []
+    for _, r in edges_df.iterrows():
+        nodes.setdefault(r["source_id"],
+                         {"id": r["source_id"], "label": r["source"], "layer": r["source_layer"]})
+        nodes.setdefault(r["target_id"],
+                         {"id": r["target_id"], "label": r["target"], "layer": r["target_layer"]})
+        edges.append((r["source_id"], r["target_id"]))
+    return list(nodes.values()), edges
+
+
 def lineage_figure(focus: str | None = None,
-                   layer_titles: dict[str, str] | None = None) -> go.Figure:
+                   layer_titles: dict[str, str] | None = None,
+                   nodes: list[dict] | None = None,
+                   edges: list[tuple[str, str]] | None = None) -> go.Figure:
     """Figura Plotly del grafo. Si ``focus`` viene, resalta ese nodo y su
-    linaje (aguas arriba + aguas abajo) y atenúa el resto."""
-    pos = _positions()
+    linaje (aguas arriba + aguas abajo) y atenúa el resto. Si ``nodes``/``edges``
+    vienen, dibuja ese grafo dinámico en vez del de demo."""
+    nodes = NODES if nodes is None else nodes
+    edges = EDGES if edges is None else edges
+    node_by_id = {n["id"]: n for n in nodes}
+    order = _layer_order(nodes)
+    pos = _positions(nodes)
     hi = None
-    if focus and focus in _NODE_BY_ID:
-        hi = {focus} | upstream(focus) | downstream(focus)
+    if focus and focus in node_by_id:
+        hi = {focus} | upstream(focus, edges) | downstream(focus, edges)
 
     fig = go.Figure()
-    for a, b in EDGES:
+    for a, b in edges:
+        if a not in pos or b not in pos:  # arista hacia un nodo no definido: la salteamos
+            continue
         (x0, y0), (x1, y1) = pos[a], pos[b]
         on_path = hi is None or (a in hi and b in hi)
         fig.add_trace(go.Scatter(
@@ -113,10 +149,10 @@ def lineage_figure(focus: str | None = None,
                    "curated": BRAND["green"], "mart": BRAND["amber"],
                    "bi": "#c479e8"}
     xs, ys, texts, colors, opac = [], [], [], [], []
-    for n in NODES:
+    for n in nodes:
         x, y = pos[n["id"]]
         xs.append(x); ys.append(y); texts.append(n["label"])
-        colors.append(layer_color[n["layer"]])
+        colors.append(layer_color.get(n["layer"], "#6c7f99"))
         opac.append(1.0 if (hi is None or n["id"] in hi) else 0.25)
     fig.add_trace(go.Scatter(
         x=xs, y=ys, mode="markers+text", text=texts,
@@ -127,14 +163,14 @@ def lineage_figure(focus: str | None = None,
     ))
 
     titles = layer_titles or {}
-    for lx, layer in enumerate(LAYERS):
+    for lx, layer in enumerate(order):
         fig.add_annotation(x=lx, y=2.35, text=f"<b>{titles.get(layer, layer)}</b>",
                            showarrow=False, font={"size": 12, "color": BRAND["muted"]})
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 10, "r": 10, "t": 30, "b": 10}, height=460,
-        xaxis={"visible": False, "range": [-0.5, len(LAYERS) - 0.4]},
+        xaxis={"visible": False, "range": [-0.5, max(len(order), 1) - 0.4]},
         yaxis={"visible": False, "range": [-2.9, 2.7]},
     )
     return fig

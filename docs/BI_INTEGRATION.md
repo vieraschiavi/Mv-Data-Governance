@@ -48,6 +48,21 @@ GET http://127.0.0.1:8600/api/samples/bank_marketing_uci/quality_results ← reg
 4. Alternativa sin API: descargá el **paquete BI completo (Excel multi-hoja)**
    desde la pestaña *BI & API* y usá **Obtener datos → Libro de Excel**.
 
+#### Power BI (avanzado): gobernar el modelo en sí
+Además de conectar datos, la pestaña **🔷 Power BI** gobierna el modelo semántico:
+1. En Power BI Desktop, guardá tu reporte como **.pbip** (formato TMDL) —
+   `Archivo → Guardar como → Proyecto de Power BI`.
+2. (Recomendado) Borrá `*.SemanticModel/.pbi/cache.abf`: el modelo queda con
+   toda su estructura y **cero datos**, el camino más seguro.
+3. En la pestaña **🔷 Power BI**, apuntá a la carpeta del proyecto (o subí un
+   `.zip`) y hacé clic en **Analizar modelo**.
+4. Vas a ver: catálogo del modelo, columnas, medidas con su DAX (como
+   glosario), 5 reglas de salud del modelo, y el **linaje real** — SQL Server
+   detectado en cada partición → tabla → dataset → reporte, en el mismo
+   grafo de 5 capas que el resto del programa.
+5. Opcional: con tu API key de IA configurada, pedile que audite y
+   refactorice el DAX de cualquier medida (solo se manda el DAX, nunca datos).
+
 ### Tableau
 1. Con la API levantada, usá **Datos → Nueva fuente de datos → Archivo JSON**
    sobre una descarga de `/api/...`, o el **Web Data Connector**.
@@ -85,6 +100,21 @@ GET http://127.0.0.1:8600/api/samples/bank_marketing_uci/quality_results ← reg
 4. No-API alternative: download the **full BI bundle (multi-sheet Excel)**
    from the *BI & API* tab and use **Get Data → Excel Workbook**.
 
+#### Power BI (advanced): govern the model itself
+Beyond connecting data, the **🔷 Power BI** tab governs the semantic model:
+1. In Power BI Desktop, save your report as a **.pbip** project (TMDL
+   format) — `File → Save As → Power BI project`.
+2. (Recommended) Delete `*.SemanticModel/.pbi/cache.abf`: the model keeps
+   its full structure with **zero data** — the safest path.
+3. In the **🔷 Power BI** tab, point to the project folder (or upload a
+   `.zip`) and click **Analyze model**.
+4. You'll see: the model catalog, columns, measures with their DAX (as a
+   glossary), 5 model-health rules, and the **real lineage** — the SQL
+   Server detected in each partition → table → dataset → report, on the
+   same 5-layer graph used across the rest of the program.
+5. Optional: with your AI API key set, ask it to audit and refactor the DAX
+   of any measure (only the DAX is sent, never data).
+
 ### Tableau
 1. With the API running, use **Data → New Data Source → JSON file** on a
    saved `/api/...` response, or the **Web Data Connector**.
@@ -120,6 +150,21 @@ GET http://127.0.0.1:8600/api/samples/bank_marketing_uci/quality_results ← reg
    tabela** → expandir colunas. Repita por tabela.
 4. Alternativa sem API: baixe o **pacote BI completo (Excel multi-abas)** na
    aba *BI & API* e use **Obter dados → Pasta de trabalho do Excel**.
+
+#### Power BI (avançado): governar o modelo em si
+Além de conectar dados, a aba **🔷 Power BI** governa o modelo semântico:
+1. No Power BI Desktop, salve seu relatório como projeto **.pbip** (formato
+   TMDL) — `Arquivo → Salvar como → Projeto do Power BI`.
+2. (Recomendado) Apague `*.SemanticModel/.pbi/cache.abf`: o modelo fica com
+   toda a estrutura e **zero dados** — o caminho mais seguro.
+3. Na aba **🔷 Power BI**, aponte para a pasta do projeto (ou envie um
+   `.zip`) e clique em **Analisar modelo**.
+4. Você vai ver: catálogo do modelo, colunas, medidas com seu DAX (como
+   glossário), 5 regras de saúde do modelo, e a **linhagem real** — o SQL
+   Server detectado em cada partição → tabela → dataset → relatório, no
+   mesmo grafo de 5 camadas usado no resto do programa.
+5. Opcional: com sua API key de IA configurada, peça para auditar e
+   refatorar o DAX de qualquer medida (envia-se apenas o DAX, nunca dados).
 
 ### Tableau
 1. Com a API rodando, use **Dados → Nova fonte de dados → Arquivo JSON**

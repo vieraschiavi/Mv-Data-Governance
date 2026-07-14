@@ -563,6 +563,95 @@ _T: dict[str, dict[str, str]] = {
     "tbl_glossary": {"es": "Glosario", "en": "Glossary", "pt": "Glossário"},
     "tbl_policies": {"es": "Políticas", "en": "Policies", "pt": "Políticas"},
     "tbl_kpis": {"es": "KPIs de gobierno", "en": "Governance KPIs", "pt": "KPIs de governança"},
+    # ------------------------------------------------------------- Power BI
+    "tab_pbi": {"es": "🔷 Power BI", "en": "🔷 Power BI", "pt": "🔷 Power BI"},
+    "pbi_intro": {
+        "es": "Gobierná el modelo de Power BI en sí: tablas, columnas, medidas (DAX), "
+              "relaciones y RLS — solo estructura, nunca tus filas.",
+        "en": "Govern the Power BI model itself: tables, columns, measures (DAX), "
+              "relationships and RLS — structure only, never your rows.",
+        "pt": "Governe o modelo do Power BI em si: tabelas, colunas, medidas (DAX), "
+              "relações e RLS — apenas estrutura, nunca suas linhas.",
+    },
+    "pbi_secure_note": {
+        "es": "Guardá el reporte como .pbip (formato TMDL) y borrá el archivo "
+              ".pbi/cache.abf: el modelo queda con toda su estructura y cero datos.",
+        "en": "Save the report as .pbip (TMDL format) and delete the .pbi/cache.abf "
+              "file: the model keeps its full structure with zero data.",
+        "pt": "Salve o relatório como .pbip (formato TMDL) e apague o arquivo "
+              ".pbi/cache.abf: o modelo fica com toda a estrutura e zero dados.",
+    },
+    "pbi_source": {"es": "Origen", "en": "Source", "pt": "Origem"},
+    "pbi_src_path": {"es": "📁 Carpeta local .pbip", "en": "📁 Local .pbip folder",
+                     "pt": "📁 Pasta local .pbip"},
+    "pbi_src_zip": {"es": "📦 Subir .zip del .pbip", "en": "📦 Upload .pbip .zip",
+                    "pt": "📦 Enviar .zip do .pbip"},
+    "pbi_path": {"es": "Ruta a la carpeta del proyecto .pbip",
+                 "en": "Path to the .pbip project folder",
+                 "pt": "Caminho para a pasta do projeto .pbip"},
+    "pbi_path_hint": {
+        "es": "La carpeta que contiene *.SemanticModel/definition (TMDL).",
+        "en": "The folder containing *.SemanticModel/definition (TMDL).",
+        "pt": "A pasta que contém *.SemanticModel/definition (TMDL).",
+    },
+    "pbi_zip": {"es": "Archivo .zip del proyecto .pbip", "en": ".pbip project .zip file",
+                "pt": "Arquivo .zip do projeto .pbip"},
+    "pbi_load": {"es": "Analizar modelo", "en": "Analyze model", "pt": "Analisar modelo"},
+    "pbi_model": {"es": "Modelo", "en": "Model", "pt": "Modelo"},
+    "pbi_tables": {"es": "Tablas", "en": "Tables", "pt": "Tabelas"},
+    "pbi_measures": {"es": "Medidas", "en": "Measures", "pt": "Medidas"},
+    "pbi_columns": {"es": "Columnas", "en": "Columns", "pt": "Colunas"},
+    "pbi_roles": {"es": "Roles RLS", "en": "RLS roles", "pt": "Papéis RLS"},
+    "pbi_catalog_title": {"es": "📇 Catálogo del modelo", "en": "📇 Model catalog",
+                          "pt": "📇 Catálogo do modelo"},
+    "pbi_dict_title": {"es": "📚 Columnas del modelo", "en": "📚 Model columns",
+                       "pt": "📚 Colunas do modelo"},
+    "pbi_measures_title": {"es": "📖 Medidas y DAX (glosario)", "en": "📖 Measures & DAX (glossary)",
+                           "pt": "📖 Medidas e DAX (glossário)"},
+    "pbi_health_title": {"es": "✅ Salud del modelo", "en": "✅ Model health",
+                         "pt": "✅ Saúde do modelo"},
+    "pbi_health_overall": {"es": "Índice de modelo", "en": "Model index", "pt": "Índice do modelo"},
+    "pbi_lineage_title": {"es": "🧬 Linaje del modelo", "en": "🧬 Model lineage",
+                          "pt": "🧬 Linhagem do modelo"},
+    "pbi_lineage_hint": {
+        "es": "Cadena completa: origen SQL detectado → tabla → dataset (modelo) → reporte.",
+        "en": "Full chain: detected SQL source → table → dataset (model) → report.",
+        "pt": "Cadeia completa: origem SQL detectada → tabela → dataset (modelo) → relatório.",
+    },
+    "pbi_sources_title": {"es": "🗄️ Origen SQL por tabla", "en": "🗄️ SQL source per table",
+                          "pt": "🗄️ Origem SQL por tabela"},
+    "pbi_sources_hint": {
+        "es": "Detectado leyendo la expresión M de cada partición (solo texto de la consulta, "
+              "nunca se ejecuta ni trae filas).",
+        "en": "Detected by reading each partition's M expression (only the query text, "
+              "never executed, never fetches rows).",
+        "pt": "Detectado lendo a expressão M de cada partição (apenas o texto da consulta, "
+              "nunca executada, nunca traz linhas).",
+    },
+    "pbi_source_col_table": {"es": "Tabla", "en": "Table", "pt": "Tabela"},
+    "pbi_source_col_src": {"es": "Origen detectado", "en": "Detected source", "pt": "Origem detectada"},
+    "pbi_source_none": {"es": "sin detectar", "en": "not detected", "pt": "não detectado"},
+    "pbi_refactor": {"es": "✨ Refactor DAX con {provider}", "en": "✨ Refactor DAX with {provider}",
+                     "pt": "✨ Refatorar DAX com {provider}"},
+    "pbi_refactor_hint": {
+        "es": "Con tu API key configurada, pedile a la IA que audite y mejore el DAX "
+              "(se manda solo el DAX, nunca datos).",
+        "en": "With your API key set, ask the AI to audit and improve the DAX "
+              "(only the DAX is sent, never data).",
+        "pt": "Com sua API key configurada, peça à IA para auditar e melhorar o DAX "
+              "(envia-se apenas o DAX, nunca dados).",
+    },
+    "pbi_r_assessment": {"es": "Veredicto", "en": "Assessment", "pt": "Veredicto"},
+    "pbi_r_issues": {"es": "Problemas detectados", "en": "Issues found", "pt": "Problemas encontrados"},
+    "pbi_r_dax": {"es": "DAX refactorizado", "en": "Refactored DAX", "pt": "DAX refatorado"},
+    "pbi_r_expl": {"es": "Por qué es mejor", "en": "Why it's better", "pt": "Por que é melhor"},
+    "pbi_no_model": {"es": "Cargá un .pbip para ver su estructura.",
+                     "en": "Load a .pbip to see its structure.",
+                     "pt": "Carregue um .pbip para ver sua estrutura."},
+    "pbi_err": {"es": "No pude leer el modelo", "en": "Could not read the model",
+                "pt": "Não consegui ler o modelo"},
+    "pbi_wait": {"es": "Analizando el modelo…", "en": "Analyzing the model…",
+                 "pt": "Analisando o modelo…"},
 }
 
 

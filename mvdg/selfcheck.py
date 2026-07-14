@@ -217,6 +217,37 @@ def run_checks() -> list[tuple[str, bool, str]]:
             total_rows += len(gov["data"])
         return f"{len(keys)} datasets, {total_rows:,} filas gobernadas (catálogo, reglas, glosario, BI)"
 
+    @check("Conector de metadata Power BI (.pbip -> catálogo+linaje SQL->reporte+DAX)")
+    def _():
+        import os
+        import tempfile
+        from . import powerbi_meta as pbi
+
+        root = os.path.join(tempfile.mkdtemp(prefix="mvdg_selfcheck_pbip_"), "Demo.SemanticModel")
+        dfn = os.path.join(root, "definition")
+        os.makedirs(os.path.join(dfn, "tables"))
+        with open(os.path.join(dfn, "tables", "Ventas.tmdl"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "table Ventas\n"
+                "\tmeasure Total = SUM ( Ventas[Monto] )\n"
+                "\tcolumn Monto\n"
+                "\t\tdataType: double\n"
+                "\tpartition Ventas = m\n"
+                "\t\tsource =\n"
+                "\t\t\tlet\n"
+                "\t\t\t\tSource = Sql.Database(\"Srv\", \"Db\")\n"
+                "\t\t\tin\n"
+                "\t\t\t\tSource\n"
+            )
+        out = pbi.ingest_pbip(root)
+        model = out["_model"]
+        assert model.table_sources.get("Ventas") == "SQL Server · Srv/Db"
+        chain = out["lineage"]
+        assert (chain["source_layer"] == "source").any(), "falta el tramo SQL -> tabla"
+        assert (chain["target_layer"] == "bi").any(), "falta el tramo dataset -> reporte"
+        assert set(out) >= {"catalog", "dictionary", "glossary", "lineage", "quality", "sources"}
+        return "SQL Server -> tabla -> dataset -> reporte, cableado end-to-end (offline, sin filas)"
+
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():
         import os
