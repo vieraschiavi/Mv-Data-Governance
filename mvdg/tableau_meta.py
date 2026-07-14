@@ -2,23 +2,31 @@
 MV Data Governance · Conector de METADATA de Tableau (solo estructura, cero filas).
 
 Mismo principio que ``powerbi_meta.py``: gobierna la CAPA DE BI en sí —
-workbooks, datasources publicados, campos y campos calculados — nunca las
-filas de datos. Usa la Metadata API (GraphQL) de Tableau Server/Cloud,
-autenticada con un Personal Access Token (PAT) propio del usuario.
+workbooks, datasources (publicados o embebidos), campos y campos calculados
+— nunca las filas de datos. Dos caminos, el mismo paralelo offline/online
+que ``powerbi_meta.py``:
 
-Flujo (``read_site``):
-  1. Sign-in REST (``/api/{version}/auth/signin``) con el PAT -> token de sesión.
-  2. Metadata API (``/api/metadata/graphql``) con ese token -> catálogo
-     completo del sitio: workbooks, datasources publicados, sus campos (con
-     la fórmula de los calculados) y las tablas de base de datos de las que
-     salen.
-  3. Sign-out (best-effort).
+  A) OFFLINE / cualquier empresa — ``read_twb(path)`` / ``read_twbx(path)``
+     Lee un archivo ``.twb`` (XML de un workbook) o ``.twbx`` (el mismo XML,
+     empaquetado en un .zip junto a extractos de datos) guardado localmente.
+     NO requiere servidor, credenciales ni internet. Un ``.twbx`` puede
+     traer datos embebidos (el extracto) — este módulo NUNCA los lee, solo
+     el XML de estructura (datasources, columnas, fórmulas de los campos
+     calculados, conexión de origen).
 
-Apagado por defecto: solo corre si están cargadas ``TABLEAU_SERVER_URL`` /
-``TABLEAU_TOKEN_NAME`` / ``TABLEAU_TOKEN_SECRET`` como variables de entorno
-propias del usuario — ver ``docs/BI_TENANT_SCAN.md``. Implementado con
-``urllib`` (misma librería estándar que ``ai_provider.py`` y el camino
-tenant de Power BI), sin agregar una dependencia nueva al proyecto.
+  B) SITIO COMPLETO / gobernanza — ``read_site(...)`` vía la Metadata API
+     Sign-in REST (``/api/{version}/auth/signin``) con un Personal Access
+     Token (PAT) propio del usuario -> token de sesión. Metadata API
+     (``/api/metadata/graphql``) con ese token -> catálogo completo del
+     sitio: workbooks, datasources publicados, sus campos (con la fórmula
+     de los calculados) y las tablas de base de datos de las que salen.
+     Sign-out (best-effort). Apagado por defecto: solo corre si están
+     cargadas ``TABLEAU_SERVER_URL`` / ``TABLEAU_TOKEN_NAME`` /
+     ``TABLEAU_TOKEN_SECRET`` como variables de entorno propias del usuario
+     — ver ``docs/BI_TENANT_SCAN.md``.
+
+Implementado con la librería estándar (``urllib``, ``xml.etree``, ``zipfile``)
+— sin agregar una dependencia nueva al proyecto.
 
 Nota sobre el esquema GraphQL: la consulta de ``_GRAPHQL_QUERY`` sigue el
 esquema publicado por Tableau para la Metadata API (workbooks ->
@@ -27,8 +35,9 @@ real de Tableau en este repo — si tu versión de Tableau Server difiere,
 puede necesitar un ajuste puntual en esa consulta; el resto del módulo (el
 parseo del JSON y los normalizadores) no depende de la versión.
 
-Se normaliza a las MISMAS tablas que ya usa el motor de gobierno (paralelo
-exacto a ``powerbi_meta.py``, un datasource publicado = un "dataset"):
+Ambos caminos entregan un ``TableauModel`` que se normaliza a las MISMAS
+tablas que ya usa el motor de gobierno (paralelo exacto a
+``powerbi_meta.py``, un datasource = un "dataset"):
 
     to_catalog(model)     -> columnas de catalog.catalog_df
     to_dictionary(model)  -> columnas de catalog.dictionary_df
@@ -43,6 +52,8 @@ import json
 import os
 import re
 import urllib.error
+import xml.etree.ElementTree as ET
+import zipfile
 import urllib.request
 from dataclasses import dataclass, field
 
@@ -78,6 +89,86 @@ class TableauModel:
     fields: list[Field] = field(default_factory=list)
     workbook_links: list[tuple[str, str]] = field(default_factory=list)  # (datasource, workbook)
     source: str = "Tableau Metadata API"
+
+
+# ------------------------------------------------------- camino A: offline
+# Espacio de nombres XML de los .twb (constante entre versiones de Tableau
+# para los archivos que nos interesan: datasource/column/calculation).
+def _local(tag: str) -> str:
+    """Nombre de un tag XML sin el namespace (si lo trae, entre llaves)."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _twb_root_from_bytes(data: bytes) -> ET.Element:
+    return ET.fromstring(data)
+
+
+def _extract_twb_bytes(path: str) -> bytes:
+    """Un .twbx es un .zip con el .twb adentro (más extractos de datos, que
+    nunca leemos). Un .twb es directamente el XML."""
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as zf:
+            twb_names = [n for n in zf.namelist() if n.lower().endswith(".twb")]
+            if not twb_names:
+                raise FileNotFoundError("El .twbx no contiene ningún archivo .twb adentro.")
+            return zf.read(twb_names[0])
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def _model_from_twb(root: ET.Element, workbook_name: str) -> TableauModel:
+    """Parsea el XML de un .twb: datasources -> columnas/calculados, y la
+    conexión de origen de cada datasource. Nunca lee extractos de datos."""
+    model = TableauModel(site=workbook_name, workbooks=[workbook_name],
+                         source="Workbook local (.twb/.twbx)")
+    ds_els = [e for e in root.iter() if _local(e.tag) == "datasource"
+             and e.get("name") not in (None, "Parameters")]
+    for ds_el in ds_els:
+        dname = ds_el.get("caption") or ds_el.get("name") or "Datasource"
+        model.workbook_links.append((dname, workbook_name))
+
+        tables: list[str] = []
+        for conn in ds_el.iter():
+            if _local(conn.tag) != "connection":
+                continue
+            cls = conn.get("class", "")
+            server = conn.get("server", "")
+            dbname = conn.get("dbname", "")
+            if server or dbname:
+                label = f"{cls or 'db'} · {server}/{dbname}".strip("/ ")
+                if label and label not in tables:
+                    tables.append(label)
+        model.datasources.append(Datasource(name=dname, upstream_tables=tables))
+
+        for col in ds_el.iter():
+            if _local(col.tag) != "column":
+                continue
+            cname = col.get("caption") or col.get("name") or ""
+            cname = cname.strip("[]")
+            calc = None
+            for child in col:
+                if _local(child.tag) == "calculation":
+                    calc = child
+                    break
+            formula = calc.get("formula", "") if calc is not None else ""
+            model.fields.append(Field(
+                datasource=dname, name=cname, data_type=col.get("datatype", ""),
+                is_calculated=bool(formula), formula=formula,
+                description=col.get("comment", "") or ""))
+    return model
+
+
+def read_twb(path: str) -> TableauModel:
+    """Lee un workbook ``.twb`` (XML) o ``.twbx`` (zip con el .twb adentro)
+    guardado localmente: datasources, columnas, campos calculados con su
+    fórmula, y la conexión (servidor/base) de origen de cada datasource.
+    Nunca lee extractos de datos ni filas."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No encontré el archivo: {path}")
+    data = _extract_twb_bytes(path)
+    root = _twb_root_from_bytes(data)
+    workbook_name = os.path.splitext(os.path.basename(path))[0]
+    return _model_from_twb(root, workbook_name)
 
 
 # --------------------------------------------------------------- conexión
@@ -324,6 +415,47 @@ def to_quality(model: TableauModel, lang: str = "es") -> pd.DataFrame:
 def ingest_site(lang: str = "es", **kwargs) -> dict[str, pd.DataFrame]:
     """Atajo: escanea el sitio y devuelve las tablas normalizadas listas para el motor."""
     model = read_site(**kwargs)
+    return {
+        "catalog": to_catalog(model, lang),
+        "dictionary": to_dictionary(model),
+        "glossary": to_glossary(model),
+        "lineage": to_lineage(model),
+        "quality": to_quality(model, lang),
+        "sources": to_sources(model),
+        "_model": model,
+    }
+
+
+def ingest_twb(path: str, lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Atajo: lee un .twb/.twbx local y devuelve las tablas normalizadas
+    listas para el motor — mismo rol que ``powerbi_meta.ingest_pbip``."""
+    model = read_twb(path)
+    return {
+        "catalog": to_catalog(model, lang),
+        "dictionary": to_dictionary(model),
+        "glossary": to_glossary(model),
+        "lineage": to_lineage(model),
+        "quality": to_quality(model, lang),
+        "sources": to_sources(model),
+        "_model": model,
+    }
+
+
+# ------------------------------------------------- ejemplo incluido (original)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_EXAMPLE_TWB = os.path.join(_ROOT, "assets", "samples", "tableau", "VentasGlobalDemo.twb")
+
+
+def load_example_model() -> TableauModel:
+    """El workbook de ejemplo incluido con el programa — escrito
+    originalmente para MV Data Governance (no descargado de un repo de
+    licencia incierta). Ver assets/samples/THIRD_PARTY_DATA.md."""
+    return read_twb(_EXAMPLE_TWB)
+
+
+def ingest_example(lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Atajo: el workbook de ejemplo con las tablas normalizadas."""
+    model = load_example_model()
     return {
         "catalog": to_catalog(model, lang),
         "dictionary": to_dictionary(model),

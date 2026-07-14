@@ -685,6 +685,43 @@ _T: dict[str, dict[str, str]] = {
     "pbi_datasets": {"es": "Datasets", "en": "Datasets", "pt": "Datasets"},
     "pbi_tenant_pick_dataset": {"es": "Ver medidas del dataset…", "en": "View measures for dataset…",
                                 "pt": "Ver medidas do dataset…"},
+    "pbi_mode_example": {"es": "🧪 Ejemplo incluido", "en": "🧪 Bundled example", "pt": "🧪 Exemplo incluído"},
+    "pbi_example_kind": {"es": "Qué ejemplo ver", "en": "Which example to view", "pt": "Qual exemplo ver"},
+    "pbi_example_single": {
+        "es": "Modelo real (Adventure Works Demo, GitHub, MIT)",
+        "en": "Real model (Adventure Works Demo, GitHub, MIT)",
+        "pt": "Modelo real (Adventure Works Demo, GitHub, MIT)",
+    },
+    "pbi_example_tenant": {
+        "es": "Tenant multinacional (ilustrativo)",
+        "en": "Multinational tenant (illustrative)",
+        "pt": "Tenant multinacional (ilustrativo)",
+    },
+    "pbi_example_single_note": {
+        "es": "Modelo real de Power BI (10 tablas, 17 medidas DAX) de un repositorio público de "
+              "GitHub, licencia MIT — no es sintético. Detalle y atribución completa en "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "en": "A real Power BI model (10 tables, 17 DAX measures) from a public GitHub repo, "
+              "MIT licensed — not synthetic. Full details and attribution in "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "pt": "Um modelo real de Power BI (10 tabelas, 17 medidas DAX) de um repositório público "
+              "do GitHub, licença MIT — não é sintético. Detalhes e atribuição completa em "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+    },
+    "pbi_example_tenant_note": {
+        "es": "⚠️ Ilustrativo, no un escaneo real: es el mismo modelo real de arriba, replicado y "
+              "re-etiquetado en varios workspaces simulados, para mostrar cómo se ve "
+              "ingest_tenant() a escala en una empresa multinacional. Para un escaneo real de tu "
+              "propio tenant, usá el modo 🌐 Tenant completo con tus credenciales.",
+        "en": "⚠️ Illustrative, not a real scan: it's the same real model above, replicated and "
+              "relabeled across several simulated workspaces, to show what ingest_tenant() looks "
+              "like at multinational scale. For a real scan of your own tenant, use 🌐 Full tenant "
+              "mode with your own credentials.",
+        "pt": "⚠️ Ilustrativo, não um escaneamento real: é o mesmo modelo real acima, replicado e "
+              "reetiquetado em vários workspaces simulados, para mostrar como fica o "
+              "ingest_tenant() em escala numa multinacional. Para um escaneamento real do seu "
+              "próprio tenant, use o modo 🌐 Tenant completo com suas credenciais.",
+    },
     # ---------------------------------------------------------------- Tableau
     "tab_tableau": {"es": "📊 Tableau", "en": "📊 Tableau", "pt": "📊 Tableau"},
     "tab_intro": {
@@ -752,6 +789,36 @@ _T: dict[str, dict[str, str]] = {
               "(envia-se apenas a fórmula, nunca dados).",
     },
     "tab_r_formula": {"es": "Fórmula refactorizada", "en": "Refactored formula", "pt": "Fórmula refatorada"},
+    "tab_mode": {"es": "Modo", "en": "Mode", "pt": "Modo"},
+    "tab_mode_offline": {"es": "📁 Workbook local (.twb/.twbx)", "en": "📁 Local workbook (.twb/.twbx)",
+                         "pt": "📁 Workbook local (.twb/.twbx)"},
+    "tab_mode_site": {"es": "🌐 Sitio completo (Metadata API)", "en": "🌐 Full site (Metadata API)",
+                      "pt": "🌐 Site completo (Metadata API)"},
+    "tab_mode_example": {"es": "🧪 Ejemplo incluido", "en": "🧪 Bundled example", "pt": "🧪 Exemplo incluído"},
+    "tab_path": {"es": "Ruta al archivo .twb o .twbx", "en": "Path to the .twb or .twbx file",
+                "pt": "Caminho para o arquivo .twb ou .twbx"},
+    "tab_path_hint": {
+        "es": "Un .twbx trae extractos de datos empaquetados — el programa nunca los lee, solo "
+              "el XML de estructura (.twb) adentro.",
+        "en": "A .twbx bundles packaged data extracts — the program never reads them, only the "
+              "structure XML (.twb) inside.",
+        "pt": "Um .twbx traz extratos de dados empacotados — o programa nunca os lê, apenas o "
+              "XML de estrutura (.twb) dentro.",
+    },
+    "tab_upload": {"es": "Subir archivo .twb/.twbx", "en": "Upload .twb/.twbx file",
+                  "pt": "Enviar arquivo .twb/.twbx"},
+    "tab_load": {"es": "Analizar workbook", "en": "Analyze workbook", "pt": "Analisar workbook"},
+    "tab_example_note": {
+        "es": "Workbook de ejemplo escrito originalmente para este programa (no descargado de "
+              "GitHub — los repos públicos encontrados no tenían licencia clara). Detalle en "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "en": "Example workbook written originally for this program (not downloaded from GitHub "
+              "— the public repos found had no clear license). Details in "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "pt": "Workbook de exemplo escrito originalmente para este programa (não baixado do "
+              "GitHub — os repositórios públicos encontrados não tinham licença clara). "
+              "Detalhes em assets/samples/THIRD_PARTY_DATA.md.",
+    },
 }
 
 

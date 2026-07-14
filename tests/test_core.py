@@ -835,6 +835,33 @@ def test_powerbi_sql_source_wired_into_lineage(tmp_path):
     assert ((lin["source"] == model.name) & (lin["source_layer"] == "mart")).any()
 
 
+def test_powerbi_tmdl_doc_comment_and_metadata_traits():
+    # regresión: encontrado escaneando un proyecto .pbip real de GitHub —
+    # sourceLineageTag/dataCategory se colaban en el texto del DAX, y las
+    # descripciones nativas "/// ..." de TMDL no se capturaban.
+    from mvdg.powerbi_meta import _parse_table_tmdl
+    tmdl = (
+        "table Targets\n"
+        "\tlineageTag: 5c67d908-0588-43c0-9dbc-1c64794f92c8\n"
+        "\tsourceLineageTag: fc05aa02-32da-45a3-a497-78e97999d244\n"
+        "\n"
+        "\t/// Total sales goal for the current filter context.\n"
+        "\tmeasure Target = SUM(Targets[TargetAmount])\n"
+        "\t\tformatString: \\$#,0;(\\$#,0);\\$#,0\n"
+        "\t\tlineageTag: 35b9a71b-304f-4f4f-9f7f-cc49da4a2c84\n"
+        "\t\tsourceLineageTag: ffc79c2c-8c37-499d-919a-2a3511102514\n"
+        "\t\tdataCategory: Uncategorized\n"
+        "\n"
+        "\tmeasure Undocumented = SUM(Targets[X])\n"
+    )
+    _, _, measures, _ = _parse_table_tmdl(tmdl)
+    target = next(m for m in measures if m.name == "Target")
+    assert target.dax == "SUM(Targets[TargetAmount])"   # sin metadatos colados
+    assert target.description == "Total sales goal for the current filter context."
+    other = next(m for m in measures if m.name == "Undocumented")
+    assert other.description == ""   # sin "///" antes -> sin descripción, no arrastra la anterior
+
+
 def test_powerbi_source_label_heuristics():
     from mvdg.powerbi_meta import _source_label_from_mquery
     assert _source_label_from_mquery('Source = Sql.Database("Srv", "Db")') == "SQL Server · Srv/Db"
@@ -876,6 +903,26 @@ def _scanner_result_json():
             "reports": [{"name": "Dashboard Ventas", "datasetId": "ds-1"}],
         }],
     }
+
+
+def test_powerbi_list_workspace_ids_paginates_past_5000(monkeypatch):
+    # un tenant multinacional puede tener más workspaces que el tope de una
+    # sola página ($top) — hay que seguir pidiendo con $skip hasta agotarlos.
+    from mvdg import powerbi_meta as pbi
+
+    pages = {
+        0: [{"id": f"ws-{i}", "name": f"W{i}"} for i in range(3)],   # top=3, página llena
+        3: [{"id": "ws-3", "name": "W3"}],                            # última página, incompleta
+    }
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert "admin/groups" in url
+        skip = int(url.split("$skip=")[1].split("&")[0])
+        return {"value": pages.get(skip, [])}
+
+    monkeypatch.setattr(pbi, "_http_json", fake_http_json)
+    result = pbi.list_workspace_ids("tok", top=3)
+    assert [w["id"] for w in result] == ["ws-0", "ws-1", "ws-2", "ws-3"]
 
 
 def test_powerbi_tenant_scan_mocked_end_to_end(monkeypatch):
@@ -932,6 +979,35 @@ def test_powerbi_tenant_missing_credentials_raises(monkeypatch):
         monkeypatch.delenv(var, raising=False)
     with pytest.raises(RuntimeError):
         pbi.read_scanner(tenant_id="only-this-one")
+
+
+def test_powerbi_bundled_example_is_real_and_parses(tmp_path):
+    # el .pbip real incluido con el programa (GitHub, MIT) debe seguir
+    # parseando limpio — este mismo archivo encontró 2 bugs reales del
+    # parser (ver test_powerbi_tmdl_doc_comment_and_metadata_traits).
+    from mvdg import powerbi_meta as pbi
+    out = pbi.ingest_example()
+    model = out["_model"]
+    assert model.name == "Adventure Works Demo"
+    assert len(model.tables) == 10 and len(model.measures) == 17
+    assert all(m.description for m in model.measures)   # /// se capturan bien
+    assert "Sales" in model.tables and "Targets" in model.tables
+
+
+def test_powerbi_example_tenant_is_illustrative_not_a_real_scan():
+    from mvdg import powerbi_meta as pbi
+    out = pbi.ingest_example_tenant()
+    models = out["_models"]
+    assert len(models) == 4   # 4 workspaces simulados
+    workspaces = {m.workspace for m in models}
+    assert len(workspaces) == 4   # cada uno con nombre distinto
+    # todos comparten el contenido real (mismas tablas/medidas), solo cambia
+    # el workspace/reporte simulado
+    assert {m.name for m in models} == {"Adventure Works Demo"}
+    assert all(len(m.tables) == 10 for m in models)
+    # tiene que quedar explícitamente marcado como ilustrativo, no un scan real
+    assert all("ilustrativo" in m.source.lower() for m in models)
+    assert (out["catalog"]["source"].str.contains("ilustrativo", case=False)).all()
 
 
 # ---------------------------------------------------------- Tableau (Metadata API)
@@ -1019,6 +1095,75 @@ def test_tableau_signout_failure_does_not_break_scan(monkeypatch):
     model = tab.read_site(server="https://tableau.example.com",
                           token_name="mv-token", token_secret="secret")
     assert model.workbooks == ["Ventas Regional"]   # el fallo del sign-out no rompe el escaneo
+
+
+def _make_twb(root, name="Demo.twb"):
+    xml = (
+        "<?xml version='1.0' encoding='utf-8' ?>\n"
+        "<workbook version='18.1'>\n"
+        "  <datasources>\n"
+        "    <datasource caption='Ventas' name='sqlserver.x'>\n"
+        "      <connection class='sqlserver' server='Srv' dbname='Db'>\n"
+        "        <relation name='Ventas' table='[dbo].[Ventas]' type='table' />\n"
+        "      </connection>\n"
+        "      <column caption='Monto' datatype='real' name='[Monto]' role='measure' />\n"
+        "      <column caption='Margen %' datatype='real' name='[Calc1]' role='measure'>\n"
+        "        <calculation class='tableau' formula='SUM([Margen])/SUM([Monto])' />\n"
+        "      </column>\n"
+        "    </datasource>\n"
+        "  </datasources>\n"
+        "  <dashboards><dashboard name='Panel'><zones/></dashboard></dashboards>\n"
+        "</workbook>\n"
+    )
+    p = root / name
+    p.write_text(xml, encoding="utf-8")
+    return str(p)
+
+
+def test_tableau_read_twb_offline(tmp_path):
+    from mvdg import tableau_meta as tabl
+    path = _make_twb(tmp_path)
+    model = tabl.read_twb(path)
+    assert model.workbooks == ["Demo"]
+    assert [d.name for d in model.datasources] == ["Ventas"]
+    assert model.datasources[0].upstream_tables == ["sqlserver · Srv/Db"]
+    calc = next(f for f in model.fields if f.is_calculated)
+    assert calc.name == "Margen %" and calc.formula == "SUM([Margen])/SUM([Monto])"
+
+    out = tabl.ingest_twb(path)
+    assert len(out["catalog"]) == 1
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_tableau_read_twbx_zip_wrapper(tmp_path):
+    import zipfile
+    from mvdg import tableau_meta as tabl
+    twb_path = _make_twb(tmp_path, "Inner.twb")
+    twbx_path = str(tmp_path / "Demo.twbx")
+    with zipfile.ZipFile(twbx_path, "w") as zf:
+        zf.write(twb_path, "Inner.twb")
+    model = tabl.read_twb(twbx_path)
+    assert [d.name for d in model.datasources] == ["Ventas"]   # se desempaqueta el .twb interno
+
+
+def test_tableau_read_twb_missing_file_raises(tmp_path):
+    from mvdg import tableau_meta as tabl
+    with pytest.raises(FileNotFoundError):
+        tabl.read_twb(str(tmp_path / "no_existe.twb"))
+
+
+def test_tableau_bundled_example_parses():
+    from mvdg import tableau_meta as tabl
+    out = tabl.ingest_example()
+    model = out["_model"]
+    assert model.workbooks == ["VentasGlobalDemo"]
+    assert {d.name for d in model.datasources} == {"Ventas Global", "Metas Regionales"}
+    calc_names = {f.name for f in model.fields if f.is_calculated}
+    assert calc_names == {"Margen %", "Ticket Promedio", "Segmento de Cuenta"}
+    assert len(out["glossary"]) == 3
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
 
 
 def test_powerbi_normalizers_match_mvdg_schema(tmp_path):

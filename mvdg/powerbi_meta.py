@@ -122,6 +122,14 @@ _MEASURE_RE = re.compile(r"^\s*measure\s+('[^']+'|\"[^\"]+\"|[^\s=]+)\s*=\s*(.*)
 _COLUMN_RE = re.compile(r"^\s*column\s+('[^']+'|\"[^\"]+\"|[^\s]+)\s*$")
 _TABLE_RE = re.compile(r"^\s*table\s+('[^']+'|\"[^\"]+\"|[^\s]+)\s*$")
 _PARTITION_RE = re.compile(r"^\s*partition\s+")
+# comentario de documentación nativo de TMDL ("/// texto"), en la(s) línea(s)
+# inmediatamente antes de un table/measure/column — se usa como descripción
+# si el objeto no trae una propiedad "description:" explícita.
+_DESC_COMMENT_RE = re.compile(r"^\s*///\s?(.*)$")
+# cualquier propiedad TMDL de la forma "nombre: valor" (formatString,
+# lineageTag, sourceLineageTag, dataCategory, summarizeBy, etc.) — se usa
+# para no confundir metadatos con continuaciones reales de DAX.
+_TMDL_TRAIT_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*\s*:(\s|$)")
 
 # heurísticas sobre la expresión M de una partición (Power Query) — nunca leen
 # filas, solo el texto de la consulta, para identificar de dónde viene la tabla.
@@ -154,6 +162,7 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
     columns: list[Column] = []
     measures: list[Measure] = []
     table_source: str | None = None
+    pending_desc: list[str] = []   # "/// ..." acumulados, esperando su objeto
 
     i = 0
     while i < len(lines):
@@ -162,9 +171,16 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
             i += 1
             continue
 
+        m = _DESC_COMMENT_RE.match(line)
+        if m:
+            pending_desc.append(m.group(1).strip())
+            i += 1
+            continue
+
         m = _TABLE_RE.match(line)
         if m and not table_name:
             table_name = _unquote(m.group(1))
+            pending_desc = []
             i += 1
             continue
 
@@ -174,7 +190,8 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
             base_indent = _indent(line)
             name = _unquote(m.group(1))
             dax_parts = [m.group(2).rstrip()]
-            folder, desc = "", ""
+            folder, desc = "", " ".join(pending_desc).strip()
+            pending_desc = []
             j = i + 1
             while j < len(lines):
                 nxt = lines[j]
@@ -189,12 +206,13 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
                 if low.startswith("displayFolder:"):
                     folder = low.split(":", 1)[1].strip()
                 elif low.startswith("description:"):
-                    desc = low.split(":", 1)[1].strip()
-                elif low.startswith(("formatString:", "lineageTag:", "annotation",
-                                     "changedProperty", "isHidden", "formatStringDefinition")):
-                    pass
+                    desc = low.split(":", 1)[1].strip()   # explícita: pisa el "///" si había
+                elif low.startswith(("annotation", "changedProperty", "isHidden")) or \
+                        _TMDL_TRAIT_RE.match(low):
+                    pass   # metadato TMDL (formatString, lineageTag, sourceLineageTag,
+                           # dataCategory, summarizeBy, etc.) — no es DAX
                 else:
-                    dax_parts.append(nxt.strip())  # continuación del DAX
+                    dax_parts.append(nxt.strip())  # continuación real del DAX
                 j += 1
             dax = " ".join(p for p in dax_parts if p).strip()
             measures.append(Measure(table_name, name, dax, folder, desc))
@@ -207,6 +225,7 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
             base_indent = _indent(line)
             name = _unquote(m.group(1))
             dtype, src, cdax, is_calc = "", "", "", False
+            pending_desc = []
             j = i + 1
             while j < len(lines):
                 nxt = lines[j]
@@ -232,6 +251,7 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
         if _PARTITION_RE.match(line):
             base_indent = _indent(line)
             block_lines = []
+            pending_desc = []
             j = i + 1
             while j < len(lines):
                 nxt = lines[j]
@@ -244,6 +264,7 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
             i = j
             continue
 
+        pending_desc = []   # línea suelta que no es "///" ni una declaración: corta la racha
         i += 1
 
     return table_name, columns, measures, table_source
@@ -392,15 +413,27 @@ def _get_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     return _http_form(url, form)["access_token"]
 
 
-def list_workspace_ids(token: str, top: int = 5000) -> list[dict]:
+def list_workspace_ids(token: str, top: int = 5000, max_pages: int = 20) -> list[dict]:
     """Lista ``{id, name}`` de todos los workspaces activos del tenant, vía
     ``admin/groups`` — el primer paso para escanear TODO el tenant sin que el
-    usuario tenga que pasar IDs a mano."""
+    usuario tenga que pasar IDs a mano.
+
+    Un tenant multinacional puede tener más de 5.000 workspaces (el máximo
+    por página de esta API): se pagina con ``$skip`` hasta agotar los
+    resultados o llegar a ``max_pages`` (por defecto 20 × 5.000 = 100.000
+    workspaces, más que suficiente para cualquier tenant real)."""
     headers = {"Authorization": f"Bearer {token}"}
-    url = (f"{_ADMIN_BASE}/groups?$top={top}"
-          "&$filter=type eq 'Workspace' and state eq 'Active'")
-    data = _http_json(url, headers)
-    return [{"id": g["id"], "name": g.get("name", "")} for g in data.get("value", [])]
+    out: list[dict] = []
+    for page in range(max_pages):
+        skip = page * top
+        url = (f"{_ADMIN_BASE}/groups?$top={top}&$skip={skip}"
+              "&$filter=type eq 'Workspace' and state eq 'Active'")
+        data = _http_json(url, headers)
+        batch = data.get("value", [])
+        out.extend({"id": g["id"], "name": g.get("name", "")} for g in batch)
+        if len(batch) < top:
+            break
+    return out
 
 
 def _chunk(items: list, size: int):
@@ -679,4 +712,77 @@ def ingest_pbip(folder: str, lang: str = "es") -> dict[str, pd.DataFrame]:
         "quality": to_quality(model, lang),
         "sources": to_sources(model),
         "_model": model,
+    }
+
+
+# ------------------------------------------------- ejemplo incluido (real)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_EXAMPLE_DIR = os.path.join(_ROOT, "assets", "samples", "powerbi", "AdventureWorksDemo",
+                            "AdventureWorksDemo.SemanticModel")
+
+# workspaces simulados para el ejemplo ILUSTRATIVO de tenant multinacional —
+# ver assets/samples/THIRD_PARTY_DATA.md. No representa una empresa real.
+_EXAMPLE_TENANT_WORKSPACES = [
+    ("Ventas EMEA", "Panel Ejecutivo EMEA"),
+    ("Ventas LATAM", "Panel Ejecutivo LATAM"),
+    ("Ventas APAC", "Panel Ejecutivo APAC"),
+    ("Finanzas Corporativas", "Panel de Finanzas Global"),
+]
+_EXAMPLE_SOURCE_NOTE = ("Ejemplo ilustrativo — modelo real (Adventure Works Demo, GitHub, MIT) "
+                        "replicado en workspaces simulados para representar una empresa "
+                        "multinacional. No es un escaneo real de un tenant.")
+
+
+def load_example_model() -> PowerBIModel:
+    """El modelo real de ejemplo incluido con el programa — un proyecto
+    .pbip/TMDL público (MIT) de GitHub. Ver assets/samples/THIRD_PARTY_DATA.md."""
+    return read_pbip(_EXAMPLE_DIR)
+
+
+def load_example_tenant() -> list[PowerBIModel]:
+    """Ejemplo ILUSTRATIVO de cómo se ve ``ingest_tenant()`` a escala: el
+    mismo modelo real de ``load_example_model()``, replicado y re-etiquetado
+    en varios workspaces simulados representando una empresa multinacional
+    (ej. "Ventas EMEA/LATAM/APAC"). Deliberadamente NO es un escaneo real —
+    no reemplaza al modo Scanner API con tus propias credenciales, que sí
+    trae datos verdaderos de tu tenant."""
+    base = load_example_model()
+    models = []
+    for i, (workspace, report) in enumerate(_EXAMPLE_TENANT_WORKSPACES, 1):
+        m = PowerBIModel(
+            name=base.name, tables=list(base.tables), columns=list(base.columns),
+            measures=list(base.measures), relationships=list(base.relationships),
+            roles=list(base.roles), reports=[report],
+            table_sources=dict(base.table_sources), workspace=workspace,
+            dataset_id=f"example-{i}", source=_EXAMPLE_SOURCE_NOTE)
+        models.append(m)
+    return models
+
+
+def ingest_example(lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Atajo: el ejemplo real (un solo modelo) con las tablas normalizadas."""
+    model = load_example_model()
+    return {
+        "catalog": to_catalog(model, lang),
+        "dictionary": to_dictionary(model),
+        "glossary": to_glossary(model),
+        "lineage": to_lineage(model),
+        "quality": to_quality(model, lang),
+        "sources": to_sources(model),
+        "_model": model,
+    }
+
+
+def ingest_example_tenant(lang: str = "es") -> dict[str, pd.DataFrame | list]:
+    """Atajo: el ejemplo ilustrativo de tenant multinacional, con las tablas
+    normalizadas agregadas — mismo esquema de salida que ``ingest_tenant()``."""
+    models = load_example_tenant()
+    return {
+        "catalog": pd.concat([to_catalog(m, lang) for m in models], ignore_index=True),
+        "dictionary": pd.concat([to_dictionary(m) for m in models], ignore_index=True),
+        "glossary": pd.concat([to_glossary(m) for m in models], ignore_index=True),
+        "lineage": pd.concat([to_lineage(m) for m in models], ignore_index=True),
+        "quality": pd.concat([to_quality(m, lang) for m in models], ignore_index=True),
+        "sources": pd.concat([to_sources(m) for m in models], ignore_index=True),
+        "_models": models,
     }

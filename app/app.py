@@ -953,8 +953,9 @@ with tab_pbi:
     st.info(t("pbi_intro", lang), icon="🔷")
     st.caption("🔐 " + t("pbi_secure_note", lang))
 
-    _PBI_MODE = {"offline": t("pbi_mode_offline", lang), "tenant": t("pbi_mode_tenant", lang)}
-    pbi_mode = st.radio(t("pbi_mode", lang), ["offline", "tenant"], horizontal=True,
+    _PBI_MODE = {"offline": t("pbi_mode_offline", lang), "tenant": t("pbi_mode_tenant", lang),
+                "example": t("pbi_mode_example", lang)}
+    pbi_mode = st.radio(t("pbi_mode", lang), ["offline", "tenant", "example"], horizontal=True,
                         key="pbi_mode", format_func=lambda k: _PBI_MODE[k])
 
     model_out = None
@@ -993,6 +994,18 @@ with tab_pbi:
                     pbi_err = str(exc)
         if model_out is not None:
             pbi_single_model = model_out["_model"]
+    elif pbi_mode == "example":
+        _PBI_EX_KIND = {"single": t("pbi_example_single", lang), "tenant": t("pbi_example_tenant", lang)}
+        pbi_ex_kind = st.radio(t("pbi_example_kind", lang), ["single", "tenant"], horizontal=True,
+                               key="pbi_example_kind", format_func=lambda k: _PBI_EX_KIND[k])
+        if pbi_ex_kind == "single":
+            st.caption(t("pbi_example_single_note", lang))
+            model_out = pbi.ingest_example(lang)
+            pbi_single_model = model_out["_model"]
+        else:
+            st.warning(t("pbi_example_tenant_note", lang), icon="⚠️")
+            model_out = pbi.ingest_example_tenant(lang)
+            pbi_models = model_out["_models"]
     else:
         if not pbi.tenant_configured():
             st.warning(t("pbi_tenant_off", lang), icon="🔒")
@@ -1097,17 +1110,50 @@ with tab_pbi:
 # ---------------------------------------------------------------- Tableau
 with tab_tab:
     st.info(t("tab_intro", lang), icon="📊")
-    if not tabl.configured():
-        st.warning(t("tab_off", lang), icon="🔒")
-    else:
-        if st.button(t("tab_scan", lang), key="tab_scan_btn"):
+
+    _TAB_MODE = {"offline": t("tab_mode_offline", lang), "site": t("tab_mode_site", lang),
+                "example": t("tab_mode_example", lang)}
+    tab_mode = st.radio(t("tab_mode", lang), ["offline", "site", "example"], horizontal=True,
+                        key="tab_mode", format_func=lambda k: _TAB_MODE[k])
+
+    if tab_mode == "offline":
+        tpath = st.text_input(t("tab_path", lang), key="tab_path")
+        st.caption(t("tab_path_hint", lang))
+        up = st.file_uploader(t("tab_upload", lang), type=["twb", "twbx"], key="tab_upload")
+        if st.button(t("tab_load", lang), key="tab_load_btn"):
             try:
                 with st.spinner(t("tab_wait", lang)):
-                    tab_out = tabl.ingest_site(lang)
-                st.session_state["tab_scan_result"] = tab_out
+                    if up is not None:
+                        import tempfile
+                        tmpdir = tempfile.mkdtemp(prefix="mvdg_twb_")
+                        fpath = os.path.join(tmpdir, up.name)
+                        with open(fpath, "wb") as fh:
+                            fh.write(up.getbuffer())
+                        tab_out = tabl.ingest_twb(fpath, lang)
+                    elif tpath.strip():
+                        tab_out = tabl.ingest_twb(tpath.strip(), lang)
+                    else:
+                        tab_out = None
+                if tab_out is not None:
+                    st.session_state["tab_scan_result"] = tab_out
             except Exception as exc:  # noqa: BLE001
                 st.session_state["tab_scan_result"] = None
                 st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
+    elif tab_mode == "example":
+        st.caption(t("tab_example_note", lang))
+        st.session_state["tab_scan_result"] = tabl.ingest_example(lang)
+    else:
+        if not tabl.configured():
+            st.warning(t("tab_off", lang), icon="🔒")
+        else:
+            if st.button(t("tab_scan", lang), key="tab_scan_btn"):
+                try:
+                    with st.spinner(t("tab_wait", lang)):
+                        tab_out = tabl.ingest_site(lang)
+                    st.session_state["tab_scan_result"] = tab_out
+                except Exception as exc:  # noqa: BLE001
+                    st.session_state["tab_scan_result"] = None
+                    st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
 
     tab_out = st.session_state.get("tab_scan_result")
     if tab_out is None:

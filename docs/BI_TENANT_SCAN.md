@@ -68,6 +68,39 @@ En la pestaña **🔷 Power BI → 🌐 Tenant completo**, al hacer clic en
    medidas (DAX), relaciones, roles RLS, reportes, y el origen SQL detectado
    en la expresión M de cada tabla (mismo mecanismo que el camino offline).
 
+### 4. Empresa con Microsoft Fabric y cientos de reportes en todo el mundo
+
+Desde 2023, Fabric **unificó** el concepto de workspace con Power BI: un
+workspace de Fabric es, para la Scanner API, el mismo tipo de objeto que un
+workspace clásico de Power BI. Esto significa que **este mismo escaneo ya
+cubre Power BI dentro de Fabric**, sin necesidad de nada adicional — no hay
+un "modo Fabric" separado porque no hace falta.
+
+Lo que sí cambia a la escala de "cientos de reportes en todo el mundo":
+
+- **Paginación real.** `admin/groups` devuelve como máximo 5.000 workspaces
+  por página. `list_workspace_ids()` pagina automáticamente con `$skip`
+  hasta agotarlos (hasta 100.000 workspaces por defecto) — un tenant
+  multinacional grande no se trunca silenciosamente.
+- **Límite de frecuencia.** Tanto `admin/groups` como el flujo de scan
+  tienen límites de la propia API de Microsoft (del orden de cientos de
+  requests por hora). Si tu tenant es muy grande, escaneá por lotes
+  (`max_workspaces` en `ingest_tenant()`) en vez de todo de una sola vez.
+- **Escaneo incremental.** Para no volver a escanear miles de workspaces
+  sin cambios cada vez, la Scanner API real ofrece
+  `admin/workspaces/modified?modifiedSince=` para traer solo los
+  workspaces tocados desde la última corrida — no implementado todavía en
+  este programa (hoy cada corrida es un escaneo completo), pero es la
+  optimización natural si vas a correrlo seguido sobre un tenant grande.
+- **Más allá de Power BI: la Fabric Admin API.** Si además de reportes de
+  Power BI necesitás inventariar OTROS ítems de Fabric (Lakehouses,
+  Data Pipelines, Notebooks, Warehouses), esos se listan con una API
+  distinta — `GET https://api.fabric.microsoft.com/v1/admin/items` (mismo
+  service principal, mismos permisos `Tenant.Read.All`). No está cubierta
+  por este módulo (que se enfoca en el modelo semántico de Power BI); si la
+  necesitás, es una extensión natural con el mismo patrón que
+  `powerbi_meta.py`.
+
 > Yo (Claude) no puedo crear tu service principal ni acceder a tu tenant de
 > Power BI — es un paso que hacés vos directamente en Azure Portal y en el
 > panel de administración de Power BI. El código ya está listo del lado del
@@ -132,10 +165,34 @@ cada medida DAX o campo calculado de Tableau trae un botón para pedirle a
 la IA que la audite y proponga una versión mejorada. Se manda solo la
 expresión (DAX o fórmula de Tableau) — nunca datos.
 
+## Ejemplos incluidos (sin necesitar credenciales)
+
+Si todavía no tenés el service principal o el PAT a mano, ambas pestañas
+tienen un modo **🧪 Ejemplo incluido** para ver el resultado sin configurar
+nada:
+
+- **🔷 Power BI → 🧪 Ejemplo → Modelo real**: un modelo de Power BI **real**
+  (10 tablas, 17 medidas DAX, todas documentadas) de un repositorio público
+  de GitHub (licencia MIT) — no es sintético. Este mismo archivo se usó
+  para encontrar y corregir dos bugs reales del parser TMDL durante el
+  desarrollo de esta función.
+- **🔷 Power BI → 🧪 Ejemplo → Tenant multinacional**: el mismo modelo real
+  de arriba, replicado y re-etiquetado en 4 workspaces simulados
+  ("Ventas EMEA/LATAM/APAC", "Finanzas Corporativas") para mostrar cómo se
+  ve `ingest_tenant()` a la escala de una multinacional. **Marcado
+  explícitamente como ilustrativo** en la interfaz — no es un escaneo real.
+- **📊 Tableau → 🧪 Ejemplo**: un workbook `.twb` escrito originalmente para
+  este programa (no descargado de GitHub — ver
+  `assets/samples/THIRD_PARTY_DATA.md` para el porqué), con 2 datasources
+  y 3 campos calculados con fórmulas realistas.
+
+Atribución completa de todo lo anterior en `assets/samples/THIRD_PARTY_DATA.md`.
+
 ## Verificación
 
-`python -m mvdg.selfcheck` incluye dos chequeos ("Power BI tenant-wide" y
-"Tableau Metadata API") que confirman, con un transporte HTTP simulado, que
-sin credenciales el comportamiento es apagado por defecto y que con
-credenciales el flujo completo (autenticación → escaneo → normalización)
-funciona de punta a punta.
+`python -m mvdg.selfcheck` incluye chequeos ("Power BI tenant-wide",
+"Tableau Metadata API", "Ejemplos incluidos") que confirman, con un
+transporte HTTP simulado, que sin credenciales el comportamiento es apagado
+por defecto, que con credenciales el flujo completo (autenticación →
+escaneo → normalización) funciona de punta a punta, y que ambos ejemplos
+incluidos parsean correctamente.

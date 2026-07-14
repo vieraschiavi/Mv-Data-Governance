@@ -1,8 +1,8 @@
 # Datos de terceros incluidos en este paquete
 
-Estos tres archivos son datasets de ejemplo **externos** (no generados por MV
-Data Governance), incluidos para demostrar el gobierno de datos sobre casos
-reales. Se citan aquí las fuentes y licencias, tal como corresponde.
+Estos archivos son datasets/modelos de ejemplo **externos** (no generados por
+MV Data Governance), incluidos para demostrar el gobierno de datos sobre
+casos reales. Se citan aquí las fuentes y licencias, tal como corresponde.
 
 ## rotulado_de_alimentos_2026.csv
 
@@ -44,3 +44,58 @@ reales. Se citan aquí las fuentes y licencias, tal como corresponde.
 Ninguno de los tres contiene datos personales identificables: el primero es
 información de producto/inspección (no de personas), el segundo es
 enteramente sintético, y el tercero está anonimizado en su fuente original.
+
+## powerbi/AdventureWorksDemo/ (modelo Power BI real, formato .pbip/TMDL)
+
+- **Qué es:** un modelo semántico real de Power BI (10 tablas, 17 medidas
+  DAX documentadas, 10 relaciones) — ventas, metas y desempeño de vendedores
+  de una compañía ficticia estilo Adventure Works, con los datos de ejemplo
+  **embebidos en la propia consulta M** (`Table.FromRecords`, sin conexión a
+  ninguna base real).
+- **Autor:** Samuel Tauil.
+- **Fuente:** <https://github.com/samueltauil/powerbi-git-demo>
+- **Licencia:** [MIT](https://opensource.org/licenses/MIT) — se puede usar,
+  copiar, modificar y redistribuir libremente, dando el crédito
+  correspondiente. Esta nota es esa atribución; el texto completo de la
+  licencia original queda copiado en
+  `AdventureWorksDemo/LICENSE_UPSTREAM.txt`.
+- **Cambios respecto del original:** se conservaron sin modificar todas las
+  tablas, columnas, medidas (DAX), relaciones y expresiones M. Se renombró
+  la carpeta del modelo y el `displayName` (de "My new report" a "Adventure
+  Works Demo") por claridad, y se agregó una carpeta `.Report` vacía
+  (mismo nombre base) solo para que el conector detecte un reporte asociado
+  — el reporte visual original no se incluyó (no hace falta para gobernar
+  metadata; reduce el tamaño del paquete).
+- **Uso:** ejemplo real dentro de la pestaña **🔷 Power BI → 🧪 Ejemplo**, y
+  base del ejemplo ilustrativo de "tenant multinacional" (ver más abajo).
+  Este mismo archivo sirvió además para encontrar y corregir dos bugs reales
+  del parser TMDL (`sourceLineageTag`/`dataCategory` colándose en el DAX, y
+  las descripciones nativas `///` de TMDL no capturadas) — quedaron como
+  test de regresión en `tests/test_core.py`.
+
+## Ejemplo ilustrativo: "tenant multinacional" (Power BI/Fabric)
+
+La pestaña **🔷 Power BI → 🧪 Ejemplo → Tenant multinacional (ilustrativo)**
+muestra cómo se ve `ingest_tenant()` a escala: el modelo real de arriba
+(Adventure Works Demo) **replicado y re-etiquetado** en varios workspaces
+simulados (ej. "Ventas EMEA", "Ventas LATAM", "Ventas APAC", "Finanzas
+Corporativas") para representar una empresa multinacional con cientos de
+reportes distribuidos por regiones. **Es explícitamente ilustrativo, no un
+escaneo real de un tenant** — no reemplaza al modo "🌐 Tenant completo"
+(que sí escanea de verdad, vía la Scanner API, con tus propias credenciales).
+Se etiqueta como tal en la interfaz y en `source` de cada modelo generado.
+
+## Ejemplo Tableau (originalmente escrito, formato .twb)
+
+- **Qué es:** un archivo `.twb` (XML de Tableau) escrito originalmente para
+  este proyecto — un datasource de ventas con columnas, 3 campos calculados
+  (con fórmulas realistas al estilo del dataset público "Sample - Superstore"
+  de Tableau) y su tabla de origen SQL.
+- **Por qué no se usó un `.twb`/`.twbx` real descargado de GitHub:** se
+  buscaron ejemplos públicos (ver PR de esta funcionalidad), pero los
+  repositorios encontrados no declaraban una licencia explícita — sin
+  licencia clara, redistribuirlos dentro de este paquete sería un riesgo
+  legal innecesario. Se optó por escribir un archivo equivalente,
+  estructuralmente realista, 100% propio.
+- **Uso:** ejemplo dentro de la pestaña **📊 Tableau → 🧪 Ejemplo**, y para
+  probar el parser offline `read_twb()` (mismo rol que `.pbip` para Power BI).

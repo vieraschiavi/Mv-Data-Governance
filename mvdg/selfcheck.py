@@ -338,6 +338,29 @@ def run_checks() -> list[tuple[str, bool, str]]:
                     os.environ[k] = v
         return "sin credenciales -> RuntimeError; con credenciales (mock) -> sitio escaneado end-to-end"
 
+    @check("Ejemplos incluidos de Power BI (real, GitHub MIT) y Tableau (original)")
+    def _():
+        from . import powerbi_meta as pbi
+        from . import tableau_meta as tabl
+
+        pbi_out = pbi.ingest_example()
+        pbi_model = pbi_out["_model"]
+        assert len(pbi_model.tables) == 10 and len(pbi_model.measures) == 17
+        assert all(m.description for m in pbi_model.measures), "descripciones /// no se capturaron"
+
+        tenant_out = pbi.ingest_example_tenant()
+        assert len(tenant_out["_models"]) == 4
+        assert all("ilustrativo" in m.source.lower() for m in tenant_out["_models"])
+
+        tab_out = tabl.ingest_example()
+        tab_model = tab_out["_model"]
+        assert tab_model.workbooks == ["VentasGlobalDemo"]
+        assert sum(1 for f in tab_model.fields if f.is_calculated) == 3
+
+        return (f"Power BI: {len(pbi_model.tables)} tablas reales (MIT) + 4 workspaces "
+               f"ilustrativos · Tableau: {len(tab_model.workbooks)} workbook original, "
+               f"{len(tab_model.datasources)} datasources")
+
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():
         import os

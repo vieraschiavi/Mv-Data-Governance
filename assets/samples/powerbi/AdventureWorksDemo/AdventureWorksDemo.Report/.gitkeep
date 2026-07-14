@@ -1,0 +1,4 @@
+Carpeta vacía a propósito: solo necesita existir para que powerbi_meta.read_pbip()
+detecte que el modelo semántico tiene un reporte asociado (por el sufijo ".Report").
+El reporte visual real no se incluyó — no hace falta para gobernar metadata y reduce
+el tamaño del paquete. Ver assets/samples/THIRD_PARTY_DATA.md.
