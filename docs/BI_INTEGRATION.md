@@ -63,6 +63,13 @@ Además de conectar datos, la pestaña **🔷 Power BI** gobierna el modelo sem�
 5. Opcional: con tu API key de IA configurada, pedile que audite y
    refactorice el DAX de cualquier medida (solo se manda el DAX, nunca datos).
 
+**¿Necesitás gobernar TODO el tenant de una vez, no un `.pbip` por vez?** La
+misma pestaña tiene un modo **🌐 Tenant completo** que escanea todos los
+workspaces vía la Scanner API (con tu propio service principal, opcional,
+apagado por defecto). Y la pestaña **📊 Tableau** hace exactamente lo mismo
+para un sitio de Tableau vía su Metadata API. Paso a paso de credenciales en
+**[`docs/BI_TENANT_SCAN.md`](BI_TENANT_SCAN.md)**.
+
 ### Tableau
 1. Con la API levantada, usá **Datos → Nueva fuente de datos → Archivo JSON**
    sobre una descarga de `/api/...`, o el **Web Data Connector**.
@@ -115,6 +122,13 @@ Beyond connecting data, the **🔷 Power BI** tab governs the semantic model:
 5. Optional: with your AI API key set, ask it to audit and refactor the DAX
    of any measure (only the DAX is sent, never data).
 
+**Need to govern the WHOLE tenant at once, not one `.pbip` at a time?** The
+same tab has a **🌐 Full tenant** mode that scans every workspace via the
+Scanner API (with your own service principal, optional, off by default).
+And the **📊 Tableau** tab does the exact same thing for a Tableau site via
+its Metadata API. Step-by-step credentials setup in
+**[`docs/BI_TENANT_SCAN.md`](BI_TENANT_SCAN.md)**.
+
 ### Tableau
 1. With the API running, use **Data → New Data Source → JSON file** on a
    saved `/api/...` response, or the **Web Data Connector**.
@@ -165,6 +179,13 @@ Além de conectar dados, a aba **🔷 Power BI** governa o modelo semântico:
    mesmo grafo de 5 camadas usado no resto do programa.
 5. Opcional: com sua API key de IA configurada, peça para auditar e
    refatorar o DAX de qualquer medida (envia-se apenas o DAX, nunca dados).
+
+**Precisa governar TODO o tenant de uma vez, não um `.pbip` por vez?** A
+mesma aba tem um modo **🌐 Tenant completo** que escaneia todos os
+workspaces via a Scanner API (com sua própria service principal, opcional,
+desligado por padrão). E a aba **📊 Tableau** faz exatamente o mesmo para
+um site do Tableau via sua Metadata API. Passo a passo das credenciais em
+**[`docs/BI_TENANT_SCAN.md`](BI_TENANT_SCAN.md)**.
 
 ### Tableau
 1. Com a API rodando, use **Dados → Nova fonte de dados → Arquivo JSON**

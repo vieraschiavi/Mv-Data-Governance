@@ -248,6 +248,96 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert set(out) >= {"catalog", "dictionary", "glossary", "lineage", "quality", "sources"}
         return "SQL Server -> tabla -> dataset -> reporte, cableado end-to-end (offline, sin filas)"
 
+    @check("Power BI tenant-wide (Scanner API, apagado por defecto, con mock del transporte)")
+    def _():
+        import os
+        from unittest import mock
+
+        from . import powerbi_meta as pbi
+
+        saved = {v: os.environ.pop(v, None) for v in
+                ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET")}
+        try:
+            assert pbi.tenant_configured() is False
+            try:
+                pbi.read_scanner()
+                raise AssertionError("read_scanner() debería fallar sin credenciales")
+            except RuntimeError:
+                pass
+
+            def fake_form(url, form):
+                return {"access_token": "tok"}
+
+            def fake_json(url, headers, method="GET", body=None):
+                if "admin/groups" in url:
+                    return {"value": [{"id": "ws-1", "name": "Demo"}]}
+                if "getInfo" in url:
+                    return {"id": "scan-1"}
+                if "scanStatus" in url:
+                    return {"status": "Succeeded"}
+                if "scanResult" in url:
+                    return {"workspaces": [{"name": "Demo", "datasets": [{
+                        "id": "ds-1", "name": "VentasDemo",
+                        "tables": [{"name": "Ventas",
+                                   "columns": [{"name": "Monto", "dataType": "double"}],
+                                   "measures": [{"name": "Total", "expression": "SUM(Ventas[Monto])"}],
+                                   "source": [{"expression": 'Sql.Database("Srv","Db")'}]}]}],
+                        "reports": [{"name": "Rep", "datasetId": "ds-1"}]}]}
+                raise AssertionError(url)
+
+            with mock.patch.object(pbi, "_http_form", fake_form), \
+                mock.patch.object(pbi, "_http_json", fake_json):
+                out = pbi.ingest_tenant(tenant_id="t", client_id="c", client_secret="s")
+            assert len(out["_models"]) == 1
+            assert out["_models"][0].table_sources.get("Ventas") == "SQL Server · Srv/Db"
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+        return "sin credenciales -> RuntimeError; con credenciales (mock) -> tenant escaneado end-to-end"
+
+    @check("Tableau Metadata API (apagado por defecto, con mock del transporte)")
+    def _():
+        import os
+        from unittest import mock
+
+        from . import tableau_meta as tabl
+
+        saved = {v: os.environ.pop(v, None) for v in
+                ("TABLEAU_SERVER_URL", "TABLEAU_TOKEN_NAME", "TABLEAU_TOKEN_SECRET")}
+        try:
+            assert tabl.configured() is False
+            try:
+                tabl.read_site()
+                raise AssertionError("read_site() debería fallar sin credenciales")
+            except RuntimeError:
+                pass
+
+            def fake_json(url, headers, method="GET", body=None):
+                if url.endswith("/auth/signin"):
+                    return {"credentials": {"token": "sess", "site": {"id": "s1"}}}
+                if url.endswith("/auth/signout"):
+                    return {}
+                if url.endswith("/api/metadata/graphql"):
+                    return {"data": {"workbooks": [{"name": "WB", "projectName": "P",
+                        "upstreamDatasources": [{"name": "DS",
+                            "fields": [{"name": "Margen", "description": "",
+                                       "formula": "SUM([X])/SUM([Y])"}],
+                            "upstreamTables": [{"name": "ventas", "schema": "dbo",
+                                               "database": {"connectionType": "sqlserver"}}]}]}]}}
+                raise AssertionError(url)
+
+            with mock.patch.object(tabl, "_http_json", fake_json):
+                out = tabl.ingest_site(server="https://t.example.com",
+                                       token_name="n", token_secret="s")
+            assert out["_model"].workbooks == ["WB"]
+            assert len(out["glossary"]) == 1
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+        return "sin credenciales -> RuntimeError; con credenciales (mock) -> sitio escaneado end-to-end"
+
     @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
     def _():
         import os

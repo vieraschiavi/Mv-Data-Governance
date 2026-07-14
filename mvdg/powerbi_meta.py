@@ -15,13 +15,21 @@ Dos caminos, alineados con las dos opciones de distribución del producto:
      tiene datos: solo estructura. Es el modo más seguro y el que corre en
      equipos con TI restrictiva.
 
-  B) TENANT-WIDE / gobernanza — ``read_scanner(...)``  (esqueleto)
-     Usa la Scanner API (Admin REST ``admin/workspaces/getInfo``) con service
-     principal para catalogar TODO el tenant: datasets, reportes, medidas, DAX,
-     M, RLS y linaje. Devuelve metadata, nunca filas.
+  B) TENANT-WIDE / gobernanza — ``read_scanner(...)`` / ``ingest_tenant(...)``
+     Usa la Scanner API (Admin REST ``admin/workspaces/...``) con un service
+     principal propio del usuario para catalogar TODO el tenant de una sola
+     vez: enumera los workspaces (``admin/groups``), pide el scan
+     (``getInfo``), espera (``scanStatus``) y trae el resultado
+     (``scanResult``) — datasets, tablas, medidas, DAX, expresiones M, roles
+     RLS, relaciones y reportes de cada workspace. Devuelve metadata, nunca
+     filas. Apagado por defecto: solo corre si están cargadas
+     ``POWERBI_TENANT_ID`` / ``POWERBI_CLIENT_ID`` / ``POWERBI_CLIENT_SECRET``
+     como variables de entorno propias del usuario — ver ``docs/BI_TENANT_SCAN.md``.
+     Implementado con ``urllib`` (misma librería estándar que ``ai_provider.py``,
+     sin agregar una dependencia nueva al proyecto).
 
-Ambos caminos entregan un ``PowerBIModel`` que se normaliza a las MISMAS tablas
-que ya usa el motor de gobierno:
+Ambos caminos entregan uno o más ``PowerBIModel`` que se normalizan a las
+MISMAS tablas que ya usa el motor de gobierno:
 
     to_catalog(model)     -> columnas de catalog.catalog_df
     to_dictionary(model)  -> columnas de catalog.dictionary_df
@@ -34,16 +42,24 @@ El linaje queda cableado de punta a punta: si la partición M de una tabla usa
 ``Sql.Database(...)`` (u otro conector reconocible), ``to_lineage`` agrega ese
 origen como primer tramo — SQL → tabla → dataset (modelo) → reporte — sobre
 el mismo grafo de 5 capas (source/raw/curated/mart/bi) que ya dibuja
-``lineage.lineage_figure`` para el resto del programa.
+``lineage.lineage_figure`` para el resto del programa. ``ingest_tenant()``
+hace lo mismo para TODOS los datasets del tenant a la vez, concatenando las
+tablas normalizadas de cada uno.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 
 import pandas as pd
+
+_TIMEOUT = 60  # segundos, por request HTTP
 
 # ----------------------------------------------------------------- modelo
 @dataclass
@@ -84,6 +100,8 @@ class PowerBIModel:
     roles: list[str] = field(default_factory=list)      # roles RLS detectados
     reports: list[str] = field(default_factory=list)     # reportes que usan el modelo
     table_sources: dict[str, str] = field(default_factory=dict)  # tabla -> origen (SQL/M), detectado
+    workspace: str = ""    # workspace de origen — solo se completa en el camino tenant (Scanner API)
+    dataset_id: str = ""   # id del dataset en el Scanner API — solo para linkear reportes al escanear
     source: str = "PBIP (offline)"
 
 
@@ -336,52 +354,191 @@ def read_pbip(folder: str) -> PowerBIModel:
 
 
 # ----------------------------------------------------- camino B: Scanner API
-def read_scanner(workspace_ids: list[str], token: str) -> PowerBIModel:
-    """Esqueleto de ingesta tenant-wide vía Scanner API (Admin REST).
+_PBI_ENV = ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET")
+_ADMIN_BASE = "https://api.powerbi.com/v1.0/myorg/admin"
+_SCAN_BATCH_SIZE = 100          # límite práctico de workspaces por request de getInfo
+_SCAN_POLL_SECONDS = 2
+_SCAN_MAX_POLLS = 60            # ~2 minutos de espera máxima por lote
 
-    Flujo real: POST admin/workspaces/getInfo?lineage=True&datasetSchema=True&
-    datasetExpressions=True  ->  GetScanStatus  ->  GetScanResult.
-    Requiere tenant setting 'Enhance admin APIs responses with detailed metadata'
-    (+ DAX/mashup) y service principal con rol admin de lectura.
-    Devuelve metadata, nunca filas.
-    """
-    import time
-    import requests  # dependencia opcional; solo para el camino online
 
-    base = "https://api.powerbi.com/v1.0/myorg/admin/workspaces"
-    hdr = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    r = requests.post(
-        f"{base}/getInfo?lineage=True&datasetSchema=True&datasetExpressions=True",
-        headers=hdr, json={"workspaces": workspace_ids}, timeout=60)
-    r.raise_for_status()
-    scan_id = r.json()["id"]
-    while True:
-        st = requests.get(f"{base}/scanStatus/{scan_id}", headers=hdr, timeout=30).json()
-        if st.get("status") == "Succeeded":
+def tenant_configured() -> bool:
+    """¿Hay credenciales de service principal cargadas para el escaneo tenant-wide?"""
+    return all(os.environ.get(v) for v in _PBI_ENV)
+
+
+def _http_json(url: str, headers: dict, method: str = "GET", body: dict | None = None) -> dict:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _http_form(url: str, form: dict) -> dict:
+    data = urllib.parse.urlencode(form).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _get_token(tenant_id: str, client_id: str, client_secret: str) -> str:
+    """OAuth2 client-credentials contra Azure AD — el service principal es del
+    usuario, esta función solo lo usa para pedir un token efímero."""
+    url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    form = {"grant_type": "client_credentials", "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://analysis.windows.net/powerbi/api/.default"}
+    return _http_form(url, form)["access_token"]
+
+
+def list_workspace_ids(token: str, top: int = 5000) -> list[dict]:
+    """Lista ``{id, name}`` de todos los workspaces activos del tenant, vía
+    ``admin/groups`` — el primer paso para escanear TODO el tenant sin que el
+    usuario tenga que pasar IDs a mano."""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = (f"{_ADMIN_BASE}/groups?$top={top}"
+          "&$filter=type eq 'Workspace' and state eq 'Active'")
+    data = _http_json(url, headers)
+    return [{"id": g["id"], "name": g.get("name", "")} for g in data.get("value", [])]
+
+
+def _chunk(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _scan_batch(token: str, workspace_ids: list[str]) -> dict:
+    """Un ciclo completo getInfo -> scanStatus (poll) -> scanResult para un
+    lote de workspaces (máx. ``_SCAN_BATCH_SIZE`` por vez, límite de la API)."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    url = (f"{_ADMIN_BASE}/workspaces/getInfo"
+          "?lineage=True&datasetSchema=True&datasetExpressions=True")
+    info = _http_json(url, headers, method="POST", body={"workspaces": workspace_ids})
+    scan_id = info["id"]
+    status_url = f"{_ADMIN_BASE}/workspaces/scanStatus/{scan_id}"
+    for _ in range(_SCAN_MAX_POLLS):
+        status = _http_json(status_url, headers)
+        if status.get("status") == "Succeeded":
             break
-        time.sleep(2)
-    data = requests.get(f"{base}/scanResult/{scan_id}", headers=hdr, timeout=120).json()
-    return _model_from_scanner(data)
+        time.sleep(_SCAN_POLL_SECONDS)
+    else:
+        raise TimeoutError(
+            "El scan de Power BI (Admin API) no terminó a tiempo. "
+            "Probá de nuevo o escaneá menos workspaces por vez.")
+    return _http_json(f"{_ADMIN_BASE}/workspaces/scanResult/{scan_id}", headers)
 
 
-def _model_from_scanner(data: dict) -> PowerBIModel:
-    """Convierte el JSON de la Scanner API en un PowerBIModel."""
-    model = PowerBIModel(source="Scanner API (tenant)")
-    for ws in data.get("workspaces", []):
-        for ds in ws.get("datasets", []):
-            model.name = ds.get("name", model.name)
-            for t in ds.get("tables", []):
+def read_scanner(tenant_id: str | None = None, client_id: str | None = None,
+                 client_secret: str | None = None, workspace_ids: list[str] | None = None,
+                 max_workspaces: int | None = None) -> list[PowerBIModel]:
+    """Escanea TODO el tenant (o los workspaces pasados) vía Scanner API y
+    devuelve un ``PowerBIModel`` por cada dataset encontrado — nunca filas.
+
+    Sin credenciales pasadas explícitamente, las toma de las variables de
+    entorno (``POWERBI_TENANT_ID`` / ``POWERBI_CLIENT_ID`` /
+    ``POWERBI_CLIENT_SECRET``) — nunca las pide, nunca las guarda."""
+    tenant_id = tenant_id or os.environ.get("POWERBI_TENANT_ID")
+    client_id = client_id or os.environ.get("POWERBI_CLIENT_ID")
+    client_secret = client_secret or os.environ.get("POWERBI_CLIENT_SECRET")
+    if not all((tenant_id, client_id, client_secret)):
+        raise RuntimeError(
+            "Faltan credenciales del service principal: configurá "
+            "POWERBI_TENANT_ID / POWERBI_CLIENT_ID / POWERBI_CLIENT_SECRET "
+            "como variables de entorno (ver docs/BI_TENANT_SCAN.md).")
+
+    token = _get_token(tenant_id, client_id, client_secret)
+    if workspace_ids is None:
+        workspace_ids = [w["id"] for w in list_workspace_ids(token)]
+    if max_workspaces:
+        workspace_ids = workspace_ids[:max_workspaces]
+
+    models: list[PowerBIModel] = []
+    for batch in _chunk(workspace_ids, _SCAN_BATCH_SIZE):
+        if not batch:
+            continue
+        data = _scan_batch(token, batch)
+        models.extend(_models_from_scanner(data))
+    return models
+
+
+def _models_from_scanner(data: dict) -> list[PowerBIModel]:
+    """Convierte el JSON de un scanResult de la Scanner API en un
+    ``PowerBIModel`` POR DATASET (un tenant puede tener miles)."""
+    models: list[PowerBIModel] = []
+    for ws in data.get("workspaces", []) or []:
+        ws_name = ws.get("name", "")
+        ws_models: list[PowerBIModel] = []
+        for ds in ws.get("datasets", []) or []:
+            model = PowerBIModel(
+                name=ds.get("name", "SemanticModel"), source="Scanner API (tenant)",
+                workspace=ws_name, dataset_id=ds.get("id", ""))
+            for t in ds.get("tables", []) or []:
                 tname = t.get("name", "")
                 model.tables.append(tname)
-                for c in t.get("columns", []):
-                    model.columns.append(Column(
-                        tname, c.get("name", ""), c.get("dataType", "")))
-                for m in t.get("measures", []):
+                for c in t.get("columns", []) or []:
+                    model.columns.append(Column(tname, c.get("name", ""), c.get("dataType", "")))
+                for m in t.get("measures", []) or []:
                     model.measures.append(Measure(
                         tname, m.get("name", ""), m.get("expression", ""),
                         description=m.get("description", "")))
-        model.reports += [rp.get("name", "") for rp in ws.get("reports", [])]
-    return model
+                src_texts = [s.get("expression", "") for s in (t.get("source") or [])
+                            if isinstance(s, dict)]
+                if src_texts:
+                    label = _source_label_from_mquery("\n".join(src_texts))
+                    if label:
+                        model.table_sources[tname] = label
+            for r in ds.get("relationships", []) or []:
+                model.relationships.append(Relationship(
+                    r.get("fromTable", ""), r.get("fromColumn", ""),
+                    r.get("toTable", ""), r.get("toColumn", ""),
+                    r.get("crossFilteringBehavior", "") == "BothDirections"))
+            model.roles = [ro.get("name", "") for ro in (ds.get("roles") or [])]
+            ws_models.append(model)
+        # reportes: se linkean por datasetId cuando el Scanner lo trae; si un
+        # workspace tiene un solo dataset, se lo asignamos igual sin ambigüedad.
+        for rp in ws.get("reports", []) or []:
+            rname = rp.get("name", "")
+            target = next((m for m in ws_models if m.dataset_id and
+                          m.dataset_id == rp.get("datasetId")), None)
+            if target is None and len(ws_models) == 1:
+                target = ws_models[0]
+            if target is not None:
+                target.reports.append(rname)
+        models.extend(ws_models)
+    return models
+
+
+def ingest_tenant(lang: str = "es", **kwargs) -> dict[str, pd.DataFrame | list]:
+    """Escanea TODO el tenant (``read_scanner``) y devuelve las tablas
+    normalizadas de gobierno, agregadas sobre todos los datasets/workspaces
+    encontrados — mismo esquema por columna que ``ingest_pbip``, para que el
+    resto del programa (tablero, exportadores, API) no tenga que distinguir
+    entre un modelo local y un tenant completo."""
+    models = read_scanner(**kwargs)
+    cols = {
+        "catalog": ["dataset", "domain", "description", "owner", "steward", "classification",
+                   "source", "refresh", "rows", "columns", "last_updated"],
+        "dictionary": ["dataset", "column", "type", "pii", "business_term", "description"],
+        "glossary": ["term_id", "term", "definition", "owner", "linked_datasets"],
+        "lineage": ["source_id", "source", "source_layer", "target_id", "target", "target_layer"],
+        "quality": ["rule_id", "dataset", "column", "dimension", "description", "score",
+                   "threshold", "status", "affected_rows"],
+        "sources": ["table", "source"],
+    }
+    if not models:
+        out = {k: pd.DataFrame(columns=v) for k, v in cols.items()}
+        out["_models"] = []
+        return out
+    return {
+        "catalog": pd.concat([to_catalog(m, lang) for m in models], ignore_index=True),
+        "dictionary": pd.concat([to_dictionary(m) for m in models], ignore_index=True),
+        "glossary": pd.concat([to_glossary(m) for m in models], ignore_index=True),
+        "lineage": pd.concat([to_lineage(m) for m in models], ignore_index=True),
+        "quality": pd.concat([to_quality(m, lang) for m in models], ignore_index=True),
+        "sources": pd.concat([to_sources(m) for m in models], ignore_index=True),
+        "_models": models,
+    }
 
 
 # ---------------------------------------------------- normalización a MVDG
@@ -389,7 +546,7 @@ def to_catalog(model: PowerBIModel, lang: str = "es") -> pd.DataFrame:
     """Una fila por MODELO (dataset semántico), con las columnas de catalog_df."""
     return pd.DataFrame([{
         "dataset": model.name,
-        "domain": "BI / Power BI",
+        "domain": f"BI / Power BI · {model.workspace}" if model.workspace else "BI / Power BI",
         "description": f"Modelo semántico Power BI · {len(model.tables)} tablas, "
                        f"{len(model.measures)} medidas",
         "owner": "—",

@@ -845,6 +845,182 @@ def test_powerbi_source_label_heuristics():
     assert _source_label_from_mquery('no hay ninguna funcion m aca') is None
 
 
+# --------------------------------------------------- Power BI tenant (Scanner API)
+def test_powerbi_tenant_off_by_default(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+    for var in ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert pbi.tenant_configured() is False
+    with pytest.raises(RuntimeError):
+        pbi.read_scanner()
+
+
+def _scanner_result_json():
+    return {
+        "workspaces": [{
+            "name": "Ventas LATAM",
+            "datasets": [{
+                "id": "ds-1", "name": "VentasDemo",
+                "tables": [{
+                    "name": "Ventas",
+                    "columns": [{"name": "Monto", "dataType": "double"}],
+                    "measures": [{"name": "Total", "expression": "SUM ( Ventas[Monto] )",
+                                 "description": "Suma de ventas"}],
+                    "source": [{"expression": 'Source = Sql.Database("Srv", "Db")'}],
+                }],
+                "relationships": [{"fromTable": "Ventas", "fromColumn": "ClienteKey",
+                                   "toTable": "Cliente", "toColumn": "ClienteKey",
+                                   "crossFilteringBehavior": "BothDirections"}],
+                "roles": [{"name": "Vendedor"}],
+            }],
+            "reports": [{"name": "Dashboard Ventas", "datasetId": "ds-1"}],
+        }],
+    }
+
+
+def test_powerbi_tenant_scan_mocked_end_to_end(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+
+    calls = {"token": 0, "groups": 0, "getinfo": 0, "status": 0, "result": 0}
+
+    def fake_http_form(url, form):
+        calls["token"] += 1
+        assert "login.microsoftonline.com" in url
+        assert form["client_id"] == "cid"
+        return {"access_token": "tok-123"}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert headers["Authorization"] == "Bearer tok-123" or "Authorization" not in headers
+        if "admin/groups" in url:
+            calls["groups"] += 1
+            return {"value": [{"id": "ws-1", "name": "Ventas LATAM"}]}
+        if url.endswith("/getInfo") or "getInfo?" in url:
+            calls["getinfo"] += 1
+            assert body == {"workspaces": ["ws-1"]}
+            return {"id": "scan-1"}
+        if "/scanStatus/" in url:
+            calls["status"] += 1
+            return {"status": "Succeeded"}
+        if "/scanResult/" in url:
+            calls["result"] += 1
+            return _scanner_result_json()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(pbi, "_http_form", fake_http_form)
+    monkeypatch.setattr(pbi, "_http_json", fake_http_json)
+
+    models = pbi.read_scanner(tenant_id="tid", client_id="cid", client_secret="sec")
+    assert calls == {"token": 1, "groups": 1, "getinfo": 1, "status": 1, "result": 1}
+    assert len(models) == 1
+    m = models[0]
+    assert m.name == "VentasDemo" and m.workspace == "Ventas LATAM"
+    assert m.table_sources.get("Ventas") == "SQL Server · Srv/Db"
+    assert any(r.both_directions for r in m.relationships)
+    assert m.roles == ["Vendedor"]
+    assert m.reports == ["Dashboard Ventas"]   # linkeado por datasetId
+
+    out = pbi.ingest_tenant(tenant_id="tid", client_id="cid", client_secret="sec")
+    assert len(out["catalog"]) == 1
+    assert "Ventas LATAM" in out["catalog"].iloc[0]["domain"]
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_powerbi_tenant_missing_credentials_raises(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+    for var in ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(RuntimeError):
+        pbi.read_scanner(tenant_id="only-this-one")
+
+
+# ---------------------------------------------------------- Tableau (Metadata API)
+def test_tableau_off_by_default(monkeypatch):
+    from mvdg import tableau_meta as tab
+    for var in ("TABLEAU_SERVER_URL", "TABLEAU_TOKEN_NAME", "TABLEAU_TOKEN_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert tab.configured() is False
+    with pytest.raises(RuntimeError):
+        tab.read_site()
+
+
+def _tableau_graphql_response():
+    return {"data": {"workbooks": [{
+        "name": "Ventas Regional", "projectName": "Comercial",
+        "upstreamDatasources": [{
+            "name": "DS Ventas",
+            "fields": [
+                {"name": "Monto", "description": "", "formula": None},
+                {"name": "Margen %", "description": "Margen sobre ventas",
+                 "formula": "SUM([Margen]) / SUM([Monto])"},
+                {"name": "Margen % dup", "description": "",
+                 "formula": "SUM([Margen]) / SUM([Monto])"},
+            ],
+            "upstreamTables": [{"name": "ventas", "schema": "dbo",
+                               "database": {"name": "Db", "connectionType": "sqlserver"}}],
+        }],
+    }]}}
+
+
+def test_tableau_site_scan_mocked_end_to_end(monkeypatch):
+    from mvdg import tableau_meta as tab
+
+    calls = {"signin": 0, "graphql": 0, "signout": 0}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/signin"):
+            calls["signin"] += 1
+            assert body["credentials"]["personalAccessTokenName"] == "mv-token"
+            return {"credentials": {"token": "sess-abc", "site": {"id": "site-1"}}}
+        if url.endswith("/auth/signout"):
+            calls["signout"] += 1
+            return {}
+        if url.endswith("/api/metadata/graphql"):
+            calls["graphql"] += 1
+            assert headers["X-Tableau-Auth"] == "sess-abc"
+            return _tableau_graphql_response()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(tab, "_http_json", fake_http_json)
+
+    model = tab.read_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert calls == {"signin": 1, "graphql": 1, "signout": 1}
+    assert model.workbooks == ["Ventas Regional"]
+    assert [d.name for d in model.datasources] == ["DS Ventas"]
+    assert model.datasources[0].upstream_tables == ["dbo.ventas (sqlserver)"]
+    calc_names = {fl.name for fl in model.fields if fl.is_calculated}
+    assert calc_names == {"Margen %", "Margen % dup"}   # duplicated formula, detected by TAB-02
+
+    out = tab.ingest_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert len(out["catalog"]) == 1
+    assert len(out["glossary"]) == 2   # 2 calculated fields = 2 glossary terms
+    q = out["quality"]
+    dupe_rule = q[q["rule_id"] == "TAB-02"].iloc[0]
+    assert dupe_rule["affected_rows"] == 1 and dupe_rule["status"] != "pass"
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_tableau_signout_failure_does_not_break_scan(monkeypatch):
+    from mvdg import tableau_meta as tab
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/signin"):
+            return {"credentials": {"token": "sess-abc", "site": {"id": "site-1"}}}
+        if url.endswith("/auth/signout"):
+            raise OSError("network blip on signout")
+        if url.endswith("/api/metadata/graphql"):
+            return _tableau_graphql_response()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(tab, "_http_json", fake_http_json)
+    model = tab.read_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert model.workbooks == ["Ventas Regional"]   # el fallo del sign-out no rompe el escaneo
+
+
 def test_powerbi_normalizers_match_mvdg_schema(tmp_path):
     from mvdg import powerbi_meta as pbi
     from mvdg.glossary import glossary_df
@@ -894,3 +1070,17 @@ def test_ai_dax_refactor_offline(monkeypatch):
     for lg in LANGS:
         p = _build_dax_prompt("Total Ventas", "SUMX ( Ventas, 1 )", "Ventas", lg)
         assert "Total Ventas" in p and "SUMX" in p
+
+
+def test_ai_tableau_calc_refactor_offline(monkeypatch):
+    from mvdg.ai_provider import _build_calc_prompt, ai_refactor_calc
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    # sin key configurada, nunca llama afuera: devuelve None
+    assert ai_refactor_calc("Margen %", "SUM([Margen])/SUM([Monto])", "DS Ventas", "es") is None
+    # fórmula vacía también da None
+    assert ai_refactor_calc("X", "", "DS", "es") is None
+    # el prompt se arma en los 3 idiomas e incluye el campo y la fórmula
+    for lg in LANGS:
+        p = _build_calc_prompt("Margen %", "SUM([Margen])/SUM([Monto])", "DS Ventas", lg)
+        assert "Margen %" in p and "SUM([Margen])" in p

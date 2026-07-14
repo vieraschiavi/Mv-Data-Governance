@@ -64,16 +64,22 @@ ejemplo") cada falla muestra, además de la sugerencia local, un botón
 **"✨ Pedir sugerencia a Claude (Anthropic)"** (o ChatGPT/Gemini según
 corresponda) que trae una segunda opinión generada en vivo.
 
-## También audita y refactoriza DAX (pestaña 🔷 Power BI)
+## También audita y refactoriza DAX (pestaña 🔷 Power BI) y cálculos de Tableau (pestaña 📊 Tableau)
 
 La misma key opcional habilita un segundo uso: en la pestaña **🔷 Power BI**,
-cada medida de tu modelo `.pbip` trae un botón **"✨ Refactor DAX con
-{proveedor}"** que le pide al modelo evaluar anti-patrones (iteradores
-innecesarios, `FILTER` sobre tablas enteras, columnas calculadas que
-deberían ser medidas, falta de variables) y proponer una versión mejorada.
-Mismas reglas de diseño: solo se manda el nombre de la medida, la tabla y su
-expresión DAX — **nunca datos reales** — y cualquier error cae en silencio
-sin bloquear la pantalla.
+cada medida de tu modelo (`.pbip` local o tenant completo) trae un botón
+**"✨ Refactor DAX con {proveedor}"** que le pide al modelo evaluar
+anti-patrones (iteradores innecesarios, `FILTER` sobre tablas enteras,
+columnas calculadas que deberían ser medidas, falta de variables) y proponer
+una versión mejorada. En la pestaña **📊 Tableau**, cada campo calculado de
+tu sitio trae el mismo botón para su fórmula (LOD innecesario, cálculos
+anidados, funciones de tabla costosas, casteos redundantes). Mismas reglas
+de diseño: solo se manda el nombre del campo/medida, su contenedor
+(tabla/datasource) y la expresión — **nunca datos reales** — y cualquier
+error cae en silencio sin bloquear la pantalla.
+
+Ver **`docs/BI_TENANT_SCAN.md`** para cómo activar el escaneo completo de
+tenant (Power BI) o sitio (Tableau) que trae estas medidas y campos.
 
 ## ¿Por qué no está GitHub Copilot en la lista?
 
