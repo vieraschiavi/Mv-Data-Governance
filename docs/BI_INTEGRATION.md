@@ -22,8 +22,9 @@ GET http://127.0.0.1:8600/docs        ← documentación interactiva (Swagger)
 
 Además de las 4 tablas sintéticas de demo, la pestaña **🔎 Mis datos → 🧪
 Dataset de ejemplo** trae datasets **externos reales** (rotulado de alimentos,
-Uruguay; ventas de cafetería, Kaggle) con catálogo (dueño/steward), reglas de
-calidad propias, glosario y las mismas 4 salidas por dataset:
+Uruguay; ventas de cafetería, Kaggle; campaña de marketing bancario, UCI) con
+catálogo (dueño/steward), reglas de calidad propias, glosario y las mismas 4
+salidas por dataset:
 
 ```
 GET http://127.0.0.1:8600/                                               ← "samples": lista de datasets
@@ -31,6 +32,7 @@ GET http://127.0.0.1:8600/api/samples/rotulado_alimentos?lang=es         ← fic
 GET http://127.0.0.1:8600/api/samples/rotulado_alimentos/data            ← datos crudos
 GET http://127.0.0.1:8600/api/samples/cafe_sales_kaggle/quality_results  ← reglas con umbral y estado
 GET http://127.0.0.1:8600/api/samples/cafe_sales_kaggle/glossary         ← definiciones de negocio
+GET http://127.0.0.1:8600/api/samples/bank_marketing_uci/quality_results ← reglas con umbral y estado
 ```
 
 ---

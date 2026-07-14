@@ -115,6 +115,39 @@ def _amount_consistency(qty_col: str, price_col: str, total_col: str, markers=("
     return check
 
 
+def _no_duplicate_rows():
+    """Unicidad a nivel de fila completa — para datasets sin una columna que
+    sirva de clave natural (ej. un registro de contacto sin ID de cliente)."""
+    def check(df: pd.DataFrame):
+        n = len(df)
+        nbad = int(df.duplicated().sum())
+        return (100.0 * (n - nbad) / n if n else 100.0, nbad)
+    return check
+
+
+def _implies_equals(if_col: str, if_value, then_col: str, then_value):
+    """Regla de negocio condicional: cuando ``if_col`` == ``if_value``,
+    ``then_col`` debe valer ``then_value`` (ej.: si nunca se contactó antes,
+    el resultado de la campaña anterior tiene que ser 'unknown', no otra cosa)."""
+    def check(df: pd.DataFrame):
+        subset = df[df[if_col] == if_value]
+        n = len(subset)
+        if n == 0:
+            return (100.0, 0)
+        bad = int((subset[then_col] != then_value).sum())
+        return (100.0 * (n - bad) / n, bad)
+    return check
+
+
+def _in_range(col: str, lo: float, hi: float):
+    def check(df: pd.DataFrame):
+        n = len(df)
+        vals = pd.to_numeric(df[col], errors="coerce")
+        bad = int((vals.isna() | (vals < lo) | (vals > hi)).sum())
+        return (100.0 * (n - bad) / n if n else 100.0, bad)
+    return check
+
+
 # ---------------------------------------------------------------------------
 # 1. Rotulado de alimentos 2026 — control bromatológico real (Uruguay)
 # ---------------------------------------------------------------------------
@@ -282,6 +315,105 @@ _CAF_TERMS = [
      "owner": "Equipo de Datos de Ventas", "datasets": [_CAF_KEY]},
 ]
 
+# ---------------------------------------------------------------------------
+# 3. Bank Marketing (UCI) — campaña real de marketing telefónico de un banco
+#    portugués (Moro, Rita & Cortez, 2014). Sin columna de ID de cliente: la
+#    unicidad se verifica a nivel de fila completa.
+# ---------------------------------------------------------------------------
+_BNK_KEY = "bank_marketing_uci"
+
+_BNK_RULES = [
+    Rule("BNK-01", _BNK_KEY, "(fila completa)", "uniqueness",
+         _d("sin filas duplicadas (no hay columna de ID de cliente; se compara la fila entera)",
+            "no duplicate rows (there's no customer ID column; the whole row is compared)",
+            "sem linhas duplicadas (não há coluna de ID de cliente; compara-se a linha inteira)"),
+         _no_duplicate_rows(), 99.5),
+    Rule("BNK-02", _BNK_KEY, "job", "completeness",
+         _d("job completo (sin \"unknown\")", "job complete (no \"unknown\")", "job completo (sem \"unknown\")"),
+         _not_null_or_markers("job", ("unknown",)), 99.5),
+    Rule("BNK-03", _BNK_KEY, "education", "completeness",
+         _d("education completo (sin \"unknown\")", "education complete (no \"unknown\")", "education completo (sem \"unknown\")"),
+         _not_null_or_markers("education", ("unknown",)), 97.0),
+    Rule("BNK-04", _BNK_KEY, "contact", "completeness",
+         _d("contact completo (sin \"unknown\")", "contact complete (no \"unknown\")", "contact completo (sem \"unknown\")"),
+         _not_null_or_markers("contact", ("unknown",)), 90.0),
+    Rule("BNK-05", _BNK_KEY, "poutcome", "consistency",
+         _d("si previous=0 (nunca contactado antes), poutcome debe ser \"unknown\" (regla de negocio, no un chequeo de nulos)",
+            "if previous=0 (never contacted before), poutcome must be \"unknown\" (business rule, not a raw null check)",
+            "se previous=0 (nunca contatado antes), poutcome deve ser \"unknown\" (regra de negócio, não um chequeo de nulos)"),
+         _implies_equals("previous", 0, "poutcome", "unknown"), 99.5),
+    Rule("BNK-06", _BNK_KEY, "age", "validity",
+         _d("age dentro de un rango bancario razonable (18–100 años)",
+            "age within a reasonable banking range (18–100 years)",
+            "age dentro de uma faixa bancária razoável (18–100 anos)"),
+         _in_range("age", 18, 100), 99.5),
+]
+
+_BNK_COLUMNS = [
+    {"column": "age", "type": "int", "pii": False, "term": "cliente_bancario",
+     "d": _d("Edad del cliente contactado.", "Age of the contacted client.", "Idade do cliente contatado.")},
+    {"column": "job", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Tipo de ocupación del cliente.", "Client's occupation type.", "Tipo de ocupação do cliente.")},
+    {"column": "marital", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Estado civil del cliente.", "Client's marital status.", "Estado civil do cliente.")},
+    {"column": "education", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Nivel educativo del cliente.", "Client's education level.", "Nível educacional do cliente.")},
+    {"column": "default", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Si el cliente tiene crédito en mora.", "Whether the client has credit in default.", "Se o cliente tem crédito em atraso.")},
+    {"column": "balance", "type": "int", "pii": False, "term": "cliente_bancario",
+     "d": _d("Saldo promedio anual en euros (puede ser negativo: descubierto).", "Average yearly balance in euros (can be negative: overdraft).", "Saldo médio anual em euros (pode ser negativo: cheque especial).")},
+    {"column": "housing", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Si el cliente tiene préstamo hipotecario.", "Whether the client has a housing loan.", "Se o cliente tem empréstimo habitacional.")},
+    {"column": "loan", "type": "string", "pii": False, "term": "cliente_bancario",
+     "d": _d("Si el cliente tiene préstamo personal.", "Whether the client has a personal loan.", "Se o cliente tem empréstimo pessoal.")},
+    {"column": "contact", "type": "string", "pii": False, "term": "campana_marketing",
+     "d": _d("Tipo de contacto usado (celular, teléfono fijo).", "Type of contact used (cellular, landline).", "Tipo de contato usado (celular, fixo).")},
+    {"column": "day", "type": "int", "pii": False, "term": "campana_marketing",
+     "d": _d("Día del mes del último contacto.", "Day of month of the last contact.", "Dia do mês do último contato.")},
+    {"column": "month", "type": "string", "pii": False, "term": "campana_marketing",
+     "d": _d("Mes del último contacto.", "Month of the last contact.", "Mês do último contato.")},
+    {"column": "duration", "type": "int", "pii": False, "term": "duracion_contacto",
+     "d": _d("Duración del último contacto, en segundos.", "Duration of the last contact, in seconds.", "Duração do último contato, em segundos.")},
+    {"column": "campaign", "type": "int", "pii": False, "term": "campana_marketing",
+     "d": _d("Cantidad de contactos realizados en esta campaña con este cliente.", "Number of contacts made in this campaign with this client.", "Quantidade de contatos feitos nesta campanha com este cliente.")},
+    {"column": "pdays", "type": "int", "pii": False, "term": "resultado_campana_anterior",
+     "d": _d("Días desde el último contacto de una campaña previa (-1 = nunca contactado).", "Days since the last contact of a previous campaign (-1 = never contacted).", "Dias desde o último contato de uma campanha anterior (-1 = nunca contatado).")},
+    {"column": "previous", "type": "int", "pii": False, "term": "resultado_campana_anterior",
+     "d": _d("Cantidad de contactos realizados antes de esta campaña.", "Number of contacts made before this campaign.", "Quantidade de contatos feitos antes desta campanha.")},
+    {"column": "poutcome", "type": "string", "pii": False, "term": "resultado_campana_anterior",
+     "d": _d("Resultado de la campaña de marketing anterior.", "Outcome of the previous marketing campaign.", "Resultado da campanha de marketing anterior.")},
+    {"column": "y", "type": "string", "pii": False, "term": "deposito_plazo",
+     "d": _d("Si el cliente contrató un depósito a plazo (variable objetivo).", "Whether the client subscribed a term deposit (target variable).", "Se o cliente contratou um depósito a prazo (variável alvo).")},
+]
+
+_BNK_TERMS = [
+    {"term_id": "cliente_bancario", "name": _d("Cliente bancario", "Bank client", "Cliente bancário"),
+     "definition": _d("Persona contactada por el banco en una campaña de marketing, descrita por su perfil demográfico y financiero (sin identificarla directamente: sin nombre ni número de cuenta).",
+                       "Person contacted by the bank in a marketing campaign, described by their demographic and financial profile (without directly identifying them: no name or account number).",
+                       "Pessoa contatada pelo banco numa campanha de marketing, descrita por seu perfil demográfico e financeiro (sem identificá-la diretamente: sem nome nem número de conta)."),
+     "owner": "Equipo de Datos de Marketing", "datasets": [_BNK_KEY]},
+    {"term_id": "campana_marketing", "name": _d("Campaña de marketing", "Marketing campaign", "Campanha de marketing"),
+     "definition": _d("Serie de contactos telefónicos hechos a un cliente para ofrecerle un producto — acá, un depósito a plazo.",
+                       "Series of phone contacts made to a client to offer them a product — here, a term deposit.",
+                       "Série de contatos telefônicos feitos a um cliente para oferecer um produto — aqui, um depósito a prazo."),
+     "owner": "Equipo de Datos de Marketing", "datasets": [_BNK_KEY]},
+    {"term_id": "resultado_campana_anterior", "name": _d("Resultado de campaña anterior", "Previous campaign outcome", "Resultado de campanha anterior"),
+     "definition": _d("Qué pasó la última vez que se contactó a este cliente en otra campaña. Vale \"unknown\" cuando nunca se lo contactó antes — no es un dato faltante.",
+                       "What happened the last time this client was contacted in another campaign. It's \"unknown\" when the client was never contacted before — not a missing value.",
+                       "O que aconteceu na última vez que este cliente foi contatado em outra campanha. É \"unknown\" quando o cliente nunca foi contatado antes — não é um dado faltante."),
+     "owner": "Equipo de Datos de Marketing", "datasets": [_BNK_KEY]},
+    {"term_id": "duracion_contacto", "name": _d("Duración del contacto", "Contact duration", "Duração do contato"),
+     "definition": _d("Cuánto duró la llamada, en segundos. Muy correlacionado con el resultado: una llamada de 0 segundos nunca termina en venta.",
+                       "How long the call lasted, in seconds. Strongly correlated with the outcome: a 0-second call never ends in a sale.",
+                       "Quanto durou a ligação, em segundos. Muito correlacionado com o resultado: uma ligação de 0 segundos nunca termina em venda."),
+     "owner": "Equipo de Datos de Marketing", "datasets": [_BNK_KEY]},
+    {"term_id": "deposito_plazo", "name": _d("Depósito a plazo", "Term deposit", "Depósito a prazo"),
+     "definition": _d("Producto financiero que el banco intenta vender en esta campaña: el cliente inmoviliza dinero a cambio de una tasa de interés fija.",
+                       "Financial product the bank is trying to sell in this campaign: the client locks in money in exchange for a fixed interest rate.",
+                       "Produto financeiro que o banco tenta vender nesta campanha: o cliente imobiliza dinheiro em troca de uma taxa de juros fixa."),
+     "owner": "Equipo de Datos de Marketing", "datasets": [_BNK_KEY]},
+]
+
 
 # ---------------------------------------------------------------------------
 # Registro de datasets de ejemplo
@@ -327,6 +459,36 @@ SAMPLES: dict[str, dict] = {
         "license": _d("CC BY-SA 4.0 (requiere atribución)", "CC BY-SA 4.0 (attribution required)", "CC BY-SA 4.0 (requer atribuição)"),
         "columns": _CAF_COLUMNS, "rules": _CAF_RULES, "terms": _CAF_TERMS,
     },
+    _BNK_KEY: {
+        "file": "bank_marketing_uci.csv",
+        "name": _d("Bank Marketing (UCI)", "Bank Marketing (UCI)", "Bank Marketing (UCI)"),
+        "domain": _d("Banca / Marketing directo", "Banking / Direct Marketing", "Banco / Marketing direto"),
+        "description": _d(
+            "4.521 contactos reales de una campaña de marketing telefónico de un banco portugués, para ofrecer un depósito a plazo.",
+            "4,521 real contacts from a Portuguese bank's phone marketing campaign, offering a term deposit.",
+            "4.521 contatos reais de uma campanha de marketing telefônico de um banco português, oferecendo um depósito a prazo."),
+        "owner": _d("Marketing / Banca Comercial", "Marketing / Retail Banking", "Marketing / Banco Comercial"),
+        "steward": _d("Equipo de Datos de Marketing", "Marketing Data Team", "Equipe de Dados de Marketing"),
+        "classification": "Confidencial",
+        "refresh": _d("por campaña", "per campaign", "por campanha"),
+        "source": _d(
+            "UCI Machine Learning Repository · \"Bank Marketing\" (S. Moro, P. Rita, P. Cortez, 2014) · licencia CC BY 4.0.",
+            "UCI Machine Learning Repository · \"Bank Marketing\" (S. Moro, P. Rita, P. Cortez, 2014) · CC BY 4.0 license.",
+            "UCI Machine Learning Repository · \"Bank Marketing\" (S. Moro, P. Rita, P. Cortez, 2014) · licença CC BY 4.0."),
+        "source_url": "https://archive.ics.uci.edu/dataset/222/bank+marketing",
+        "license": _d("CC BY 4.0 (requiere atribución)", "CC BY 4.0 (attribution required)", "CC BY 4.0 (requer atribuição)"),
+        "classification_note": _d(
+            "El dataset en sí es público y anonimizado en el origen (sin nombre ni número de cuenta). Se clasifica "
+            "Confidencial en este catálogo a propósito: es el criterio correcto para datos demográficos y "
+            "financieros a nivel de persona dentro de un banco real, aunque no disparen el detector de PII.",
+            "The dataset itself is public and anonymized at the source (no name or account number). It's classified "
+            "Confidential in this catalog on purpose: that's the right call for person-level demographic and "
+            "financial data inside a real bank, even when it doesn't trigger the PII detector.",
+            "O dataset em si é público e anonimizado na origem (sem nome nem número de conta). É classificado "
+            "Confidencial neste catálogo de propósito: é o critério correto para dados demográficos e financeiros "
+            "a nível de pessoa dentro de um banco real, mesmo sem disparar o detector de PII."),
+        "columns": _BNK_COLUMNS, "rules": _BNK_RULES, "terms": _BNK_TERMS,
+    },
 }
 
 
@@ -340,6 +502,7 @@ def _res(v, lang: str):
 
 def sample_meta(key: str, lang: str = "es") -> dict:
     s = SAMPLES[key]
+    note = s.get("classification_note")
     return {
         "key": key,
         "name": _res(s["name"], lang), "domain": _res(s["domain"], lang),
@@ -347,6 +510,7 @@ def sample_meta(key: str, lang: str = "es") -> dict:
         "steward": _res(s["steward"], lang), "classification": s["classification"],
         "refresh": _res(s["refresh"], lang), "source": _res(s["source"], lang),
         "source_url": s["source_url"], "license": _res(s["license"], lang),
+        "classification_note": _res(note, lang) if note else None,
         "file": s["file"],
     }
 
