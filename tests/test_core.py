@@ -835,6 +835,33 @@ def test_powerbi_sql_source_wired_into_lineage(tmp_path):
     assert ((lin["source"] == model.name) & (lin["source_layer"] == "mart")).any()
 
 
+def test_powerbi_tmdl_doc_comment_and_metadata_traits():
+    # regresión: encontrado escaneando un proyecto .pbip real de GitHub —
+    # sourceLineageTag/dataCategory se colaban en el texto del DAX, y las
+    # descripciones nativas "/// ..." de TMDL no se capturaban.
+    from mvdg.powerbi_meta import _parse_table_tmdl
+    tmdl = (
+        "table Targets\n"
+        "\tlineageTag: 5c67d908-0588-43c0-9dbc-1c64794f92c8\n"
+        "\tsourceLineageTag: fc05aa02-32da-45a3-a497-78e97999d244\n"
+        "\n"
+        "\t/// Total sales goal for the current filter context.\n"
+        "\tmeasure Target = SUM(Targets[TargetAmount])\n"
+        "\t\tformatString: \\$#,0;(\\$#,0);\\$#,0\n"
+        "\t\tlineageTag: 35b9a71b-304f-4f4f-9f7f-cc49da4a2c84\n"
+        "\t\tsourceLineageTag: ffc79c2c-8c37-499d-919a-2a3511102514\n"
+        "\t\tdataCategory: Uncategorized\n"
+        "\n"
+        "\tmeasure Undocumented = SUM(Targets[X])\n"
+    )
+    _, _, measures, _ = _parse_table_tmdl(tmdl)
+    target = next(m for m in measures if m.name == "Target")
+    assert target.dax == "SUM(Targets[TargetAmount])"   # sin metadatos colados
+    assert target.description == "Total sales goal for the current filter context."
+    other = next(m for m in measures if m.name == "Undocumented")
+    assert other.description == ""   # sin "///" antes -> sin descripción, no arrastra la anterior
+
+
 def test_powerbi_source_label_heuristics():
     from mvdg.powerbi_meta import _source_label_from_mquery
     assert _source_label_from_mquery('Source = Sql.Database("Srv", "Db")') == "SQL Server · Srv/Db"
@@ -843,6 +870,300 @@ def test_powerbi_source_label_heuristics():
         "SQL (consulta nativa · Value.NativeQuery)"
     assert _source_label_from_mquery('Source = Excel.Workbook(File.Contents("x.xlsx"))') == "Power Query · Excel.Workbook"
     assert _source_label_from_mquery('no hay ninguna funcion m aca') is None
+
+
+# --------------------------------------------------- Power BI tenant (Scanner API)
+def test_powerbi_tenant_off_by_default(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+    for var in ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert pbi.tenant_configured() is False
+    with pytest.raises(RuntimeError):
+        pbi.read_scanner()
+
+
+def _scanner_result_json():
+    return {
+        "workspaces": [{
+            "name": "Ventas LATAM",
+            "datasets": [{
+                "id": "ds-1", "name": "VentasDemo",
+                "tables": [{
+                    "name": "Ventas",
+                    "columns": [{"name": "Monto", "dataType": "double"}],
+                    "measures": [{"name": "Total", "expression": "SUM ( Ventas[Monto] )",
+                                 "description": "Suma de ventas"}],
+                    "source": [{"expression": 'Source = Sql.Database("Srv", "Db")'}],
+                }],
+                "relationships": [{"fromTable": "Ventas", "fromColumn": "ClienteKey",
+                                   "toTable": "Cliente", "toColumn": "ClienteKey",
+                                   "crossFilteringBehavior": "BothDirections"}],
+                "roles": [{"name": "Vendedor"}],
+            }],
+            "reports": [{"name": "Dashboard Ventas", "datasetId": "ds-1"}],
+        }],
+    }
+
+
+def test_powerbi_list_workspace_ids_paginates_past_5000(monkeypatch):
+    # un tenant multinacional puede tener más workspaces que el tope de una
+    # sola página ($top) — hay que seguir pidiendo con $skip hasta agotarlos.
+    from mvdg import powerbi_meta as pbi
+
+    pages = {
+        0: [{"id": f"ws-{i}", "name": f"W{i}"} for i in range(3)],   # top=3, página llena
+        3: [{"id": "ws-3", "name": "W3"}],                            # última página, incompleta
+    }
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert "admin/groups" in url
+        skip = int(url.split("$skip=")[1].split("&")[0])
+        return {"value": pages.get(skip, [])}
+
+    monkeypatch.setattr(pbi, "_http_json", fake_http_json)
+    result = pbi.list_workspace_ids("tok", top=3)
+    assert [w["id"] for w in result] == ["ws-0", "ws-1", "ws-2", "ws-3"]
+
+
+def test_powerbi_tenant_scan_mocked_end_to_end(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+
+    calls = {"token": 0, "groups": 0, "getinfo": 0, "status": 0, "result": 0}
+
+    def fake_http_form(url, form):
+        calls["token"] += 1
+        assert "login.microsoftonline.com" in url
+        assert form["client_id"] == "cid"
+        return {"access_token": "tok-123"}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert headers["Authorization"] == "Bearer tok-123" or "Authorization" not in headers
+        if "admin/groups" in url:
+            calls["groups"] += 1
+            return {"value": [{"id": "ws-1", "name": "Ventas LATAM"}]}
+        if url.endswith("/getInfo") or "getInfo?" in url:
+            calls["getinfo"] += 1
+            assert body == {"workspaces": ["ws-1"]}
+            return {"id": "scan-1"}
+        if "/scanStatus/" in url:
+            calls["status"] += 1
+            return {"status": "Succeeded"}
+        if "/scanResult/" in url:
+            calls["result"] += 1
+            return _scanner_result_json()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(pbi, "_http_form", fake_http_form)
+    monkeypatch.setattr(pbi, "_http_json", fake_http_json)
+
+    models = pbi.read_scanner(tenant_id="tid", client_id="cid", client_secret="sec")
+    assert calls == {"token": 1, "groups": 1, "getinfo": 1, "status": 1, "result": 1}
+    assert len(models) == 1
+    m = models[0]
+    assert m.name == "VentasDemo" and m.workspace == "Ventas LATAM"
+    assert m.table_sources.get("Ventas") == "SQL Server · Srv/Db"
+    assert any(r.both_directions for r in m.relationships)
+    assert m.roles == ["Vendedor"]
+    assert m.reports == ["Dashboard Ventas"]   # linkeado por datasetId
+
+    out = pbi.ingest_tenant(tenant_id="tid", client_id="cid", client_secret="sec")
+    assert len(out["catalog"]) == 1
+    assert "Ventas LATAM" in out["catalog"].iloc[0]["domain"]
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_powerbi_tenant_missing_credentials_raises(monkeypatch):
+    from mvdg import powerbi_meta as pbi
+    for var in ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(RuntimeError):
+        pbi.read_scanner(tenant_id="only-this-one")
+
+
+def test_powerbi_bundled_example_is_real_and_parses(tmp_path):
+    # el .pbip real incluido con el programa (GitHub, MIT) debe seguir
+    # parseando limpio — este mismo archivo encontró 2 bugs reales del
+    # parser (ver test_powerbi_tmdl_doc_comment_and_metadata_traits).
+    from mvdg import powerbi_meta as pbi
+    out = pbi.ingest_example()
+    model = out["_model"]
+    assert model.name == "Adventure Works Demo"
+    assert len(model.tables) == 10 and len(model.measures) == 17
+    assert all(m.description for m in model.measures)   # /// se capturan bien
+    assert "Sales" in model.tables and "Targets" in model.tables
+
+
+def test_powerbi_example_tenant_is_illustrative_not_a_real_scan():
+    from mvdg import powerbi_meta as pbi
+    out = pbi.ingest_example_tenant()
+    models = out["_models"]
+    assert len(models) == 4   # 4 workspaces simulados
+    workspaces = {m.workspace for m in models}
+    assert len(workspaces) == 4   # cada uno con nombre distinto
+    # todos comparten el contenido real (mismas tablas/medidas), solo cambia
+    # el workspace/reporte simulado
+    assert {m.name for m in models} == {"Adventure Works Demo"}
+    assert all(len(m.tables) == 10 for m in models)
+    # tiene que quedar explícitamente marcado como ilustrativo, no un scan real
+    assert all("ilustrativo" in m.source.lower() for m in models)
+    assert (out["catalog"]["source"].str.contains("ilustrativo", case=False)).all()
+
+
+# ---------------------------------------------------------- Tableau (Metadata API)
+def test_tableau_off_by_default(monkeypatch):
+    from mvdg import tableau_meta as tab
+    for var in ("TABLEAU_SERVER_URL", "TABLEAU_TOKEN_NAME", "TABLEAU_TOKEN_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert tab.configured() is False
+    with pytest.raises(RuntimeError):
+        tab.read_site()
+
+
+def _tableau_graphql_response():
+    return {"data": {"workbooks": [{
+        "name": "Ventas Regional", "projectName": "Comercial",
+        "upstreamDatasources": [{
+            "name": "DS Ventas",
+            "fields": [
+                {"name": "Monto", "description": "", "formula": None},
+                {"name": "Margen %", "description": "Margen sobre ventas",
+                 "formula": "SUM([Margen]) / SUM([Monto])"},
+                {"name": "Margen % dup", "description": "",
+                 "formula": "SUM([Margen]) / SUM([Monto])"},
+            ],
+            "upstreamTables": [{"name": "ventas", "schema": "dbo",
+                               "database": {"name": "Db", "connectionType": "sqlserver"}}],
+        }],
+    }]}}
+
+
+def test_tableau_site_scan_mocked_end_to_end(monkeypatch):
+    from mvdg import tableau_meta as tab
+
+    calls = {"signin": 0, "graphql": 0, "signout": 0}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/signin"):
+            calls["signin"] += 1
+            assert body["credentials"]["personalAccessTokenName"] == "mv-token"
+            return {"credentials": {"token": "sess-abc", "site": {"id": "site-1"}}}
+        if url.endswith("/auth/signout"):
+            calls["signout"] += 1
+            return {}
+        if url.endswith("/api/metadata/graphql"):
+            calls["graphql"] += 1
+            assert headers["X-Tableau-Auth"] == "sess-abc"
+            return _tableau_graphql_response()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(tab, "_http_json", fake_http_json)
+
+    model = tab.read_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert calls == {"signin": 1, "graphql": 1, "signout": 1}
+    assert model.workbooks == ["Ventas Regional"]
+    assert [d.name for d in model.datasources] == ["DS Ventas"]
+    assert model.datasources[0].upstream_tables == ["dbo.ventas (sqlserver)"]
+    calc_names = {fl.name for fl in model.fields if fl.is_calculated}
+    assert calc_names == {"Margen %", "Margen % dup"}   # duplicated formula, detected by TAB-02
+
+    out = tab.ingest_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert len(out["catalog"]) == 1
+    assert len(out["glossary"]) == 2   # 2 calculated fields = 2 glossary terms
+    q = out["quality"]
+    dupe_rule = q[q["rule_id"] == "TAB-02"].iloc[0]
+    assert dupe_rule["affected_rows"] == 1 and dupe_rule["status"] != "pass"
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_tableau_signout_failure_does_not_break_scan(monkeypatch):
+    from mvdg import tableau_meta as tab
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/signin"):
+            return {"credentials": {"token": "sess-abc", "site": {"id": "site-1"}}}
+        if url.endswith("/auth/signout"):
+            raise OSError("network blip on signout")
+        if url.endswith("/api/metadata/graphql"):
+            return _tableau_graphql_response()
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(tab, "_http_json", fake_http_json)
+    model = tab.read_site(server="https://tableau.example.com",
+                          token_name="mv-token", token_secret="secret")
+    assert model.workbooks == ["Ventas Regional"]   # el fallo del sign-out no rompe el escaneo
+
+
+def _make_twb(root, name="Demo.twb"):
+    xml = (
+        "<?xml version='1.0' encoding='utf-8' ?>\n"
+        "<workbook version='18.1'>\n"
+        "  <datasources>\n"
+        "    <datasource caption='Ventas' name='sqlserver.x'>\n"
+        "      <connection class='sqlserver' server='Srv' dbname='Db'>\n"
+        "        <relation name='Ventas' table='[dbo].[Ventas]' type='table' />\n"
+        "      </connection>\n"
+        "      <column caption='Monto' datatype='real' name='[Monto]' role='measure' />\n"
+        "      <column caption='Margen %' datatype='real' name='[Calc1]' role='measure'>\n"
+        "        <calculation class='tableau' formula='SUM([Margen])/SUM([Monto])' />\n"
+        "      </column>\n"
+        "    </datasource>\n"
+        "  </datasources>\n"
+        "  <dashboards><dashboard name='Panel'><zones/></dashboard></dashboards>\n"
+        "</workbook>\n"
+    )
+    p = root / name
+    p.write_text(xml, encoding="utf-8")
+    return str(p)
+
+
+def test_tableau_read_twb_offline(tmp_path):
+    from mvdg import tableau_meta as tabl
+    path = _make_twb(tmp_path)
+    model = tabl.read_twb(path)
+    assert model.workbooks == ["Demo"]
+    assert [d.name for d in model.datasources] == ["Ventas"]
+    assert model.datasources[0].upstream_tables == ["sqlserver · Srv/Db"]
+    calc = next(f for f in model.fields if f.is_calculated)
+    assert calc.name == "Margen %" and calc.formula == "SUM([Margen])/SUM([Monto])"
+
+    out = tabl.ingest_twb(path)
+    assert len(out["catalog"]) == 1
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
+
+
+def test_tableau_read_twbx_zip_wrapper(tmp_path):
+    import zipfile
+    from mvdg import tableau_meta as tabl
+    twb_path = _make_twb(tmp_path, "Inner.twb")
+    twbx_path = str(tmp_path / "Demo.twbx")
+    with zipfile.ZipFile(twbx_path, "w") as zf:
+        zf.write(twb_path, "Inner.twb")
+    model = tabl.read_twb(twbx_path)
+    assert [d.name for d in model.datasources] == ["Ventas"]   # se desempaqueta el .twb interno
+
+
+def test_tableau_read_twb_missing_file_raises(tmp_path):
+    from mvdg import tableau_meta as tabl
+    with pytest.raises(FileNotFoundError):
+        tabl.read_twb(str(tmp_path / "no_existe.twb"))
+
+
+def test_tableau_bundled_example_parses():
+    from mvdg import tableau_meta as tabl
+    out = tabl.ingest_example()
+    model = out["_model"]
+    assert model.workbooks == ["VentasGlobalDemo"]
+    assert {d.name for d in model.datasources} == {"Ventas Global", "Metas Regionales"}
+    calc_names = {f.name for f in model.fields if f.is_calculated}
+    assert calc_names == {"Margen %", "Ticket Promedio", "Segmento de Cuenta"}
+    assert len(out["glossary"]) == 3
+    lin = out["lineage"]
+    assert (lin["source_layer"] == "source").any() and (lin["target_layer"] == "bi").any()
 
 
 def test_powerbi_normalizers_match_mvdg_schema(tmp_path):
@@ -894,3 +1215,17 @@ def test_ai_dax_refactor_offline(monkeypatch):
     for lg in LANGS:
         p = _build_dax_prompt("Total Ventas", "SUMX ( Ventas, 1 )", "Ventas", lg)
         assert "Total Ventas" in p and "SUMX" in p
+
+
+def test_ai_tableau_calc_refactor_offline(monkeypatch):
+    from mvdg.ai_provider import _build_calc_prompt, ai_refactor_calc
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    # sin key configurada, nunca llama afuera: devuelve None
+    assert ai_refactor_calc("Margen %", "SUM([Margen])/SUM([Monto])", "DS Ventas", "es") is None
+    # fórmula vacía también da None
+    assert ai_refactor_calc("X", "", "DS", "es") is None
+    # el prompt se arma en los 3 idiomas e incluye el campo y la fórmula
+    for lg in LANGS:
+        p = _build_calc_prompt("Margen %", "SUM([Margen])/SUM([Monto])", "DS Ventas", lg)
+        assert "Margen %" in p and "SUM([Margen])" in p

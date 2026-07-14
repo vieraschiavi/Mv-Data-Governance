@@ -264,3 +264,84 @@ def ai_refactor_dax(measure: str, dax: str, table: str = "",
     if not all(k in parsed and parsed[k] for k in _DAX_KEYS):
         return None
     return {k: str(parsed[k]) for k in _DAX_KEYS}
+
+
+# ------------------------------------------------- refactor cálculo de Tableau
+# Mismo patrón que el refactor de DAX: solo se manda METADATO del campo
+# (nombre, datasource y su fórmula) — nunca datos reales de las filas.
+_CALC_KEYS = ("assessment", "issues", "refactored_formula", "explanation")
+
+_CALC_PROMPT_TMPL = {
+    "es": (
+        "Sos un experto en Tableau y su lenguaje de cálculo. Te paso un campo "
+        "calculado de un datasource publicado (solo metadato, sin datos). "
+        "Datasource: {datasource}. Campo: {field}. Fórmula actual:\n{formula}\n\n"
+        "Evaluá anti-patrones (LOD innecesario, cálculos anidados que podrían "
+        "simplificarse, funciones de tabla costosas, casteos redundantes). "
+        "Respondé SOLO con un objeto JSON (sin texto extra, sin markdown) con "
+        "estas 4 claves, en español: "
+        '{{"assessment": "veredicto general en 1-2 oraciones", "issues": "anti-patrones '
+        'o problemas concretos detectados", "refactored_formula": "la fórmula mejorada '
+        '(solo la expresión, sin explicación)", "explanation": "por qué la versión nueva '
+        'es mejor, 1-2 oraciones"}}'
+    ),
+    "en": (
+        "You are an expert in Tableau and its calculation language. Here is a "
+        "calculated field from a published datasource (metadata only, no data). "
+        "Datasource: {datasource}. Field: {field}. Current formula:\n{formula}\n\n"
+        "Assess anti-patterns (unnecessary LOD, nested calculations that could be "
+        "simplified, costly table functions, redundant casts). Reply ONLY with a "
+        "JSON object (no extra text, no markdown) with these 4 keys, in English: "
+        '{{"assessment": "overall verdict in 1-2 sentences", "issues": "concrete '
+        'anti-patterns or problems found", "refactored_formula": "the improved formula '
+        '(expression only, no explanation)", "explanation": "why the new version is '
+        'better, 1-2 sentences"}}'
+    ),
+    "pt": (
+        "Você é um especialista em Tableau e sua linguagem de cálculo. Aqui está um "
+        "campo calculado de um datasource publicado (apenas metadados, sem dados). "
+        "Datasource: {datasource}. Campo: {field}. Fórmula atual:\n{formula}\n\n"
+        "Avalie anti-padrões (LOD desnecessário, cálculos aninhados que poderiam ser "
+        "simplificados, funções de tabela custosas, conversões redundantes). Responda "
+        "APENAS com um objeto JSON (sem texto extra, sem markdown) com estas 4 chaves, "
+        'em português: {{"assessment": "veredicto geral em 1-2 frases", "issues": '
+        '"anti-padrões ou problemas concretos encontrados", "refactored_formula": "a '
+        'fórmula melhorada (apenas a expressão, sem explicação)", "explanation": "por '
+        'que a nova versão é melhor, 1-2 frases"}}'
+    ),
+}
+
+
+def _build_calc_prompt(field: str, formula: str, datasource: str, lang: str) -> str:
+    tmpl = _CALC_PROMPT_TMPL.get(lang, _CALC_PROMPT_TMPL["es"])
+    return tmpl.format(field=field, formula=formula, datasource=datasource or "—")
+
+
+def ai_refactor_calc(field: str, formula: str, datasource: str = "",
+                     lang: str = "es", provider: str | None = None) -> dict | None:
+    """Pide al proveedor de IA configurado una evaluación + refactor de un
+    campo calculado de Tableau. Devuelve un dict con las claves de
+    ``_CALC_KEYS`` o None (sin proveedor configurado, fórmula vacía o fallo
+    de la llamada) — nunca levanta."""
+    if not formula or not formula.strip():
+        return None
+    provider = provider or configured_provider()
+    if not provider or provider not in _CALLERS:
+        return None
+    env_var, _, _, _ = _PROVIDERS[provider]
+    api_key = os.environ.get(env_var)
+    if not api_key:
+        return None
+    prompt = _build_calc_prompt(field, formula, datasource, lang)
+    model = _model_for(provider)
+    try:
+        text = _CALLERS[provider](prompt, api_key, model)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            KeyError, IndexError, ValueError, OSError):
+        return None
+    parsed = _extract_json_object(text)
+    if not parsed:
+        return None
+    if not all(k in parsed and parsed[k] for k in _CALC_KEYS):
+        return None
+    return {k: str(parsed[k]) for k in _CALC_KEYS}

@@ -652,6 +652,173 @@ _T: dict[str, dict[str, str]] = {
                 "pt": "Não consegui ler o modelo"},
     "pbi_wait": {"es": "Analizando el modelo…", "en": "Analyzing the model…",
                  "pt": "Analisando o modelo…"},
+    # ------------------------------------------------- Power BI, modo tenant
+    "pbi_mode": {"es": "Modo", "en": "Mode", "pt": "Modo"},
+    "pbi_mode_offline": {"es": "📁 Proyecto local (.pbip)", "en": "📁 Local project (.pbip)",
+                         "pt": "📁 Projeto local (.pbip)"},
+    "pbi_mode_tenant": {"es": "🌐 Tenant completo (Scanner API)", "en": "🌐 Full tenant (Scanner API)",
+                        "pt": "🌐 Tenant completo (Scanner API)"},
+    "pbi_tenant_off": {
+        "es": "Apagado por defecto. Para escanear TODO el tenant, configurá tu propio service "
+              "principal como variables de entorno: `POWERBI_TENANT_ID`, `POWERBI_CLIENT_ID`, "
+              "`POWERBI_CLIENT_SECRET` — ver docs/BI_TENANT_SCAN.md. Nunca te las pedimos ni las "
+              "guardamos.",
+        "en": "Off by default. To scan the WHOLE tenant, set your own service principal as "
+              "environment variables: `POWERBI_TENANT_ID`, `POWERBI_CLIENT_ID`, "
+              "`POWERBI_CLIENT_SECRET` — see docs/BI_TENANT_SCAN.md. We never ask for or store them.",
+        "pt": "Desligado por padrão. Para escanear TODO o tenant, configure sua própria service "
+              "principal como variáveis de ambiente: `POWERBI_TENANT_ID`, `POWERBI_CLIENT_ID`, "
+              "`POWERBI_CLIENT_SECRET` — veja docs/BI_TENANT_SCAN.md. Nunca as pedimos nem as guardamos.",
+    },
+    "pbi_tenant_hint": {
+        "es": "Escanea todos los workspaces activos del tenant vía la Scanner API (Admin REST) — "
+              "solo metadata, nunca filas.",
+        "en": "Scans every active workspace in the tenant via the Scanner API (Admin REST) — "
+              "metadata only, never rows.",
+        "pt": "Escaneia todos os workspaces ativos do tenant via a Scanner API (Admin REST) — "
+              "apenas metadados, nunca linhas.",
+    },
+    "pbi_tenant_max_ws": {"es": "Máximo de workspaces a escanear", "en": "Max workspaces to scan",
+                          "pt": "Máximo de workspaces a escanear"},
+    "pbi_tenant_scan": {"es": "🌐 Escanear tenant completo", "en": "🌐 Scan full tenant",
+                        "pt": "🌐 Escanear tenant completo"},
+    "pbi_datasets": {"es": "Datasets", "en": "Datasets", "pt": "Datasets"},
+    "pbi_tenant_pick_dataset": {"es": "Ver medidas del dataset…", "en": "View measures for dataset…",
+                                "pt": "Ver medidas do dataset…"},
+    "pbi_mode_example": {"es": "🧪 Ejemplo incluido", "en": "🧪 Bundled example", "pt": "🧪 Exemplo incluído"},
+    "pbi_example_kind": {"es": "Qué ejemplo ver", "en": "Which example to view", "pt": "Qual exemplo ver"},
+    "pbi_example_single": {
+        "es": "Modelo real (Adventure Works Demo, GitHub, MIT)",
+        "en": "Real model (Adventure Works Demo, GitHub, MIT)",
+        "pt": "Modelo real (Adventure Works Demo, GitHub, MIT)",
+    },
+    "pbi_example_tenant": {
+        "es": "Tenant multinacional (ilustrativo)",
+        "en": "Multinational tenant (illustrative)",
+        "pt": "Tenant multinacional (ilustrativo)",
+    },
+    "pbi_example_single_note": {
+        "es": "Modelo real de Power BI (10 tablas, 17 medidas DAX) de un repositorio público de "
+              "GitHub, licencia MIT — no es sintético. Detalle y atribución completa en "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "en": "A real Power BI model (10 tables, 17 DAX measures) from a public GitHub repo, "
+              "MIT licensed — not synthetic. Full details and attribution in "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "pt": "Um modelo real de Power BI (10 tabelas, 17 medidas DAX) de um repositório público "
+              "do GitHub, licença MIT — não é sintético. Detalhes e atribuição completa em "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+    },
+    "pbi_example_tenant_note": {
+        "es": "⚠️ Ilustrativo, no un escaneo real: es el mismo modelo real de arriba, replicado y "
+              "re-etiquetado en varios workspaces simulados, para mostrar cómo se ve "
+              "ingest_tenant() a escala en una empresa multinacional. Para un escaneo real de tu "
+              "propio tenant, usá el modo 🌐 Tenant completo con tus credenciales.",
+        "en": "⚠️ Illustrative, not a real scan: it's the same real model above, replicated and "
+              "relabeled across several simulated workspaces, to show what ingest_tenant() looks "
+              "like at multinational scale. For a real scan of your own tenant, use 🌐 Full tenant "
+              "mode with your own credentials.",
+        "pt": "⚠️ Ilustrativo, não um escaneamento real: é o mesmo modelo real acima, replicado e "
+              "reetiquetado em vários workspaces simulados, para mostrar como fica o "
+              "ingest_tenant() em escala numa multinacional. Para um escaneamento real do seu "
+              "próprio tenant, use o modo 🌐 Tenant completo com suas credenciais.",
+    },
+    # ---------------------------------------------------------------- Tableau
+    "tab_tableau": {"es": "📊 Tableau", "en": "📊 Tableau", "pt": "📊 Tableau"},
+    "tab_intro": {
+        "es": "Gobierná tu sitio de Tableau: workbooks, datasources publicados, campos "
+              "calculados y su origen — solo estructura, nunca tus filas.",
+        "en": "Govern your Tableau site: workbooks, published datasources, calculated "
+              "fields and their source — structure only, never your rows.",
+        "pt": "Governe seu site do Tableau: workbooks, datasources publicados, campos "
+              "calculados e sua origem — apenas estrutura, nunca suas linhas.",
+    },
+    "tab_off": {
+        "es": "Apagado por defecto. Para escanear tu sitio, configurá tu propio Personal "
+              "Access Token como variables de entorno: `TABLEAU_SERVER_URL`, "
+              "`TABLEAU_TOKEN_NAME`, `TABLEAU_TOKEN_SECRET` (y opcional `TABLEAU_SITE`) — "
+              "ver docs/BI_TENANT_SCAN.md. Nunca te lo pedimos ni lo guardamos.",
+        "en": "Off by default. To scan your site, set your own Personal Access Token as "
+              "environment variables: `TABLEAU_SERVER_URL`, `TABLEAU_TOKEN_NAME`, "
+              "`TABLEAU_TOKEN_SECRET` (and optionally `TABLEAU_SITE`) — see "
+              "docs/BI_TENANT_SCAN.md. We never ask for or store it.",
+        "pt": "Desligado por padrão. Para escanear seu site, configure seu próprio Personal "
+              "Access Token como variáveis de ambiente: `TABLEAU_SERVER_URL`, "
+              "`TABLEAU_TOKEN_NAME`, `TABLEAU_TOKEN_SECRET` (e opcional `TABLEAU_SITE`) — "
+              "veja docs/BI_TENANT_SCAN.md. Nunca o pedimos nem o guardamos.",
+    },
+    "tab_scan": {"es": "📊 Escanear sitio completo", "en": "📊 Scan full site",
+                "pt": "📊 Escanear site completo"},
+    "tab_wait": {"es": "Escaneando el sitio…", "en": "Scanning the site…",
+                "pt": "Escaneando o site…"},
+    "tab_err": {"es": "No pude escanear el sitio", "en": "Could not scan the site",
+               "pt": "Não consegui escanear o site"},
+    "tab_no_model": {"es": "Escaneá tu sitio para ver su estructura.",
+                     "en": "Scan your site to see its structure.",
+                     "pt": "Escaneie seu site para ver sua estrutura."},
+    "tab_workbooks": {"es": "Workbooks", "en": "Workbooks", "pt": "Workbooks"},
+    "tab_datasources": {"es": "Datasources", "en": "Datasources", "pt": "Datasources"},
+    "tab_fields": {"es": "Campos", "en": "Fields", "pt": "Campos"},
+    "tab_calc_fields": {"es": "Campos calculados", "en": "Calculated fields", "pt": "Campos calculados"},
+    "tab_catalog_title": {"es": "📇 Catálogo de datasources", "en": "📇 Datasource catalog",
+                          "pt": "📇 Catálogo de datasources"},
+    "tab_health_title": {"es": "✅ Salud del sitio", "en": "✅ Site health", "pt": "✅ Saúde do site"},
+    "tab_health_overall": {"es": "Índice del sitio", "en": "Site index", "pt": "Índice do site"},
+    "tab_sources_title": {"es": "🗄️ Origen por datasource", "en": "🗄️ Source per datasource",
+                          "pt": "🗄️ Origem por datasource"},
+    "tab_sources_hint": {
+        "es": "Tablas de base de datos detectadas como origen de cada datasource publicado.",
+        "en": "Database tables detected as the source of each published datasource.",
+        "pt": "Tabelas de banco de dados detectadas como origem de cada datasource publicado.",
+    },
+    "tab_lineage_title": {"es": "🧬 Linaje del sitio", "en": "🧬 Site lineage", "pt": "🧬 Linhagem do site"},
+    "tab_lineage_hint": {
+        "es": "Cadena completa: tabla de base de datos → datasource publicado → workbook.",
+        "en": "Full chain: database table → published datasource → workbook.",
+        "pt": "Cadeia completa: tabela de banco de dados → datasource publicado → workbook.",
+    },
+    "tab_calc_title": {"es": "📖 Campos calculados (glosario)", "en": "📖 Calculated fields (glossary)",
+                       "pt": "📖 Campos calculados (glossário)"},
+    "tab_refactor": {"es": "✨ Refactor con {provider}", "en": "✨ Refactor with {provider}",
+                     "pt": "✨ Refatorar com {provider}"},
+    "tab_refactor_hint": {
+        "es": "Con tu API key configurada, pedile a la IA que audite y mejore la fórmula "
+              "(se manda solo la fórmula, nunca datos).",
+        "en": "With your API key set, ask the AI to audit and improve the formula "
+              "(only the formula is sent, never data).",
+        "pt": "Com sua API key configurada, peça à IA para auditar e melhorar a fórmula "
+              "(envia-se apenas a fórmula, nunca dados).",
+    },
+    "tab_r_formula": {"es": "Fórmula refactorizada", "en": "Refactored formula", "pt": "Fórmula refatorada"},
+    "tab_mode": {"es": "Modo", "en": "Mode", "pt": "Modo"},
+    "tab_mode_offline": {"es": "📁 Workbook local (.twb/.twbx)", "en": "📁 Local workbook (.twb/.twbx)",
+                         "pt": "📁 Workbook local (.twb/.twbx)"},
+    "tab_mode_site": {"es": "🌐 Sitio completo (Metadata API)", "en": "🌐 Full site (Metadata API)",
+                      "pt": "🌐 Site completo (Metadata API)"},
+    "tab_mode_example": {"es": "🧪 Ejemplo incluido", "en": "🧪 Bundled example", "pt": "🧪 Exemplo incluído"},
+    "tab_path": {"es": "Ruta al archivo .twb o .twbx", "en": "Path to the .twb or .twbx file",
+                "pt": "Caminho para o arquivo .twb ou .twbx"},
+    "tab_path_hint": {
+        "es": "Un .twbx trae extractos de datos empaquetados — el programa nunca los lee, solo "
+              "el XML de estructura (.twb) adentro.",
+        "en": "A .twbx bundles packaged data extracts — the program never reads them, only the "
+              "structure XML (.twb) inside.",
+        "pt": "Um .twbx traz extratos de dados empacotados — o programa nunca os lê, apenas o "
+              "XML de estrutura (.twb) dentro.",
+    },
+    "tab_upload": {"es": "Subir archivo .twb/.twbx", "en": "Upload .twb/.twbx file",
+                  "pt": "Enviar arquivo .twb/.twbx"},
+    "tab_load": {"es": "Analizar workbook", "en": "Analyze workbook", "pt": "Analisar workbook"},
+    "tab_example_note": {
+        "es": "Workbook de ejemplo escrito originalmente para este programa (no descargado de "
+              "GitHub — los repos públicos encontrados no tenían licencia clara). Detalle en "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "en": "Example workbook written originally for this program (not downloaded from GitHub "
+              "— the public repos found had no clear license). Details in "
+              "assets/samples/THIRD_PARTY_DATA.md.",
+        "pt": "Workbook de exemplo escrito originalmente para este programa (não baixado do "
+              "GitHub — os repositórios públicos encontrados não tinham licença clara). "
+              "Detalhes em assets/samples/THIRD_PARTY_DATA.md.",
+    },
 }
 
 

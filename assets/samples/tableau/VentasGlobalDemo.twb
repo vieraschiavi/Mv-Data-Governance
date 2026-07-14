@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='utf-8' ?>
+
+<!--
+  Workbook de ejemplo escrito originalmente para MV Data Governance — ver
+  assets/samples/THIRD_PARTY_DATA.md para por qué no se usó un .twb/.twbx
+  descargado de GitHub (licencia no clara en los repos encontrados) y se
+  escribió este en su lugar, estructuralmente realista y 100% propio.
+-->
+<workbook source-build='2024.1.0' source-platform='win' version='18.1'
+  xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <datasources>
+    <datasource caption='Ventas Global' name='sqlserver.ventasglobal' version='18.1'>
+      <connection class='sqlserver' server='SRV-VENTAS-GLOBAL' dbname='VentasCorpDB'
+        authentication='sspi' odbc-native-protocol='yes'>
+        <relation name='Ventas' table='[dbo].[Ventas]' type='table' />
+      </connection>
+      <column caption='ID Pedido' datatype='string' name='[ID Pedido]' role='dimension' type='nominal' />
+      <column caption='Fecha de Pedido' datatype='date' name='[Fecha de Pedido]' role='dimension' type='ordinal' />
+      <column caption='Region' datatype='string' name='[Region]' role='dimension' type='nominal' />
+      <column caption='Pais' datatype='string' name='[Pais]' role='dimension' type='nominal' />
+      <column caption='Categoria de Producto' datatype='string' name='[Categoria]' role='dimension' type='nominal' />
+      <column caption='Ventas' datatype='real' name='[Ventas]' role='measure' type='quantitative' />
+      <column caption='Margen' datatype='real' name='[Margen]' role='measure' type='quantitative' />
+      <column caption='Cantidad' datatype='integer' name='[Cantidad]' role='measure' type='quantitative' />
+      <column caption='Margen %' datatype='real' name='[Calculation_593127841]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='SUM([Margen]) / SUM([Ventas])' />
+      </column>
+      <column caption='Ticket Promedio' datatype='real' name='[Calculation_593127842]' role='measure' type='quantitative'
+        comment='Ventas totales sobre la cantidad de pedidos unicos, para comparar el tamano de compra entre regiones.'>
+        <calculation class='tableau' formula='SUM([Ventas]) / COUNTD([ID Pedido])' />
+      </column>
+      <column caption='Segmento de Cuenta' datatype='string' name='[Calculation_593127843]' role='dimension' type='nominal'>
+        <calculation class='tableau'
+          formula='IF SUM([Ventas]) &gt;= 10000 THEN &quot;Corporativo&quot; ELSEIF SUM([Ventas]) &gt;= 1000 THEN &quot;PyME&quot; ELSE &quot;Consumidor&quot; END' />
+      </column>
+    </datasource>
+    <datasource caption='Metas Regionales' name='excel.metasregionales' version='18.1'>
+      <connection class='excel-direct' server='' dbname=''>
+        <relation name='Metas' table='Metas$' type='table' />
+      </connection>
+      <column caption='Region' datatype='string' name='[Region]' role='dimension' type='nominal' />
+      <column caption='Meta Trimestral' datatype='real' name='[Meta Trimestral]' role='measure' type='quantitative' />
+    </datasource>
+  </datasources>
+  <worksheets>
+    <worksheet name='Resumen Ventas por Region' />
+    <worksheet name='Cumplimiento de Metas' />
+  </worksheets>
+  <dashboards>
+    <dashboard name='Panel Ejecutivo Global'>
+      <zones>
+        <zone name='Resumen Ventas por Region' />
+        <zone name='Cumplimiento de Metas' />
+      </zones>
+    </dashboard>
+  </dashboards>
+</workbook>

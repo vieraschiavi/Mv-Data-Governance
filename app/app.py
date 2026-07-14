@@ -40,7 +40,8 @@ from mvdg.glossary import glossary_df, term_count
 from mvdg.i18n import LANG_NAMES, LANGS, t
 from mvdg.lineage import NODES, graph_from_lineage, lineage_df, lineage_figure
 from mvdg import powerbi_meta as pbi
-from mvdg.ai_provider import ai_refactor_dax
+from mvdg import tableau_meta as tabl
+from mvdg.ai_provider import ai_refactor_calc, ai_refactor_dax
 from mvdg.policies import policies_df
 from mvdg.profiler import profile_table, suggest_rules, summary
 from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
@@ -106,12 +107,12 @@ results = _results(lang)
 tables = _tables()
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
- tab_pbi, tab_cl, tab_h) = st.tabs([
+ tab_pbi, tab_tab, tab_cl, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
-    t("tab_pbi", lang), t("tab_clients", lang), t("tab_help", lang),
+    t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -952,50 +953,98 @@ with tab_pbi:
     st.info(t("pbi_intro", lang), icon="🔷")
     st.caption("🔐 " + t("pbi_secure_note", lang))
 
-    _PBI_SRC = {"path": t("pbi_src_path", lang), "zip": t("pbi_src_zip", lang)}
-    pbi_source = st.radio(t("pbi_source", lang), ["path", "zip"], horizontal=True,
-                          key="pbi_source", format_func=lambda k: _PBI_SRC[k])
+    _PBI_MODE = {"offline": t("pbi_mode_offline", lang), "tenant": t("pbi_mode_tenant", lang),
+                "example": t("pbi_mode_example", lang)}
+    pbi_mode = st.radio(t("pbi_mode", lang), ["offline", "tenant", "example"], horizontal=True,
+                        key="pbi_mode", format_func=lambda k: _PBI_MODE[k])
 
     model_out = None
     pbi_err = None
-    if pbi_source == "path":
-        folder = st.text_input(t("pbi_path", lang), key="pbi_path")
-        st.caption(t("pbi_path_hint", lang))
-        if st.button(t("pbi_load", lang), key="pbi_load_path") and folder.strip():
-            try:
-                with st.spinner(t("pbi_wait", lang)):
-                    model_out = pbi.ingest_pbip(folder.strip(), lang)
-            except Exception as exc:  # noqa: BLE001
-                pbi_err = str(exc)
+    pbi_single_model = None   # PowerBIModel único (modo offline)
+    pbi_models = None         # list[PowerBIModel] (modo tenant)
+
+    if pbi_mode == "offline":
+        _PBI_SRC = {"path": t("pbi_src_path", lang), "zip": t("pbi_src_zip", lang)}
+        pbi_source = st.radio(t("pbi_source", lang), ["path", "zip"], horizontal=True,
+                              key="pbi_source", format_func=lambda k: _PBI_SRC[k])
+        if pbi_source == "path":
+            folder = st.text_input(t("pbi_path", lang), key="pbi_path")
+            st.caption(t("pbi_path_hint", lang))
+            if st.button(t("pbi_load", lang), key="pbi_load_path") and folder.strip():
+                try:
+                    with st.spinner(t("pbi_wait", lang)):
+                        model_out = pbi.ingest_pbip(folder.strip(), lang)
+                except Exception as exc:  # noqa: BLE001
+                    pbi_err = str(exc)
+        else:
+            up = st.file_uploader(t("pbi_zip", lang), type=["zip"], key="pbi_zip")
+            if up is not None:
+                import tempfile
+                import zipfile
+                try:
+                    with st.spinner(t("pbi_wait", lang)):
+                        tmpdir = tempfile.mkdtemp(prefix="mvdg_pbip_")
+                        zpath = os.path.join(tmpdir, "proj.zip")
+                        with open(zpath, "wb") as fh:
+                            fh.write(up.getbuffer())
+                        with zipfile.ZipFile(zpath) as zf:
+                            zf.extractall(tmpdir)
+                        model_out = pbi.ingest_pbip(tmpdir, lang)
+                except Exception as exc:  # noqa: BLE001
+                    pbi_err = str(exc)
+        if model_out is not None:
+            pbi_single_model = model_out["_model"]
+    elif pbi_mode == "example":
+        _PBI_EX_KIND = {"single": t("pbi_example_single", lang), "tenant": t("pbi_example_tenant", lang)}
+        pbi_ex_kind = st.radio(t("pbi_example_kind", lang), ["single", "tenant"], horizontal=True,
+                               key="pbi_example_kind", format_func=lambda k: _PBI_EX_KIND[k])
+        if pbi_ex_kind == "single":
+            st.caption(t("pbi_example_single_note", lang))
+            model_out = pbi.ingest_example(lang)
+            pbi_single_model = model_out["_model"]
+        else:
+            st.warning(t("pbi_example_tenant_note", lang), icon="⚠️")
+            model_out = pbi.ingest_example_tenant(lang)
+            pbi_models = model_out["_models"]
     else:
-        up = st.file_uploader(t("pbi_zip", lang), type=["zip"], key="pbi_zip")
-        if up is not None:
-            import tempfile
-            import zipfile
-            try:
-                with st.spinner(t("pbi_wait", lang)):
-                    tmpdir = tempfile.mkdtemp(prefix="mvdg_pbip_")
-                    zpath = os.path.join(tmpdir, "proj.zip")
-                    with open(zpath, "wb") as fh:
-                        fh.write(up.getbuffer())
-                    with zipfile.ZipFile(zpath) as zf:
-                        zf.extractall(tmpdir)
-                    model_out = pbi.ingest_pbip(tmpdir, lang)
-            except Exception as exc:  # noqa: BLE001
-                pbi_err = str(exc)
+        if not pbi.tenant_configured():
+            st.warning(t("pbi_tenant_off", lang), icon="🔒")
+        else:
+            st.caption(t("pbi_tenant_hint", lang))
+            pbi_max_ws = st.number_input(t("pbi_tenant_max_ws", lang), min_value=1, max_value=1000,
+                                         value=25, step=5, key="pbi_tenant_max_ws")
+            if st.button(t("pbi_tenant_scan", lang), key="pbi_tenant_scan_btn"):
+                try:
+                    with st.spinner(t("pbi_wait", lang)):
+                        model_out = pbi.ingest_tenant(lang, max_workspaces=int(pbi_max_ws))
+                except Exception as exc:  # noqa: BLE001
+                    pbi_err = str(exc)
+            cached = st.session_state.get("pbi_tenant_result")
+            if model_out is not None:
+                st.session_state["pbi_tenant_result"] = model_out
+            elif cached is not None and not pbi_err:
+                model_out = cached
+        if model_out is not None:
+            pbi_models = model_out["_models"]
 
     if pbi_err:
         st.error(f"{t('pbi_err', lang)}: {pbi_err}", icon="⚠️")
     elif model_out is None:
         st.caption(t("pbi_no_model", lang))
     else:
-        model = model_out["_model"]
         k1, k2, k3, k4, k5 = st.columns(5)
-        k1.metric(t("pbi_model", lang), model.name)
-        k2.metric(t("pbi_tables", lang), len(model.tables))
-        k3.metric(t("pbi_measures", lang), len(model.measures))
-        k4.metric(t("pbi_columns", lang), len(model.columns))
-        k5.metric(t("pbi_roles", lang), len(model.roles))
+        if pbi_single_model is not None:
+            k1.metric(t("pbi_model", lang), pbi_single_model.name)
+            k2.metric(t("pbi_tables", lang), len(pbi_single_model.tables))
+            k3.metric(t("pbi_measures", lang), len(pbi_single_model.measures))
+            k4.metric(t("pbi_columns", lang), len(pbi_single_model.columns))
+            k5.metric(t("pbi_roles", lang), len(pbi_single_model.roles))
+        else:
+            k1.metric(t("pbi_datasets", lang), len(pbi_models))
+            k2.metric(t("pbi_tables", lang), sum(len(m.tables) for m in pbi_models))
+            k3.metric(t("pbi_measures", lang), sum(len(m.measures) for m in pbi_models))
+            k4.metric(t("pbi_columns", lang), sum(len(m.columns) for m in pbi_models))
+            k5.metric(t("pbi_roles", lang), sum(len(m.roles) for m in pbi_models))
 
         st.subheader(t("pbi_catalog_title", lang))
         st.dataframe(model_out["catalog"], width="stretch", hide_index=True)
@@ -1031,14 +1080,22 @@ with tab_pbi:
         _pbi_provider = configured_provider()
         if _pbi_provider:
             st.caption(t("pbi_refactor_hint", lang))
-        for _i, _m in enumerate(model.measures):
+        if pbi_single_model is not None:
+            _pbi_measures_show = [(pbi_single_model.name, m) for m in pbi_single_model.measures]
+        else:
+            _pbi_ds_names = [m.name for m in pbi_models]
+            _pbi_picked = st.selectbox(t("pbi_tenant_pick_dataset", lang), _pbi_ds_names,
+                                       key="pbi_tenant_pick")
+            _pbi_picked_model = next(m for m in pbi_models if m.name == _pbi_picked)
+            _pbi_measures_show = [(_pbi_picked_model.name, m) for m in _pbi_picked_model.measures]
+        for _i, (_mname, _m) in enumerate(_pbi_measures_show):
             with st.expander(f"📐 {_m.name}" + (f" · {_m.table}" if _m.table else "")):
                 st.code(_m.dax or "—", language="text")
                 if _m.description:
                     st.caption(_m.description)
                 if _pbi_provider and st.button(
                         t("pbi_refactor", lang).format(provider=provider_label(_pbi_provider)),
-                        key=f"pbi_dax_{_i}"):
+                        key=f"pbi_dax_{_mname}_{_i}"):
                     with st.spinner(t("pbi_wait", lang)):
                         _res = ai_refactor_dax(_m.name, _m.dax, _m.table, lang, _pbi_provider)
                     if _res:
@@ -1047,5 +1104,118 @@ with tab_pbi:
                         st.markdown(f"**{t('pbi_r_dax', lang)}:**")
                         st.code(_res["refactored_dax"], language="text")
                         st.caption(f"{t('pbi_r_expl', lang)}: {_res['explanation']}")
+                    else:
+                        st.info(t("fix_note", lang))
+
+# ---------------------------------------------------------------- Tableau
+with tab_tab:
+    st.info(t("tab_intro", lang), icon="📊")
+
+    _TAB_MODE = {"offline": t("tab_mode_offline", lang), "site": t("tab_mode_site", lang),
+                "example": t("tab_mode_example", lang)}
+    tab_mode = st.radio(t("tab_mode", lang), ["offline", "site", "example"], horizontal=True,
+                        key="tab_mode", format_func=lambda k: _TAB_MODE[k])
+
+    if tab_mode == "offline":
+        tpath = st.text_input(t("tab_path", lang), key="tab_path")
+        st.caption(t("tab_path_hint", lang))
+        up = st.file_uploader(t("tab_upload", lang), type=["twb", "twbx"], key="tab_upload")
+        if st.button(t("tab_load", lang), key="tab_load_btn"):
+            try:
+                with st.spinner(t("tab_wait", lang)):
+                    if up is not None:
+                        import tempfile
+                        tmpdir = tempfile.mkdtemp(prefix="mvdg_twb_")
+                        fpath = os.path.join(tmpdir, up.name)
+                        with open(fpath, "wb") as fh:
+                            fh.write(up.getbuffer())
+                        tab_out = tabl.ingest_twb(fpath, lang)
+                    elif tpath.strip():
+                        tab_out = tabl.ingest_twb(tpath.strip(), lang)
+                    else:
+                        tab_out = None
+                if tab_out is not None:
+                    st.session_state["tab_scan_result"] = tab_out
+            except Exception as exc:  # noqa: BLE001
+                st.session_state["tab_scan_result"] = None
+                st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
+    elif tab_mode == "example":
+        st.caption(t("tab_example_note", lang))
+        st.session_state["tab_scan_result"] = tabl.ingest_example(lang)
+    else:
+        if not tabl.configured():
+            st.warning(t("tab_off", lang), icon="🔒")
+        else:
+            if st.button(t("tab_scan", lang), key="tab_scan_btn"):
+                try:
+                    with st.spinner(t("tab_wait", lang)):
+                        tab_out = tabl.ingest_site(lang)
+                    st.session_state["tab_scan_result"] = tab_out
+                except Exception as exc:  # noqa: BLE001
+                    st.session_state["tab_scan_result"] = None
+                    st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
+
+    tab_out = st.session_state.get("tab_scan_result")
+    if tab_out is None:
+        st.caption(t("tab_no_model", lang))
+    else:
+        tab_model = tab_out["_model"]
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric(t("tab_workbooks", lang), len(tab_model.workbooks))
+        k2.metric(t("tab_datasources", lang), len(tab_model.datasources))
+        k3.metric(t("tab_fields", lang), len(tab_model.fields))
+        k4.metric(t("tab_calc_fields", lang), sum(1 for f in tab_model.fields if f.is_calculated))
+
+        st.subheader(t("tab_catalog_title", lang))
+        st.dataframe(tab_out["catalog"], width="stretch", hide_index=True)
+
+        st.subheader(t("tab_health_title", lang))
+        tq = tab_out["quality"]
+        st.metric(t("tab_health_overall", lang), f"{round(tq['score'].mean(), 1)} / 100")
+        tq_show = tq.copy()
+        tq_show["dimension"] = tq_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        tq_show["status"] = tq_show["status"].map(lambda s: _STATUS_LABEL.get(s, s))
+        st.dataframe(tq_show, width="stretch", hide_index=True)
+
+        st.subheader(t("tab_sources_title", lang))
+        st.caption(t("tab_sources_hint", lang))
+        tsrcs_show = tab_out["sources"].copy()
+        tsrcs_show["source"] = tsrcs_show["source"].replace("", t("pbi_source_none", lang))
+        tsrcs_show.columns = [t("tab_datasources", lang), t("pbi_source_col_src", lang)]
+        st.dataframe(tsrcs_show, width="stretch", hide_index=True)
+
+        st.subheader(t("tab_lineage_title", lang))
+        st.caption(t("tab_lineage_hint", lang))
+        tnodes, tedges = graph_from_lineage(tab_out["lineage"])
+        _tab_layer_titles = {
+            "source": t("lin_layer_source", lang), "raw": t("lin_layer_raw", lang),
+            "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
+            "bi": t("lin_layer_bi", lang),
+        }
+        st.plotly_chart(
+            lineage_figure(nodes=tnodes, edges=tedges, layer_titles=_tab_layer_titles),
+            width="stretch")
+
+        st.subheader(t("tab_calc_title", lang))
+        _tab_provider = configured_provider()
+        if _tab_provider:
+            st.caption(t("tab_refactor_hint", lang))
+        _tab_calc_fields = [f for f in tab_model.fields if f.is_calculated]
+        for _i, _f in enumerate(_tab_calc_fields):
+            with st.expander(f"📐 {_f.name}" + (f" · {_f.datasource}" if _f.datasource else "")):
+                st.code(_f.formula or "—", language="text")
+                if _f.description:
+                    st.caption(_f.description)
+                if _tab_provider and st.button(
+                        t("tab_refactor", lang).format(provider=provider_label(_tab_provider)),
+                        key=f"tab_calc_{_i}"):
+                    with st.spinner(t("tab_wait", lang)):
+                        _tres = ai_refactor_calc(_f.name, _f.formula, _f.datasource, lang, _tab_provider)
+                    if _tres:
+                        st.markdown(f"**{t('pbi_r_assessment', lang)}:** {_tres['assessment']}")
+                        st.markdown(f"**{t('pbi_r_issues', lang)}:** {_tres['issues']}")
+                        st.markdown(f"**{t('tab_r_formula', lang)}:**")
+                        st.code(_tres["refactored_formula"], language="text")
+                        st.caption(f"{t('pbi_r_expl', lang)}: {_tres['explanation']}")
                     else:
                         st.info(t("fix_note", lang))
