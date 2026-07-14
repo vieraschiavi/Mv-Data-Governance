@@ -138,6 +138,23 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"COBIT: 8 objetivos ({ccov['covered']} cubiertos) · "
                f"ISO 38505: 6 principios ({icov['covered']} cubiertos) + modelo VRC")
 
+    @check("MDM: duplicados + golden record (probado contra la demo real)")
+    def _():
+        from . import mdm
+        from .demo_data import load_demo_tables
+        df = load_demo_tables()["dim_customers"]
+        rules = mdm.suggest_rules(df, ["document_id", "email", "full_name", "birth_date"])
+        clusters = mdm.find_duplicate_clusters(df, rules, min_confidence=0.5, block_column="country")
+        assert len(clusters) == 8, "la demo trae 8 colisiones reales de document_id/email"
+        assert all(c.confidence == 1.0 for c in clusters)
+        # anti falso-positivo: "Ana Costa" x4 personas distintas no debe aparecer
+        ana_ids = set(df.loc[df["full_name"] == "Ana Costa", "customer_id"])
+        flagged = {df.loc[i, "customer_id"] for c in clusters for i in c.row_indices}
+        assert not (ana_ids & flagged), "nombre común sin ID/email coincidente no debe marcarse"
+        golden = mdm.build_golden_record(df, clusters[0])
+        assert all(golden.values())
+        return f"{len(clusters)} clusters reales detectados, 0 falsos positivos por nombre común"
+
     @check("API REST importable")
     def _():
         from bi_api.main import SAMPLE_TABLES, TABLES, app  # noqa: F401

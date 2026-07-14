@@ -136,13 +136,23 @@ AREAS: list[dict] = [
             "Master data management (MDM: core entities like customer/product, with a single 'golden record') and reference data (official lists/codes). Deduplication, matching, versioning.",
             "Gestão de dados mestres (MDM: entidades núcleo como cliente/produto, com um 'golden record' único) e dados de referência (listas/códigos oficiais). Deduplicação, matching, versionamento."),
         "deliverables": _tr(
-            "Glosario de negocio, definiciones oficiales, dominios de valores permitidos.",
-            "Business glossary, official definitions, allowed-value domains.",
-            "Glossário de negócio, definições oficiais, domínios de valores permitidos."),
-        "coverage": "partial", "score": 45,
-        "note": _tr("Glosario de definiciones; sin motor de deduplicación/MDM de registros.",
-                    "Glossary of definitions; no record deduplication/MDM engine.",
-                    "Glossário de definições; sem motor de deduplicação/MDM de registros."),
+            "Glosario de negocio, definiciones oficiales, dominios de valores permitidos, "
+            "clusters de duplicados con golden record propuesto (pestaña MDM).",
+            "Business glossary, official definitions, allowed-value domains, duplicate "
+            "clusters with a proposed golden record (MDM tab).",
+            "Glossário de negócio, definições oficiais, domínios de valores permitidos, "
+            "clusters de duplicados com golden record proposto (aba MDM)."),
+        "coverage": "covered", "score": 70,
+        "note": _tr(
+            "Glosario + motor de deduplicación por reglas ponderadas (pestaña 🔗 MDM): "
+            "encuentra clusters de filas que probablemente son la misma entidad y arma el "
+            "golden record. No es matching probabilístico/ML ni gestiona versionado histórico.",
+            "Glossary + weighted-rule deduplication engine (🔗 MDM tab): finds row clusters "
+            "likely representing the same entity and builds the golden record. Not "
+            "probabilistic/ML matching, and doesn't manage historical versioning.",
+            "Glossário + motor de deduplicação por regras ponderadas (aba 🔗 MDM): encontra "
+            "clusters de linhas provavelmente da mesma entidade e monta o golden record. Não "
+            "é matching probabilístico/ML nem gerencia versionamento histórico."),
     },
     {
         "key": "security", "n": 7,

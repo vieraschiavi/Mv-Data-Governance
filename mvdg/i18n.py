@@ -43,6 +43,7 @@ _T: dict[str, dict[str, str]] = {
     # ----------------------------------------------------------------- tabs
     "tab_overview": {"es": "📊 Panorama", "en": "📊 Overview", "pt": "📊 Panorama"},
     "tab_catalog": {"es": "📚 Catálogo", "en": "📚 Catalog", "pt": "📚 Catálogo"},
+    "tab_mdm": {"es": "🔗 MDM", "en": "🔗 MDM", "pt": "🔗 MDM"},
     "tab_quality": {"es": "✅ Calidad", "en": "✅ Quality", "pt": "✅ Qualidade"},
     "tab_lineage": {"es": "🧬 Linaje", "en": "🧬 Lineage", "pt": "🧬 Linhagem"},
     "tab_glossary": {"es": "📖 Glosario", "en": "📖 Glossary", "pt": "📖 Glossário"},
@@ -871,6 +872,60 @@ _T: dict[str, dict[str, str]] = {
               "GitHub — os repositórios públicos encontrados não tinham licença clara). "
               "Detalhes em assets/samples/THIRD_PARTY_DATA.md.",
     },
+    # ------------------------------------------------------------------ MDM
+    "mdm_intro": {
+        "es": "**Master Data Management**: encuentra filas que probablemente representen la "
+              "MISMA entidad (cliente, producto…) con datos levemente distintos, y arma el "
+              "**golden record** que las unifica. Matching por reglas ponderadas, 100% local.",
+        "en": "**Master Data Management**: finds rows that likely represent the SAME entity "
+              "(customer, product…) with slightly different data, and builds the **golden "
+              "record** that unifies them. Weighted rule matching, 100% local.",
+        "pt": "**Master Data Management**: encontra linhas que provavelmente representam a "
+              "MESMA entidade (cliente, produto…) com dados levemente diferentes, e monta o "
+              "**golden record** que as unifica. Matching por regras ponderadas, 100% local.",
+    },
+    "mdm_warning": {
+        "es": "⚠️ Un nombre común (\"Ana Costa\") solo no alcanza para marcar un duplicado — "
+              "hace falta que además coincida un identificador fuerte (documento, email). Así "
+              "se evitan falsos positivos entre personas distintas con el mismo nombre.",
+        "en": "⚠️ A common name (\"Ana Costa\") alone isn't enough to flag a duplicate — a "
+              "strong identifier (ID, email) must also match. This avoids false positives "
+              "between different people sharing a name.",
+        "pt": "⚠️ Um nome comum (\"Ana Costa\") sozinho não basta para marcar um duplicado — é "
+              "preciso que um identificador forte (documento, email) também coincida. Isso "
+              "evita falsos positivos entre pessoas diferentes com o mesmo nome.",
+    },
+    "mdm_pick_dataset": {"es": "Dataset a analizar", "en": "Dataset to analyze", "pt": "Dataset a analisar"},
+    "mdm_src_demo": {"es": "demo sintético", "en": "synthetic demo", "pt": "demo sintético"},
+    "mdm_pick_columns": {"es": "Columnas para buscar duplicados",
+                         "en": "Columns to search for duplicates",
+                         "pt": "Colunas para buscar duplicados"},
+    "mdm_block_column": {
+        "es": "Agrupar por (acelera la comparación en datasets grandes)",
+        "en": "Group by (speeds up comparison on large datasets)",
+        "pt": "Agrupar por (acelera a comparação em datasets grandes)",
+    },
+    "mdm_no_block": {"es": "— sin agrupar —", "en": "— no grouping —", "pt": "— sem agrupar —"},
+    "mdm_min_confidence": {"es": "Confianza mínima (%)", "en": "Minimum confidence (%)",
+                           "pt": "Confiança mínima (%)"},
+    "mdm_run": {"es": "🔗 Buscar duplicados", "en": "🔗 Find duplicates", "pt": "🔗 Buscar duplicados"},
+    "mdm_wait": {"es": "Comparando filas…", "en": "Comparing rows…", "pt": "Comparando linhas…"},
+    "mdm_none_found": {
+        "es": "No se encontraron duplicados con esta confianza mínima y estas columnas.",
+        "en": "No duplicates found with this minimum confidence and these columns.",
+        "pt": "Nenhum duplicado encontrado com esta confiança mínima e estas colunas.",
+    },
+    "mdm_results": {"es": "{n} clusters de posibles duplicados encontrados",
+                    "en": "{n} possible-duplicate clusters found",
+                    "pt": "{n} clusters de possíveis duplicados encontrados"},
+    "mdm_col_cluster": {"es": "Cluster", "en": "Cluster", "pt": "Cluster"},
+    "mdm_col_rows": {"es": "Filas", "en": "Rows", "pt": "Linhas"},
+    "mdm_col_confidence": {"es": "Confianza (%)", "en": "Confidence (%)", "pt": "Confiança (%)"},
+    "mdm_col_matched": {"es": "Coincide en", "en": "Matched on", "pt": "Coincide em"},
+    "mdm_rows_label": {"es": "filas", "en": "rows", "pt": "linhas"},
+    "mdm_cols_label": {"es": "columnas", "en": "columns", "pt": "colunas"},
+    "mdm_golden_title": {"es": "✨ Golden record propuesto", "en": "✨ Proposed golden record",
+                         "pt": "✨ Golden record proposto"},
 }
 
 
