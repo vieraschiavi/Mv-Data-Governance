@@ -277,14 +277,20 @@ _T: dict[str, dict[str, str]] = {
 
     # ------------------------------------------------------------- connectors
     "db_intro": {
-        "es": "Conectate directo a tu base de datos (PostgreSQL, MySQL, SQL "
-              "Server, Oracle, SQLite). Cargás servidor, usuario y contraseña, "
-              "los guardás y traés tus tablas al gobierno — igual que un CSV.",
-        "en": "Connect directly to your database (PostgreSQL, MySQL, SQL "
-              "Server, Oracle, SQLite). Enter host, user and password, save "
-              "them and bring your tables into governance — just like a CSV.",
-        "pt": "Conecte-se direto ao seu banco de dados (PostgreSQL, MySQL, SQL "
-              "Server, Oracle, SQLite). Informe host, usuário e senha, salve-os "
+        "es": "Conectate directo a tu base de datos: 5 motores SQL clásicos "
+              "(PostgreSQL, MySQL, SQL Server, Oracle, SQLite) o un data "
+              "warehouse/lake de nube (Snowflake, BigQuery, Databricks, Azure "
+              "Synapse). Cargás las credenciales, las guardás y traés tus "
+              "tablas al gobierno — igual que un CSV.",
+        "en": "Connect directly to your database: 5 classic SQL engines "
+              "(PostgreSQL, MySQL, SQL Server, Oracle, SQLite) or a cloud data "
+              "warehouse/lake (Snowflake, BigQuery, Databricks, Azure "
+              "Synapse). Enter the credentials, save them and bring your "
+              "tables into governance — just like a CSV.",
+        "pt": "Conecte-se direto ao seu banco de dados: 5 motores SQL "
+              "clássicos (PostgreSQL, MySQL, SQL Server, Oracle, SQLite) ou "
+              "um data warehouse/lake de nuvem (Snowflake, BigQuery, "
+              "Databricks, Azure Synapse). Informe as credenciais, salve-as "
               "e traga suas tabelas para a governança — como um CSV.",
     },
     "db_saved_conns": {"es": "Conexiones guardadas", "en": "Saved connections", "pt": "Conexões salvas"},
@@ -321,6 +327,29 @@ _T: dict[str, dict[str, str]] = {
         "es": "Falta el driver de este motor. Instalalo con: pip install {pip}",
         "en": "The driver for this engine is missing. Install it with: pip install {pip}",
         "pt": "Falta o driver deste motor. Instale com: pip install {pip}",
+    },
+    "db_cloud_no_port": {
+        "es": "Sin puerto (ver parámetros abajo)",
+        "en": "No port (see parameters below)",
+        "pt": "Sem porta (veja parâmetros abaixo)",
+    },
+    "db_extra_params": {
+        "es": "Parámetros propios del motor (JSON)",
+        "en": "Engine-specific parameters (JSON)",
+        "pt": "Parâmetros próprios do motor (JSON)",
+    },
+    "db_extra_hint": {
+        "es": "Snowflake/BigQuery/Databricks no usan servidor+puerto — acá van sus "
+              "parámetros propios en JSON. Ejemplo para este motor: {example}",
+        "en": "Snowflake/BigQuery/Databricks don't use host+port — enter their own "
+              "parameters here as JSON. Example for this engine: {example}",
+        "pt": "Snowflake/BigQuery/Databricks não usam servidor+porta — informe aqui "
+              "seus parâmetros próprios em JSON. Exemplo para este motor: {example}",
+    },
+    "db_extra_invalid_json": {
+        "es": "El JSON de parámetros no es válido — corregilo antes de probar o guardar.",
+        "en": "The parameters JSON is invalid — fix it before testing or saving.",
+        "pt": "O JSON de parâmetros é inválido — corrija antes de testar ou salvar.",
     },
     # ------------------------------------------------------------------- bi
     "bi_intro": {

@@ -98,13 +98,24 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert recommended_pack("exe_ok") == "A"
         return "CRM de clientes operativo"
 
-    @check("Conectores a base de datos")
+    @check("Conectores a base de datos (SQL + cloud DW/lake)")
     def _():
-        from .connectors import ENGINES, test_connection
-        assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite"} <= set(ENGINES)
+        from .connectors import CLOUD_ENGINES, ENGINES, build_url, test_connection
+        assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite",
+               "synapse", "snowflake", "bigquery", "databricks"} <= set(ENGINES)
         ok, _msg = test_connection({"engine": "sqlite", "database": ":memory:"})
         assert ok
-        return f"{len(ENGINES)} motores (SQLite verificado)"
+        # build_url() de los 3 motores cloud: lógica pura, sin conexión real
+        # (no probado contra una cuenta real de Snowflake/BigQuery/Databricks
+        # en este entorno — ver docs/CLOUD_CONNECTORS.md)
+        for eng in CLOUD_ENGINES:
+            url = str(build_url({"engine": eng, "extra": {
+                "account": "acc", "warehouse": "wh", "role": "r", "schema": "s",
+                "project": "p", "dataset": "d", "server_hostname": "h", "http_path": "/x",
+                "catalog": "c",
+            }, "database": "db", "user": "u"}, password="pw"))
+            assert url.startswith(eng if eng != "bigquery" else "bigquery")
+        return f"{len(ENGINES)} motores ({len(CLOUD_ENGINES)} cloud DW/lake), SQLite verificado"
 
     @check("Centro de ayuda (speeches IA)")
     def _():
