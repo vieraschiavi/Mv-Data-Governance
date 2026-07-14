@@ -160,6 +160,23 @@ def run_checks() -> list[tuple[str, bool, str]]:
         assert len(profile_table(df)) == 12
         return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
 
+    @check("IA externa opcional (apagada por defecto, con fallback local)")
+    def _():
+        import os
+        from . import ai_provider
+        # verificamos el comportamiento por defecto (sin keys) sin alterar
+        # una configuracion real del usuario mas alla de la duracion del check
+        saved = {v: os.environ.pop(v, None) for v in
+                ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER")}
+        try:
+            assert ai_provider.configured_provider() is None
+            assert ai_provider.ai_suggest_fix("ds", "col", "completeness", "desc", 1, "es") is None
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+        return "sin API key configurada -> asistencia local (comportamiento por defecto verificado)"
+
     @check("Sugerencias de correccion (IA) para cada falla detectada")
     def _():
         from . import quality, samples

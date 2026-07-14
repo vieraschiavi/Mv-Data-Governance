@@ -32,6 +32,7 @@ from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import dmbok
 from mvdg import samples as ext_samples
 from mvdg.remediation import suggest_fix
+from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -119,10 +120,16 @@ _STATUS_LABEL = {"pass": t("q_pass", lang), "warn": t("q_warn", lang),
 
 
 def _render_fixes(results_df, lang):
-    """Por cada regla en warn/fail: sugerencia de la IA para corregirla,
-    al lado de la falla — causa probable, corto plazo y prevención."""
+    """Por cada regla en warn/fail: sugerencia local para corregirla, al
+    lado de la falla — causa probable, corto plazo y prevención. Si el
+    usuario configuró su propia API key (Claude/ChatGPT/Gemini), además se
+    puede pedir una sugerencia generada en vivo por ese modelo, por regla."""
     st.subheader(t("fix_title", lang))
-    st.caption(t("fix_note", lang))
+    provider = configured_provider()
+    if provider:
+        st.caption(t("fix_note_ai", lang).format(provider=provider_label(provider)))
+    else:
+        st.caption(t("fix_note", lang))
     broken = results_df[results_df["status"] != "pass"]
     if broken.empty:
         st.success(t("fix_none", lang), icon="✅")
@@ -132,10 +139,31 @@ def _render_fixes(results_df, lang):
         with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
             fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
                               int(row["affected_rows"]), lang)
+            st.markdown(f"🖥️ **{t('fix_local_title', lang)}**")
             st.markdown(f"**{t('fix_root', lang)}:** {fix['root_cause']}")
             st.markdown(f"**{t('fix_short', lang)}:** {fix['short_term']}")
             st.markdown(f"**{t('fix_long', lang)}:** {fix['long_term']}")
             st.caption(f"{t('fix_owner', lang)}: {fix['owner']}")
+
+            if provider:
+                cache_key = f"ai_fix_{row['dataset']}_{row['rule_id']}_{lang}"
+                if st.button(t("fix_ai_button", lang).format(provider=provider_label(provider)),
+                            key=f"btn_{cache_key}"):
+                    with st.spinner(t("fix_ai_loading", lang)):
+                        st.session_state[cache_key] = ai_suggest_fix(
+                            row["dataset"], row["column"], row["dimension"],
+                            row["description"], int(row["affected_rows"]),
+                            lang, provider) or "error"
+                cached = st.session_state.get(cache_key)
+                if cached == "error":
+                    st.warning(t("fix_ai_error", lang), icon="⚠️")
+                elif cached:
+                    st.divider()
+                    st.markdown(f"✨ **{t('fix_ai_title', lang).format(provider=provider_label(provider))}**")
+                    st.markdown(f"**{t('fix_root', lang)}:** {cached['root_cause']}")
+                    st.markdown(f"**{t('fix_short', lang)}:** {cached['short_term']}")
+                    st.markdown(f"**{t('fix_long', lang)}:** {cached['long_term']}")
+                    st.caption(f"{t('fix_owner', lang)}: {cached['owner']}")
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
@@ -577,6 +605,8 @@ with tab_pr:
                    (f" — [{meta['source_url']}]({meta['source_url']})" if meta["source_url"] else ""))
         c6.markdown(f"**{t('pr_example_license_lbl', lang)}:** {meta['license']} · "
                    f"**{t('col_freshness', lang)}:** {meta['refresh']}")
+        if meta.get("classification_note"):
+            st.caption(f"ℹ️ {meta['classification_note']}")
         with st.expander("👁️ " + t("pr_example_data", lang), expanded=False):
             st.dataframe(ext_samples.load_sample_table(skey).head(20), width="stretch", hide_index=True)
 

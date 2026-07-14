@@ -445,8 +445,127 @@ def test_samples_quality_results_have_real_spread(lang):
     caf = samples.sample_quality_results("cafe_sales_kaggle", lang)
     assert len(caf) == 7
     assert (caf["status"] == "fail").sum() >= 3  # Item/Payment Method/Location muy incompletos
+
+    bnk = samples.sample_quality_results("bank_marketing_uci", lang)
+    assert len(bnk) == 6
+    assert (bnk["status"] == "fail").sum() == 1  # contact muy incompleto (29%)
+    assert (bnk["status"] == "pass").sum() >= 3
+
     from mvdg.quality import overall_index
-    assert overall_index(caf) < overall_index(ral)  # cafe_sales es más sucio a propósito
+    assert overall_index(caf) < overall_index(bnk) < overall_index(ral)  # cafe_sales es la más sucia a propósito
+
+
+def test_samples_bank_conditional_rule_is_not_a_false_positive():
+    """poutcome='unknown' cuando previous=0 es un caso de negocio válido (el
+    cliente nunca fue contactado antes), no un hueco de calidad — BNK-05 debe
+    salir en pass, no marcarlo como falla."""
+    from mvdg import samples
+    res = samples.sample_quality_results("bank_marketing_uci", "es")
+    bnk05 = res[res["rule_id"] == "BNK-05"].iloc[0]
+    assert bnk05["status"] == "pass"
+    assert bnk05["affected_rows"] == 0
+
+
+def test_samples_bank_classification_note_present():
+    from mvdg import samples
+    for lang in LANGS:
+        m = samples.sample_meta("bank_marketing_uci", lang)
+        assert m["classification"] == "Confidencial"
+        assert m["classification_note"]
+    # los otros dos datasets no llevan nota (no hace falta aclarar nada)
+    for key in ("rotulado_alimentos", "cafe_sales_kaggle"):
+        assert samples.sample_meta(key, "es")["classification_note"] is None
+
+
+# --------------------------------------- IA externa opcional (con fallback local)
+def test_ai_provider_off_by_default(monkeypatch):
+    from mvdg import ai_provider as ap
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    assert ap.configured_provider() is None
+    assert ap.ai_suggest_fix("ds", "col", "completeness", "desc", 5, "es") is None
+
+
+def test_ai_provider_priority_and_override(monkeypatch):
+    from mvdg import ai_provider as ap
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert ap.configured_provider() == "openai"
+
+    # claude tiene prioridad si ambas keys estan presentes
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert ap.configured_provider() == "claude"
+
+    # MVDG_AI_PROVIDER fuerza uno especifico, si tiene su key
+    monkeypatch.setenv("MVDG_AI_PROVIDER", "openai")
+    assert ap.configured_provider() == "openai"
+
+    # forzar un proveedor sin key cargada no debe romper: cae al de prioridad
+    monkeypatch.setenv("MVDG_AI_PROVIDER", "gemini")
+    assert ap.configured_provider() == "claude"
+
+
+def test_ai_provider_network_errors_fall_back_to_none(monkeypatch):
+    """Cualquier falla de red/timeout/HTTP nunca debe romper la app: siempre
+    devuelve None y el llamador cae a la sugerencia local."""
+    import urllib.error
+    from mvdg import ai_provider as ap
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    monkeypatch.setitem(ap._CALLERS, "claude",
+                        lambda prompt, key, model: (_ for _ in ()).throw(urllib.error.URLError("offline")))
+    assert ap.ai_suggest_fix("ds", "col", "completeness", "desc", 5, "es") is None
+
+    monkeypatch.setitem(ap._CALLERS, "claude",
+                        lambda prompt, key, model: (_ for _ in ()).throw(
+                            urllib.error.HTTPError("url", 401, "unauthorized", {}, None)))
+    assert ap.ai_suggest_fix("ds", "col", "completeness", "desc", 5, "es") is None
+
+
+def test_ai_provider_malformed_responses_fall_back_to_none(monkeypatch):
+    from mvdg import ai_provider as ap
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    monkeypatch.setitem(ap._CALLERS, "claude", lambda prompt, key, model: "not json at all")
+    assert ap.ai_suggest_fix("ds", "col", "completeness", "desc", 5, "es") is None
+
+    import json
+    monkeypatch.setitem(ap._CALLERS, "claude",
+                        lambda prompt, key, model: json.dumps({"root_cause": "x"}))  # faltan claves
+    assert ap.ai_suggest_fix("ds", "col", "completeness", "desc", 5, "es") is None
+
+
+def test_ai_provider_successful_response_parsed(monkeypatch):
+    import json
+    from mvdg import ai_provider as ap
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    fake = {"root_cause": "causa", "short_term": "corto", "long_term": "largo", "owner": "equipo"}
+    monkeypatch.setitem(ap._CALLERS, "claude",
+                        lambda prompt, key, model: "aquí tenés:\n```json\n" + json.dumps(fake) + "\n```")
+    result = ap.ai_suggest_fix("cafe_sales_kaggle", "Payment Method", "completeness",
+                               "Payment Method completo", 3178, "es")
+    assert result == fake
+
+
+def test_ai_provider_prompt_never_includes_raw_data():
+    """El prompt manda solo metadato de la falla (nombres/numeros), nunca
+    puede referenciar una fila de datos real porque la funcion no la recibe."""
+    from mvdg import ai_provider as ap
+    prompt = ap._build_prompt("cafe_sales_kaggle", "Payment Method", "completeness",
+                              "Payment Method completo", 3178, "es")
+    assert "cafe_sales_kaggle" in prompt and "Payment Method" in prompt and "3178" in prompt
+    assert "root_cause" in prompt  # pide el JSON con esas claves
+
+
+def test_ai_provider_label_and_copilot_not_offered():
+    from mvdg import ai_provider as ap
+    assert ap.provider_label("claude") == "Claude (Anthropic)"
+    assert ap.provider_label("openai") == "ChatGPT (OpenAI)"
+    assert ap.provider_label("gemini") == "Gemini (Google)"
+    assert "copilot" not in ap._PROVIDERS
 
 
 def test_samples_accuracy_rule_is_meaningful():
@@ -500,7 +619,7 @@ def test_bi_api_serves_sample_datasets():
     r = client.get("/")
     assert r.status_code == 200
     body = r.json()
-    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle"}
+    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle", "bank_marketing_uci"}
 
     r = client.get("/api/samples/cafe_sales_kaggle?lang=en")
     assert r.status_code == 200
