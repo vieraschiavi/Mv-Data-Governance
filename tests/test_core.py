@@ -441,6 +441,66 @@ def test_cobit_iso_translations_differ():
     assert es_p != en_p
 
 
+# ------------------------------------------------------- MDM (duplicados + golden record)
+def test_mdm_finds_real_duplicates_in_demo_customers():
+    # el dataset de demo trae 8 colisiones reales de document_id/email, sin
+    # inyectar nada a propósito para este test — validación end-to-end real.
+    from mvdg import mdm
+    from mvdg.demo_data import load_demo_tables
+    df = load_demo_tables()["dim_customers"]
+    rules = mdm.suggest_rules(df, ["document_id", "email", "full_name", "birth_date"])
+    report = mdm.dedup_report(df, rules, min_confidence=0.5, block_column="country")
+    assert len(report) == 8
+    assert (report["confidence"] == 100.0).all()
+    assert (report["rows"] == 2).all()
+
+
+def test_mdm_avoids_false_positives_on_common_names():
+    # 'Ana Costa' aparece 4 veces en la demo: personas distintas, mismo
+    # nombre común. El nombre solo (sin ID/email coincidente) no debe
+    # alcanzar el umbral de confianza.
+    from mvdg import mdm
+    from mvdg.demo_data import load_demo_tables
+    df = load_demo_tables()["dim_customers"]
+    ana = df[df["full_name"] == "Ana Costa"]
+    assert len(ana) >= 3   # confirma que el caso de prueba existe en la demo
+    rules = mdm.suggest_rules(df, ["document_id", "email", "full_name", "birth_date"])
+    clusters = mdm.find_duplicate_clusters(df, rules, min_confidence=0.5, block_column="country")
+    flagged_ids = {df.loc[i, "customer_id"] for c in clusters for i in c.row_indices}
+    assert not (set(ana["customer_id"]) & flagged_ids)
+
+
+def test_mdm_golden_record_fills_gaps_from_best_row():
+    import pandas as pd
+    from mvdg import mdm
+    df = pd.DataFrame([
+        {"id": 1, "name": "Juan Perez", "email": "juan@x.com", "phone": None},
+        {"id": 1, "name": "Juan Perez", "email": None, "phone": "099123456"},
+    ])
+    cluster = mdm.DuplicateCluster(row_indices=[0, 1], confidence=1.0, matched_on=["id"])
+    golden = mdm.build_golden_record(df, cluster)
+    assert golden["email"] == "juan@x.com" and golden["phone"] == "099123456"
+
+
+def test_mdm_blocking_required_for_large_unblocked_comparisons():
+    import pandas as pd
+    from mvdg import mdm
+    df = pd.DataFrame({"name": [f"Person {i}" for i in range(200)]})
+    rules = [mdm.MatchRule("name", weight=1.0, kind="fuzzy")]
+    with pytest.raises(ValueError):
+        mdm.find_duplicate_clusters(df, rules)   # sin block_column, 200 filas -> demasiados pares
+
+
+def test_mdm_suggest_rules_classifies_by_column_name():
+    import pandas as pd
+    from mvdg import mdm
+    df = pd.DataFrame({"document_id": ["1"], "full_name": ["x"], "amount": [1.0]})
+    rules = {r.column: r for r in mdm.suggest_rules(df, ["document_id", "full_name", "amount"])}
+    assert rules["document_id"].kind == "exact" and rules["document_id"].weight == 3.0
+    assert rules["full_name"].kind == "fuzzy"
+    assert rules["amount"].kind == "exact"   # numérico -> exacto, no fuzzy
+
+
 # ------------------------------------------------- dataset de ejemplo real
 def test_sample_dataset_profiles():
     from mvdg.profiler import profile_table, suggest_rules, summary

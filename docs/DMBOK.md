@@ -10,8 +10,8 @@ International**. Define **11 áreas de conocimiento** que, juntas, cubren
 todo lo que una empresa necesita para gestionar bien sus datos.
 
 MV Data Governance implementa a fondo varias de esas áreas (calidad,
-metadatos, linaje, BI) y ayuda parcialmente en otras (seguridad, datos
-maestros, arquitectura) — sin pretender cubrir las que son responsabilidad
+metadatos, linaje, BI, datos maestros) y ayuda parcialmente en otras
+(seguridad, arquitectura) — sin pretender cubrir las que son responsabilidad
 de otro equipo o herramienta (modelado, almacenamiento, gestión documental).
 Esta guía existe para que tanto **quien no es técnico** como **quien sí lo
 es** entiendan de qué se trata cada área y qué hace exactamente la
@@ -64,7 +64,7 @@ de otras herramientas o equipos.
 | 3 | Gestión de metadatos | ✅ Cubierta | Catálogo de datasets + diccionario de columnas |
 | 4 | Linaje e integración | ✅ Cubierta | Mapa de linaje + conectores a bases + exportación multi-formato |
 | 5 | Data warehousing y BI | ✅ Cubierta | API REST (9 tablas) + bundle .xlsx para Power BI/Tableau/Qlik/etc. |
-| 6 | Datos maestros y de referencia | 🟡 Parcial | Glosario de definiciones; sin motor de deduplicación/MDM |
+| 6 | Datos maestros y de referencia | ✅ Cubierta | Glosario + motor de deduplicación por reglas ponderadas (pestaña 🔗 MDM), con golden record propuesto |
 | 7 | Seguridad de datos | 🟡 Parcial | Detección heurística de PII; el control de accesos lo define TI |
 | 8 | Arquitectura de datos | 🟡 Parcial | Documenta el estado actual; no diseña el estado objetivo |
 | 9 | Modelado y diseño | ⬜ Fuera de alcance | Perfila esquemas existentes, no es herramienta de modelado |
@@ -87,8 +87,8 @@ International**. It defines **11 knowledge areas** that together cover
 everything a company needs to properly manage its data.
 
 MV Data Governance fully implements several of those areas (quality,
-metadata, lineage, BI) and partially helps with others (security, master
-data, architecture) — without claiming to cover the ones that belong to
+metadata, lineage, BI, master data) and partially helps with others
+(security, architecture) — without claiming to cover the ones that belong to
 another team or tool (modeling, storage, document management). This guide
 exists so that both **non-technical** and **technical** readers understand
 what each area is about and exactly what the platform does for it. The same
@@ -125,7 +125,7 @@ management) since those belong to other tools or teams.
 | 3 | Metadata Management | ✅ Covered | Dataset catalog + column dictionary |
 | 4 | Data Integration & Lineage | ✅ Covered | Lineage map + database connectors + multi-format export |
 | 5 | Data Warehousing & BI | ✅ Covered | REST API (9 tables) + .xlsx bundle for Power BI/Tableau/Qlik/etc. |
-| 6 | Reference & Master Data | 🟡 Partial | Glossary of definitions; no deduplication/MDM engine |
+| 6 | Reference & Master Data | ✅ Covered | Glossary + weighted-rule deduplication engine (🔗 MDM tab), with a proposed golden record |
 | 7 | Data Security | 🟡 Partial | Heuristic PII detection; access control is defined by IT |
 | 8 | Data Architecture | 🟡 Partial | Documents the current state; doesn't design the target state |
 | 9 | Data Modeling & Design | ⬜ Out of scope | Profiles existing schemas, not a modeling tool |
@@ -144,8 +144,8 @@ Define **11 áreas de conhecimento** que, juntas, cobrem tudo o que uma
 empresa precisa para gerenciar bem seus dados.
 
 O MV Data Governance implementa a fundo várias dessas áreas (qualidade,
-metadados, linhagem, BI) e ajuda parcialmente em outras (segurança, dados
-mestres, arquitetura) — sem pretender cobrir as que são responsabilidade de
+metadados, linhagem, BI, dados mestres) e ajuda parcialmente em outras
+(segurança, arquitetura) — sem pretender cobrir as que são responsabilidade de
 outra equipe ou ferramenta (modelagem, armazenamento, gestão documental).
 Este guia existe para que tanto **quem não é técnico** quanto **quem é**
 entendam do que se trata cada área e o que exatamente a plataforma faz em
@@ -183,7 +183,7 @@ de outras ferramentas ou equipes.
 | 3 | Gestão de metadados | ✅ Coberta | Catálogo de datasets + dicionário de colunas |
 | 4 | Integração e linhagem | ✅ Coberta | Mapa de linhagem + conectores a bancos + exportação multi-formato |
 | 5 | Data warehousing e BI | ✅ Coberta | API REST (9 tabelas) + pacote .xlsx para Power BI/Tableau/Qlik/etc. |
-| 6 | Dados mestres e de referência | 🟡 Parcial | Glossário de definições; sem motor de deduplicação/MDM |
+| 6 | Dados mestres e de referência | ✅ Coberta | Glossário + motor de deduplicação por regras ponderadas (aba 🔗 MDM), com golden record proposto |
 | 7 | Segurança de dados | 🟡 Parcial | Detecção heurística de PII; o controle de acesso é definido por TI |
 | 8 | Arquitetura de dados | 🟡 Parcial | Documenta o estado atual; não desenha o estado alvo |
 | 9 | Modelagem e desenho | ⬜ Fora de escopo | Perfila esquemas existentes, não é ferramenta de modelagem |

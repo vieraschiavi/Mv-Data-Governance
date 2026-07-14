@@ -31,6 +31,7 @@ from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
 from mvdg import dmbok
+from mvdg import mdm
 from mvdg import samples as ext_samples
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
@@ -107,10 +108,10 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_lab, tab_dk, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
+(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
  tab_pbi, tab_tab, tab_cl, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
-    t("tab_catalog", lang), t("tab_quality", lang),
+    t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
     t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang), t("tab_help", lang),
@@ -554,6 +555,74 @@ with tab_cat:
         "pii": t("col_pii", lang), "business_term": t("col_term", lang),
         "description": t("col_description", lang),
     }).drop(columns=["dataset"]), width="stretch", hide_index=True)
+
+# --------------------------------------------------------------------- MDM
+with tab_mdm:
+    st.info(t("mdm_intro", lang), icon="🔗")
+    st.caption(t("mdm_warning", lang))
+
+    _mdm_demo_options = {"dim_customers": tables["dim_customers"]}
+    _mdm_sample_keys = ext_samples.sample_keys()
+    mdm_source_names = list(_mdm_demo_options.keys()) + list(_mdm_sample_keys)
+
+    def _mdm_label(key):
+        if key in _mdm_demo_options:
+            return f"🏠 dim_customers ({t('mdm_src_demo', lang)})"
+        meta = ext_samples.sample_meta(key, lang)
+        return f"🧪 {meta['name']}"
+
+    mdm_pick = st.selectbox(t("mdm_pick_dataset", lang), mdm_source_names,
+                            format_func=_mdm_label, key="mdm_pick_dataset")
+    mdm_df = _mdm_demo_options[mdm_pick] if mdm_pick in _mdm_demo_options \
+        else ext_samples.load_sample_table(mdm_pick)
+    st.caption(f"{len(mdm_df):,} {t('mdm_rows_label', lang)} × {len(mdm_df.columns)} {t('mdm_cols_label', lang)}")
+
+    all_cols = mdm_df.columns.tolist()
+    _id_hints = ("id", "name", "nombre", "email", "correo", "document", "cedula", "documento")
+    default_cols = [c for c in all_cols if any(h in c.lower() for h in _id_hints)][:4] or all_cols[:3]
+    mdm_cols = st.multiselect(t("mdm_pick_columns", lang), all_cols, default=default_cols, key="mdm_cols")
+
+    cat_like = [c for c in all_cols if 2 <= mdm_df[c].nunique() <= 30]
+    _NO_BLOCK = t("mdm_no_block", lang)
+    block_col = st.selectbox(t("mdm_block_column", lang), [_NO_BLOCK] + cat_like, key="mdm_block_col")
+    block_col = None if block_col == _NO_BLOCK else block_col
+
+    min_conf_pct = st.slider(t("mdm_min_confidence", lang), 0, 100, 50, step=5, key="mdm_min_conf")
+
+    if st.button(t("mdm_run", lang), key="mdm_run_btn") and mdm_cols:
+        try:
+            with st.spinner(t("mdm_wait", lang)):
+                mdm_rules = mdm.suggest_rules(mdm_df, mdm_cols)
+                mdm_report = mdm.dedup_report(mdm_df, mdm_rules, min_confidence=min_conf_pct / 100,
+                                              block_column=block_col)
+                mdm_clusters = mdm.find_duplicate_clusters(mdm_df, mdm_rules, min_confidence=min_conf_pct / 100,
+                                                           block_column=block_col)
+            st.session_state["mdm_report"] = mdm_report
+            st.session_state["mdm_clusters"] = mdm_clusters
+            st.session_state["mdm_df_key"] = mdm_pick
+        except ValueError as exc:
+            st.error(str(exc), icon="⚠️")
+
+    mdm_report = st.session_state.get("mdm_report")
+    mdm_clusters = st.session_state.get("mdm_clusters")
+    if mdm_report is not None and st.session_state.get("mdm_df_key") == mdm_pick:
+        if mdm_report.empty:
+            st.success(t("mdm_none_found", lang), icon="✅")
+        else:
+            st.subheader(t("mdm_results", lang).format(n=len(mdm_report)))
+            st.dataframe(mdm_report.drop(columns="row_indices").rename(columns={
+                "cluster_id": t("mdm_col_cluster", lang), "rows": t("mdm_col_rows", lang),
+                "confidence": t("mdm_col_confidence", lang), "matched_on": t("mdm_col_matched", lang),
+            }), width="stretch", hide_index=True)
+
+            for _mc in mdm_clusters:
+                _title = (f"🔗 {len(_mc.row_indices)} {t('mdm_rows_label', lang)} · "
+                         f"{round(_mc.confidence * 100, 1)}% · {', '.join(_mc.matched_on) or '—'}")
+                with st.expander(_title):
+                    st.dataframe(mdm_df.loc[_mc.row_indices], width="stretch")
+                    st.markdown(f"**{t('mdm_golden_title', lang)}**")
+                    golden = mdm.build_golden_record(mdm_df, _mc)
+                    st.dataframe(pd.DataFrame([golden]), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------- Calidad
 with tab_q:
