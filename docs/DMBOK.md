@@ -17,14 +17,21 @@ Esta guía existe para que tanto **quien no es técnico** como **quien sí lo
 es** entiendan de qué se trata cada área y qué hace exactamente la
 plataforma en cada una.
 
-> **Tutorial completo dentro del programa:** la pestaña **📘 DMBOK** trae un
-> tutorial interactivo con teoría y tableros: los principios rectores, las
+> **Tutorial completo dentro del programa:** la pestaña **📘 Estándares** trae
+> un tutorial interactivo con teoría y tableros: los principios rectores, las
 > 11 áreas (con entregables típicos y cobertura), un glosario de conceptos
 > clave (dueño vs. steward vs. custodio, MDM, golden record, metadato,
 > linaje, POSMAD…), los roles del gobierno de datos, el modelo de madurez
 > de 5 niveles y el ciclo de vida del dato — con un radar de cobertura por
 > área y el tablero de las 6 dimensiones de calidad medidas en vivo. Todo
 > trilingüe (ES/EN/PT).
+>
+> La misma pestaña **📘 Estándares** trae, en dos sub-pestañas más, la misma
+> autoevaluación honesta frente a **COBIT 2019** (los 8 objetivos de
+> gobierno/gestión de ISACA relacionados con datos) y **ISO/IEC 38505** (los
+> 6 principios de gobierno de datos + el modelo Valor/Riesgo/Restricción).
+> Ninguno de los tres es una certificación — son guías de qué cubre la
+> plataforma y qué queda en manos de tu organización.
 
 ### 🙋 Si no sos técnico
 
