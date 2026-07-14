@@ -38,7 +38,9 @@ from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
 from mvdg.glossary import glossary_df, term_count
 from mvdg.i18n import LANG_NAMES, LANGS, t
-from mvdg.lineage import NODES, lineage_df, lineage_figure
+from mvdg.lineage import NODES, graph_from_lineage, lineage_df, lineage_figure
+from mvdg import powerbi_meta as pbi
+from mvdg.ai_provider import ai_refactor_dax
 from mvdg.policies import policies_df
 from mvdg.profiler import profile_table, suggest_rules, summary
 from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
@@ -104,12 +106,12 @@ results = _results(lang)
 tables = _tables()
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
- tab_cl, tab_h) = st.tabs([
+ tab_pbi, tab_cl, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
-    t("tab_clients", lang), t("tab_help", lang),
+    t("tab_pbi", lang), t("tab_clients", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -944,3 +946,106 @@ with tab_h:
 
     st.subheader(t("h_packs", lang))
     st.markdown(t("h_packs_note", lang))
+
+# --------------------------------------------------------------- Power BI
+with tab_pbi:
+    st.info(t("pbi_intro", lang), icon="🔷")
+    st.caption("🔐 " + t("pbi_secure_note", lang))
+
+    _PBI_SRC = {"path": t("pbi_src_path", lang), "zip": t("pbi_src_zip", lang)}
+    pbi_source = st.radio(t("pbi_source", lang), ["path", "zip"], horizontal=True,
+                          key="pbi_source", format_func=lambda k: _PBI_SRC[k])
+
+    model_out = None
+    pbi_err = None
+    if pbi_source == "path":
+        folder = st.text_input(t("pbi_path", lang), key="pbi_path")
+        st.caption(t("pbi_path_hint", lang))
+        if st.button(t("pbi_load", lang), key="pbi_load_path") and folder.strip():
+            try:
+                with st.spinner(t("pbi_wait", lang)):
+                    model_out = pbi.ingest_pbip(folder.strip(), lang)
+            except Exception as exc:  # noqa: BLE001
+                pbi_err = str(exc)
+    else:
+        up = st.file_uploader(t("pbi_zip", lang), type=["zip"], key="pbi_zip")
+        if up is not None:
+            import tempfile
+            import zipfile
+            try:
+                with st.spinner(t("pbi_wait", lang)):
+                    tmpdir = tempfile.mkdtemp(prefix="mvdg_pbip_")
+                    zpath = os.path.join(tmpdir, "proj.zip")
+                    with open(zpath, "wb") as fh:
+                        fh.write(up.getbuffer())
+                    with zipfile.ZipFile(zpath) as zf:
+                        zf.extractall(tmpdir)
+                    model_out = pbi.ingest_pbip(tmpdir, lang)
+            except Exception as exc:  # noqa: BLE001
+                pbi_err = str(exc)
+
+    if pbi_err:
+        st.error(f"{t('pbi_err', lang)}: {pbi_err}", icon="⚠️")
+    elif model_out is None:
+        st.caption(t("pbi_no_model", lang))
+    else:
+        model = model_out["_model"]
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric(t("pbi_model", lang), model.name)
+        k2.metric(t("pbi_tables", lang), len(model.tables))
+        k3.metric(t("pbi_measures", lang), len(model.measures))
+        k4.metric(t("pbi_columns", lang), len(model.columns))
+        k5.metric(t("pbi_roles", lang), len(model.roles))
+
+        st.subheader(t("pbi_catalog_title", lang))
+        st.dataframe(model_out["catalog"], width="stretch", hide_index=True)
+
+        st.subheader(t("pbi_health_title", lang))
+        q = model_out["quality"]
+        st.metric(t("pbi_health_overall", lang), f"{round(q['score'].mean(), 1)} / 100")
+        q_show = q.copy()
+        q_show["dimension"] = q_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        q_show["status"] = q_show["status"].map(lambda s: _STATUS_LABEL.get(s, s))
+        st.dataframe(q_show, width="stretch", hide_index=True)
+
+        st.subheader(t("pbi_sources_title", lang))
+        st.caption(t("pbi_sources_hint", lang))
+        srcs_show = model_out["sources"].copy()
+        srcs_show["source"] = srcs_show["source"].replace("", t("pbi_source_none", lang))
+        srcs_show.columns = [t("pbi_source_col_table", lang), t("pbi_source_col_src", lang)]
+        st.dataframe(srcs_show, width="stretch", hide_index=True)
+
+        st.subheader(t("pbi_lineage_title", lang))
+        st.caption(t("pbi_lineage_hint", lang))
+        nodes, edges = graph_from_lineage(model_out["lineage"])
+        _pbi_layer_titles = {
+            "source": t("lin_layer_source", lang), "raw": t("lin_layer_raw", lang),
+            "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
+            "bi": t("lin_layer_bi", lang),
+        }
+        st.plotly_chart(
+            lineage_figure(nodes=nodes, edges=edges, layer_titles=_pbi_layer_titles),
+            width="stretch")
+
+        st.subheader(t("pbi_measures_title", lang))
+        _pbi_provider = configured_provider()
+        if _pbi_provider:
+            st.caption(t("pbi_refactor_hint", lang))
+        for _i, _m in enumerate(model.measures):
+            with st.expander(f"📐 {_m.name}" + (f" · {_m.table}" if _m.table else "")):
+                st.code(_m.dax or "—", language="text")
+                if _m.description:
+                    st.caption(_m.description)
+                if _pbi_provider and st.button(
+                        t("pbi_refactor", lang).format(provider=provider_label(_pbi_provider)),
+                        key=f"pbi_dax_{_i}"):
+                    with st.spinner(t("pbi_wait", lang)):
+                        _res = ai_refactor_dax(_m.name, _m.dax, _m.table, lang, _pbi_provider)
+                    if _res:
+                        st.markdown(f"**{t('pbi_r_assessment', lang)}:** {_res['assessment']}")
+                        st.markdown(f"**{t('pbi_r_issues', lang)}:** {_res['issues']}")
+                        st.markdown(f"**{t('pbi_r_dax', lang)}:**")
+                        st.code(_res["refactored_dax"], language="text")
+                        st.caption(f"{t('pbi_r_expl', lang)}: {_res['explanation']}")
+                    else:
+                        st.info(t("fix_note", lang))

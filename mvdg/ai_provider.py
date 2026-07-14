@@ -186,3 +186,81 @@ def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
     if not all(k in parsed and parsed[k] for k in ("root_cause", "short_term", "long_term", "owner")):
         return None
     return {k: str(parsed[k]) for k in ("root_cause", "short_term", "long_term", "owner")}
+
+
+# --------------------------------------------------------------- refactor DAX
+# Misma regla que arriba: solo se manda METADATO del modelo (nombre de la
+# medida, tabla y su expresión DAX) — nunca datos reales de las filas.
+_DAX_KEYS = ("assessment", "issues", "refactored_dax", "explanation")
+
+_DAX_PROMPT_TMPL = {
+    "es": (
+        "Sos un experto en modelado tabular y DAX de Power BI. Te paso una medida "
+        "de un modelo semántico (solo metadato, sin datos). Tabla: {table}. Medida: "
+        "{measure}. DAX actual:\n{dax}\n\nEvaluá anti-patrones (iteradores innecesarios, "
+        "FILTER sobre tablas enteras, contexto mal manejado, columnas calculadas que "
+        "deberían ser medidas, falta de variables). Respondé SOLO con un objeto JSON "
+        "(sin texto extra, sin markdown) con estas 4 claves, en español: "
+        '{{"assessment": "veredicto general en 1-2 oraciones", "issues": "anti-patrones '
+        'o problemas concretos detectados", "refactored_dax": "el DAX mejorado (solo la '
+        'expresión, sin explicación)", "explanation": "por qué la versión nueva es mejor, '
+        '1-2 oraciones"}}'
+    ),
+    "en": (
+        "You are an expert in Power BI tabular modeling and DAX. Here is a measure from "
+        "a semantic model (metadata only, no data). Table: {table}. Measure: {measure}. "
+        "Current DAX:\n{dax}\n\nAssess anti-patterns (unnecessary iterators, FILTER over "
+        "whole tables, mishandled context, calculated columns that should be measures, "
+        "missing variables). Reply ONLY with a JSON object (no extra text, no markdown) "
+        'with these 4 keys, in English: {{"assessment": "overall verdict in 1-2 sentences", '
+        '"issues": "concrete anti-patterns or problems found", "refactored_dax": "the '
+        'improved DAX (expression only, no explanation)", "explanation": "why the new '
+        'version is better, 1-2 sentences"}}'
+    ),
+    "pt": (
+        "Você é um especialista em modelagem tabular e DAX do Power BI. Aqui está uma "
+        "medida de um modelo semântico (apenas metadados, sem dados). Tabela: {table}. "
+        "Medida: {measure}. DAX atual:\n{dax}\n\nAvalie anti-padrões (iteradores "
+        "desnecessários, FILTER sobre tabelas inteiras, contexto mal tratado, colunas "
+        "calculadas que deveriam ser medidas, falta de variáveis). Responda APENAS com um "
+        "objeto JSON (sem texto extra, sem markdown) com estas 4 chaves, em português: "
+        '{{"assessment": "veredicto geral em 1-2 frases", "issues": "anti-padrões ou '
+        'problemas concretos encontrados", "refactored_dax": "o DAX melhorado (apenas a '
+        'expressão, sem explicação)", "explanation": "por que a nova versão é melhor, '
+        '1-2 frases"}}'
+    ),
+}
+
+
+def _build_dax_prompt(measure: str, dax: str, table: str, lang: str) -> str:
+    tmpl = _DAX_PROMPT_TMPL.get(lang, _DAX_PROMPT_TMPL["es"])
+    return tmpl.format(measure=measure, dax=dax, table=table or "—")
+
+
+def ai_refactor_dax(measure: str, dax: str, table: str = "",
+                    lang: str = "es", provider: str | None = None) -> dict | None:
+    """Pide al proveedor de IA configurado una evaluación + refactor del DAX de
+    una medida. Devuelve un dict con las claves de ``_DAX_KEYS`` o None (sin
+    proveedor configurado, DAX vacío o fallo de la llamada) — nunca levanta."""
+    if not dax or not dax.strip():
+        return None
+    provider = provider or configured_provider()
+    if not provider or provider not in _CALLERS:
+        return None
+    env_var, _, _, _ = _PROVIDERS[provider]
+    api_key = os.environ.get(env_var)
+    if not api_key:
+        return None
+    prompt = _build_dax_prompt(measure, dax, table, lang)
+    model = _model_for(provider)
+    try:
+        text = _CALLERS[provider](prompt, api_key, model)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            KeyError, IndexError, ValueError, OSError):
+        return None
+    parsed = _extract_json_object(text)
+    if not parsed:
+        return None
+    if not all(k in parsed and parsed[k] for k in _DAX_KEYS):
+        return None
+    return {k: str(parsed[k]) for k in _DAX_KEYS}

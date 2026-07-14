@@ -737,3 +737,160 @@ def test_api_all_tables_and_formats():
     assert c.get("/api/catalog", params={"format": "csv"}).text.startswith("dataset")
     assert c.get("/api/nope").status_code == 404
     assert c.get("/api/catalog", params={"lang": "xx"}).status_code == 422
+
+
+# ------------------------------------------------------------- Power BI meta
+def _make_pbip(root):
+    """Escribe un proyecto .pbip mínimo (TMDL, sin cache.abf) bajo ``root``."""
+    sm = root / "VentasDemo.SemanticModel"
+    dfn = sm / "definition"
+    (dfn / "tables").mkdir(parents=True)
+    (dfn / "roles").mkdir(parents=True)
+    (root / "VentasDemo.Report").mkdir(parents=True)
+    (sm / ".platform").write_text(
+        '{ "metadata": { "type": "SemanticModel", "displayName": "VentasDemo" } }',
+        encoding="utf-8")
+    # DAX multi-línea + medidas simples + columna calculada + PII
+    ventas = (
+        "table Ventas\n"
+        "\tmeasure 'Total Ventas' =\n"
+        "\t\t\tSUMX (\n"
+        "\t\t\t\tVentas,\n"
+        "\t\t\t\tVentas[Cantidad] * Ventas[PrecioUnitario]\n"
+        "\t\t\t)\n"
+        "\t\tdisplayFolder: Metricas\n"
+        "\t\tdescription: Suma de cantidad por precio\n"
+        "\tmeasure Margen = [Total Ventas] - [Total Costo]\n"
+        "\tcolumn Cantidad\n"
+        "\t\tdataType: int64\n"
+        "\t\tsourceColumn: Cantidad\n"
+        "\tcolumn Email\n"
+        "\t\tdataType: string\n"
+        "\t\tsourceColumn: email\n"
+        "\tcolumn MargenPct\n"
+        "\t\tdataType: double\n"
+        "\t\texpression = DIVIDE ( [Margen], [Total Ventas] )\n"
+        "\tpartition Ventas = m\n"
+        "\t\tmode: import\n"
+        "\t\tsource =\n"
+        "\t\t\t\tlet\n"
+        "\t\t\t\t\tSource = Sql.Database(\"MyServer\", \"MyDB\"),\n"
+        "\t\t\t\t\tVentas1 = Source{[Schema=\"dbo\",Item=\"Ventas\"]}[Data]\n"
+        "\t\t\t\tin\n"
+        "\t\t\t\t\tVentas1\n"
+    )
+    (dfn / "tables" / "Ventas.tmdl").write_text(ventas, encoding="utf-8")
+    rels = (
+        "relationship aaaa-1111\n"
+        "\tfromColumn: Ventas.ClienteKey\n"
+        "\ttoColumn: Cliente.ClienteKey\n\n"
+        "relationship bbbb-2222\n"
+        "\tcrossFilteringBehavior: bothDirections\n"
+        "\tfromColumn: Ventas.FechaKey\n"
+        "\ttoColumn: Calendario.FechaKey\n"
+    )
+    (dfn / "relationships.tmdl").write_text(rels, encoding="utf-8")
+    (dfn / "roles" / "Vendedor.tmdl").write_text(
+        'role Vendedor\n\ttablePermission Ventas = Ventas[Region] = "Sur"\n',
+        encoding="utf-8")
+    return str(sm)
+
+
+def test_powerbi_pbip_parse(tmp_path):
+    from mvdg import powerbi_meta as pbi
+    model = pbi.read_pbip(_make_pbip(tmp_path))
+    assert model.name == "VentasDemo"
+    assert "Ventas" in model.tables
+    names = {m.name for m in model.measures}
+    assert {"Total Ventas", "Margen"} <= names
+    total = next(m for m in model.measures if m.name == "Total Ventas")
+    assert "\n" not in total.dax and "SUMX" in total.dax   # DAX multi-línea colapsado
+    assert total.description and total.display_folder == "Metricas"
+    assert any(r.both_directions for r in model.relationships)   # relación bidireccional
+    assert model.roles == ["Vendedor"]                            # RLS detectado
+    assert "VentasDemo" in model.reports
+    calc = next(c for c in model.columns if c.name == "MargenPct")
+    assert calc.is_calculated and "DIVIDE" in calc.dax
+    dic = pbi.to_dictionary(model)
+    assert bool(dic.loc[dic["column"] == "Email", "pii"].iloc[0])  # PII
+
+
+def test_powerbi_sql_source_wired_into_lineage(tmp_path):
+    # cadena completa: SQL Server -> tabla -> dataset (modelo) -> reporte
+    from mvdg import powerbi_meta as pbi
+    out = pbi.ingest_pbip(_make_pbip(tmp_path))
+    model = out["_model"]
+    assert model.table_sources.get("Ventas") == "SQL Server · MyServer/MyDB"
+
+    srcs = out["sources"]
+    assert set(srcs.columns) == {"table", "source"}
+    assert srcs.loc[srcs["table"] == "Ventas", "source"].iloc[0] == "SQL Server · MyServer/MyDB"
+
+    lin = out["lineage"]
+    sql_row = lin[(lin["source"] == "SQL Server · MyServer/MyDB") & (lin["source_layer"] == "source")]
+    assert len(sql_row) == 1
+    assert sql_row.iloc[0]["target"] == "Ventas" and sql_row.iloc[0]["target_layer"] == "curated"
+    # la cadena sigue: tabla -> modelo -> reporte, sin cortarse
+    assert ((lin["source"] == "Ventas") & (lin["target"] == model.name)).any()
+    assert ((lin["source"] == model.name) & (lin["source_layer"] == "mart")).any()
+
+
+def test_powerbi_source_label_heuristics():
+    from mvdg.powerbi_meta import _source_label_from_mquery
+    assert _source_label_from_mquery('Source = Sql.Database("Srv", "Db")') == "SQL Server · Srv/Db"
+    assert _source_label_from_mquery('Source = Sql.Databases("Srv")') == "SQL Server · Srv"
+    assert _source_label_from_mquery('Value.NativeQuery(Source, "SELECT 1")') == \
+        "SQL (consulta nativa · Value.NativeQuery)"
+    assert _source_label_from_mquery('Source = Excel.Workbook(File.Contents("x.xlsx"))') == "Power Query · Excel.Workbook"
+    assert _source_label_from_mquery('no hay ninguna funcion m aca') is None
+
+
+def test_powerbi_normalizers_match_mvdg_schema(tmp_path):
+    from mvdg import powerbi_meta as pbi
+    from mvdg.glossary import glossary_df
+    from mvdg.lineage import lineage_df
+    from mvdg.quality import DIMENSIONS, run_rules
+    out = pbi.ingest_pbip(_make_pbip(tmp_path))
+    # columnas idénticas a las tablas nativas del motor de gobierno
+    assert set(out["glossary"].columns) == set(glossary_df().columns)
+    assert set(out["lineage"].columns) == set(lineage_df().columns)
+    assert set(out["quality"].columns) == set(run_rules().columns)
+    # las dimensiones de salud de modelo caen dentro de las 6 DAMA
+    assert set(out["quality"]["dimension"]) <= set(DIMENSIONS)
+    # el catálogo reporta 0 filas: es metadata, no datos
+    assert (out["catalog"]["rows"] == 0).all()
+
+
+def test_powerbi_lineage_dynamic_figure(tmp_path):
+    from mvdg import powerbi_meta as pbi
+    from mvdg.lineage import downstream, graph_from_lineage, lineage_figure, upstream
+    out = pbi.ingest_pbip(_make_pbip(tmp_path))
+    nodes, edges = graph_from_lineage(out["lineage"])
+    assert nodes and edges
+    fig = lineage_figure(nodes=nodes, edges=edges)     # no debe romper con grafo dinámico
+    assert fig is not None and len(fig.data) > 0
+    model_id = f"model_{out['_model'].name}"
+    assert downstream(f"tbl_Ventas", edges) & {model_id}   # tabla → modelo
+    assert upstream(model_id, edges)                        # el modelo tiene ancestros
+
+
+def test_lineage_demo_still_works():
+    # el grafo de demo (sin args) sigue funcionando igual que antes
+    from mvdg.lineage import EDGES, lineage_figure, upstream
+    fig = lineage_figure()
+    assert fig is not None and len(fig.data) > 0
+    assert upstream("mart_sales")  # ancestros del mart de demo
+
+
+def test_ai_dax_refactor_offline(monkeypatch):
+    from mvdg.ai_provider import _build_dax_prompt, ai_refactor_dax
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    # sin key configurada, nunca llama afuera: devuelve None
+    assert ai_refactor_dax("Total Ventas", "SUMX ( Ventas, 1 )", "Ventas", "es") is None
+    # DAX vacío también da None
+    assert ai_refactor_dax("X", "", "T", "es") is None
+    # el prompt se arma en los 3 idiomas e incluye la medida y el DAX
+    for lg in LANGS:
+        p = _build_dax_prompt("Total Ventas", "SUMX ( Ventas, 1 )", "Ventas", lg)
+        assert "Total Ventas" in p and "SUMX" in p
