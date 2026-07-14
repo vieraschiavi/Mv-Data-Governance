@@ -124,6 +124,20 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"11 áreas, {len(dmbok.concepts('es'))} conceptos, "
                 f"{cov['covered']} cubiertas / {cov['partial']} parciales")
 
+    @check("Referencia COBIT 2019 + ISO/IEC 38505")
+    def _():
+        from . import cobit_iso as ci
+        for lang in ("es", "en", "pt"):
+            assert len(ci.cobit_objectives(lang)) == 8
+            assert len(ci.iso_principles(lang)) == 6
+            assert len(ci.iso_vrc(lang)) == 3
+        ccov = ci.cobit_coverage_summary()
+        icov = ci.iso_coverage_summary()
+        assert ccov["covered"] + ccov["partial"] + ccov["out"] == 8
+        assert icov["covered"] + icov["partial"] + icov["out"] == 6
+        return (f"COBIT: 8 objetivos ({ccov['covered']} cubiertos) · "
+               f"ISO 38505: 6 principios ({icov['covered']} cubiertos) + modelo VRC")
+
     @check("API REST importable")
     def _():
         from bi_api.main import SAMPLE_TABLES, TABLES, app  # noqa: F401

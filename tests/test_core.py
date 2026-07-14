@@ -396,6 +396,51 @@ def test_dmbok_translations_differ():
     assert es != en  # están realmente traducidas
 
 
+# ------------------------------------------------- referencia COBIT 2019 + ISO 38505
+@pytest.mark.parametrize("lang", LANGS)
+def test_cobit_iso_content_complete(lang):
+    from mvdg import cobit_iso as ci
+    obs = ci.cobit_objectives(lang)
+    assert len(obs) == 8
+    for o in obs:
+        assert o["code"] and o["name"] and o["plain"] and o["tech"] and o["deliverables"]
+        assert o["coverage"] in ("covered", "partial", "out")
+        assert 0 <= o["score"] <= 100
+
+    princ = ci.iso_principles(lang)
+    assert len(princ) == 6
+    for p in princ:
+        assert p["name"] and p["text"] and p["note"]
+        assert p["coverage"] in ("covered", "partial", "out")
+
+    vrc = ci.iso_vrc(lang)
+    assert len(vrc) == 3
+    for v in vrc:
+        assert v["dim"] and v["text"] and v["mapped"]
+
+
+def test_cobit_iso_coverage_and_radar():
+    from mvdg import cobit_iso as ci
+    ccov = ci.cobit_coverage_summary()
+    assert ccov["covered"] + ccov["partial"] + ccov["out"] == 8
+    icov = ci.iso_coverage_summary()
+    assert icov["covered"] + icov["partial"] + icov["out"] == 6
+    cradar = ci.cobit_coverage_scores("es")
+    assert len(cradar) == 8 and all(0 <= s <= 100 for _, s in cradar)
+    iradar = ci.iso_coverage_scores("es")
+    assert len(iradar) == 6 and all(0 <= s <= 100 for _, s in iradar)
+
+
+def test_cobit_iso_translations_differ():
+    from mvdg import cobit_iso as ci
+    es = [o["name"] for o in ci.cobit_objectives("es")]
+    en = [o["name"] for o in ci.cobit_objectives("en")]
+    assert es != en
+    es_p = [p["name"] for p in ci.iso_principles("es")]
+    en_p = [p["name"] for p in ci.iso_principles("en")]
+    assert es_p != en_p
+
+
 # ------------------------------------------------- dataset de ejemplo real
 def test_sample_dataset_profiles():
     from mvdg.profiler import profile_table, suggest_rules, summary

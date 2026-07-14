@@ -52,7 +52,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_clients": {"es": "🏢 Empresas", "en": "🏢 Companies", "pt": "🏢 Empresas"},
     "tab_help": {"es": "❓ Ayuda", "en": "❓ Help", "pt": "❓ Ajuda"},
     "tab_lab": {"es": "🧪 Laboratorio", "en": "🧪 Lab", "pt": "🧪 Laboratório"},
-    "tab_dmbok": {"es": "📘 DMBOK", "en": "📘 DMBOK", "pt": "📘 DMBOK"},
+    "tab_dmbok": {"es": "📘 Estándares", "en": "📘 Standards", "pt": "📘 Padrões"},
     # ------------------------------------------------------------- overview
     "kpi_datasets": {"es": "Datasets gobernados", "en": "Governed datasets", "pt": "Datasets governados"},
     "kpi_columns": {"es": "Columnas documentadas", "en": "Documented columns", "pt": "Colunas documentadas"},
@@ -533,6 +533,58 @@ _T: dict[str, dict[str, str]] = {
     "dk_quality_dims": {"es": "Las 6 dimensiones de calidad (DAMA), medidas en tus datos",
                         "en": "The 6 quality dimensions (DAMA), measured on your data",
                         "pt": "As 6 dimensões de qualidade (DAMA), medidas nos seus dados"},
+    "dk_subtab_dmbok": {"es": "📘 DAMA-DMBOK", "en": "📘 DAMA-DMBOK", "pt": "📘 DAMA-DMBOK"},
+    "dk_subtab_cobit": {"es": "🎯 COBIT 2019", "en": "🎯 COBIT 2019", "pt": "🎯 COBIT 2019"},
+    "dk_subtab_iso": {"es": "🌐 ISO/IEC 38505", "en": "🌐 ISO/IEC 38505", "pt": "🌐 ISO/IEC 38505"},
+    # ------------------------------------------------------ COBIT 2019
+    "co_intro": {
+        "es": "Autoevaluación honesta frente a **COBIT 2019** (ISACA): de sus 40 objetivos "
+              "de gobierno/gestión de TI, estos son los 8 relacionados directamente con "
+              "datos. No es una certificación — es una guía de qué cubre esta plataforma y "
+              "qué queda en manos de tu organización.",
+        "en": "An honest self-assessment against **COBIT 2019** (ISACA): of its 40 IT "
+              "governance/management objectives, these are the 8 directly related to data. "
+              "Not a certification — a guide to what this platform covers and what's left to "
+              "your organization.",
+        "pt": "Autoavaliação honesta frente ao **COBIT 2019** (ISACA): dos seus 40 objetivos "
+              "de governança/gestão de TI, estes são os 8 relacionados diretamente a dados. "
+              "Não é uma certificação — é um guia do que esta plataforma cobre e do que fica "
+              "a cargo da sua organização.",
+    },
+    "co_radar": {"es": "Cobertura por objetivo", "en": "Coverage by objective", "pt": "Cobertura por objetivo"},
+    "co_objectives": {"es": "Los 8 objetivos relacionados con datos",
+                      "en": "The 8 data-related objectives", "pt": "Os 8 objetivos relacionados a dados"},
+    "co_covered": {"es": "Objetivos cubiertos", "en": "Covered objectives", "pt": "Objetivos cobertos"},
+    "co_partial": {"es": "Cobertura parcial", "en": "Partial coverage", "pt": "Cobertura parcial"},
+    "co_out": {"es": "Fuera de alcance", "en": "Out of scope", "pt": "Fora de escopo"},
+    # ------------------------------------------------------ ISO/IEC 38505
+    "iso_intro": {
+        "es": "**ISO/IEC 38505** aplica los 6 principios de gobierno de ISO/IEC 38500 "
+              "específicamente a los datos, más el modelo de evaluación Valor/Riesgo/"
+              "Restricción (VRC) para decisiones sobre datos. Misma autoevaluación honesta "
+              "que el resto de esta pestaña.",
+        "en": "**ISO/IEC 38505** applies the 6 governance principles of ISO/IEC 38500 "
+              "specifically to data, plus the Value/Risk/Constraint (VRC) evaluation model "
+              "for data decisions. Same honest self-assessment as the rest of this tab.",
+        "pt": "**ISO/IEC 38505** aplica os 6 princípios de governança da ISO/IEC 38500 "
+              "especificamente aos dados, mais o modelo de avaliação Valor/Risco/Restrição "
+              "(VRC) para decisões sobre dados. Mesma autoavaliação honesta do resto desta "
+              "aba.",
+    },
+    "iso_radar": {"es": "Cobertura por principio", "en": "Coverage by principle", "pt": "Cobertura por princípio"},
+    "iso_principles": {"es": "Los 6 principios de gobierno, aplicados a datos",
+                       "en": "The 6 governance principles, applied to data",
+                       "pt": "Os 6 princípios de governança, aplicados a dados"},
+    "iso_vrc_title": {"es": "Modelo Valor / Riesgo / Restricción (VRC)",
+                      "en": "Value / Risk / Constraint (VRC) model",
+                      "pt": "Modelo Valor / Risco / Restrição (VRC)"},
+    "iso_vrc_col_dim": {"es": "Dimensión", "en": "Dimension", "pt": "Dimensão"},
+    "iso_vrc_col_text": {"es": "Qué evalúa", "en": "What it evaluates", "pt": "O que avalia"},
+    "iso_vrc_col_mapped": {"es": "Cómo lo cubre el programa", "en": "How the program covers it",
+                           "pt": "Como o programa cobre isso"},
+    "iso_covered": {"es": "Principios cubiertos", "en": "Covered principles", "pt": "Princípios cobertos"},
+    "iso_partial": {"es": "Cobertura parcial", "en": "Partial coverage", "pt": "Cobertura parcial"},
+    "iso_out": {"es": "Fuera de alcance", "en": "Out of scope", "pt": "Fora de escopo"},
     # -------------------------------------------------------- laboratorio
     "lab_intro": {
         "es": "Un caso completo de punta a punta, con teoría y dashboards reales: la misma empresa retail recorre las 7 etapas de un proyecto de gobierno de datos, del catálogo a la publicación en BI.",

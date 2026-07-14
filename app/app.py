@@ -29,6 +29,7 @@ from mvdg.connectors import (ENGINES, delete_connection, list_tables,
                              save_connection, stored_password, test_connection)
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
+from mvdg import cobit_iso
 from mvdg import dmbok
 from mvdg import samples as ext_samples
 from mvdg.remediation import suggest_fix
@@ -353,103 +354,173 @@ with tab_lab:
 
 # ----------------------------------------------------------- Tutorial DMBOK
 with tab_dk:
-    st.info(t("dk_intro", lang), icon="📘")
+    dk_sub1, dk_sub2, dk_sub3 = st.tabs([
+        t("dk_subtab_dmbok", lang), t("dk_subtab_cobit", lang), t("dk_subtab_iso", lang)])
 
-    # --- Teoría: qué es el DMBOK ---
-    st.subheader(t("dk_what", lang))
-    st.markdown(t("dk_what_p", lang))
+    with dk_sub1:
+        st.info(t("dk_intro", lang), icon="📘")
 
-    # --- Principios rectores ---
-    st.subheader(t("dk_principles", lang))
-    pr_cols = st.columns(3)
-    for i, pr in enumerate(dmbok.principles(lang)):
-        with pr_cols[i % 3]:
-            st.markdown(f"**{pr['title']}**  \n{pr['text']}")
+        # --- Teoría: qué es el DMBOK ---
+        st.subheader(t("dk_what", lang))
+        st.markdown(t("dk_what_p", lang))
 
-    # --- Dashboard 1: radar de cobertura por área ---
-    st.subheader(t("dk_radar", lang))
-    cov = dmbok.coverage_summary()
-    k1, k2, k3 = st.columns(3)
-    k1.metric(t("dk_covered", lang), cov["covered"])
-    k2.metric(t("dk_partial", lang), cov["partial"])
-    k3.metric(t("dk_out", lang), cov["out"])
-    radar = dmbok.coverage_scores(lang)
-    r_theta = [name for name, _ in radar] + [radar[0][0]]
-    r_r = [score for _, score in radar] + [radar[0][1]]
-    fig = go.Figure(go.Scatterpolar(r=r_r, theta=r_theta, fill="toself",
-                                    line={"color": BRAND["amber"]},
-                                    fillcolor="rgba(242,180,65,.25)"))
-    fig.update_layout(**_PLOTLY_LAYOUT, height=460,
-                      polar={"radialaxis": {"range": [0, 100], "color": BRAND["muted"]},
-                             "bgcolor": "rgba(255,255,255,.03)"})
-    st.plotly_chart(fig, width="stretch", key="dk_radar")
+        # --- Principios rectores ---
+        st.subheader(t("dk_principles", lang))
+        pr_cols = st.columns(3)
+        for i, pr in enumerate(dmbok.principles(lang)):
+            with pr_cols[i % 3]:
+                st.markdown(f"**{pr['title']}**  \n{pr['text']}")
 
-    # --- Las 11 áreas (expandibles, teoría + entregables + cobertura) ---
-    st.subheader(t("dk_areas", lang))
-    _COV_LABEL = {"covered": t("h_dmbok_covered", lang),
-                  "partial": t("h_dmbok_partial", lang),
-                  "out": t("h_dmbok_out", lang)}
-    for ar in dmbok.areas(lang):
-        with st.expander(f"{ar['n']}. {_COV_LABEL[ar['coverage']]} — {ar['area']}"):
-            st.markdown(f"**{t('dk_plain', lang)}:** {ar['plain']}")
-            st.markdown(f"**{t('dk_tech', lang)}:** {ar['tech']}")
-            st.markdown(f"**{t('dk_deliverables', lang)}:** {ar['deliverables']}")
-            st.caption(ar["note"])
+        # --- Dashboard 1: radar de cobertura por área ---
+        st.subheader(t("dk_radar", lang))
+        cov = dmbok.coverage_summary()
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("dk_covered", lang), cov["covered"])
+        k2.metric(t("dk_partial", lang), cov["partial"])
+        k3.metric(t("dk_out", lang), cov["out"])
+        radar = dmbok.coverage_scores(lang)
+        r_theta = [name for name, _ in radar] + [radar[0][0]]
+        r_r = [score for _, score in radar] + [radar[0][1]]
+        fig = go.Figure(go.Scatterpolar(r=r_r, theta=r_theta, fill="toself",
+                                        line={"color": BRAND["amber"]},
+                                        fillcolor="rgba(242,180,65,.25)"))
+        fig.update_layout(**_PLOTLY_LAYOUT, height=460,
+                          polar={"radialaxis": {"range": [0, 100], "color": BRAND["muted"]},
+                                 "bgcolor": "rgba(255,255,255,.03)"})
+        st.plotly_chart(fig, width="stretch", key="dk_radar")
 
-    # --- Conceptos clave (glosario buscable) ---
-    st.subheader(t("dk_concepts", lang))
-    cq = st.text_input(t("dk_concept_search", lang), "", key="dk_cq")
-    cdf = pd.DataFrame(dmbok.concepts(lang))[["cat", "term", "def"]]
-    if cq:
-        mask = cdf.apply(lambda r: cq.lower() in " ".join(map(str, r)).lower(), axis=1)
-        cdf = cdf[mask]
-    st.dataframe(cdf.rename(columns={
-        "cat": t("p_category", lang), "term": t("g_term", lang),
-        "def": t("g_definition", lang)}), width="stretch", hide_index=True)
+        # --- Las 11 áreas (expandibles, teoría + entregables + cobertura) ---
+        st.subheader(t("dk_areas", lang))
+        _COV_LABEL = {"covered": t("h_dmbok_covered", lang),
+                      "partial": t("h_dmbok_partial", lang),
+                      "out": t("h_dmbok_out", lang)}
+        for ar in dmbok.areas(lang):
+            with st.expander(f"{ar['n']}. {_COV_LABEL[ar['coverage']]} — {ar['area']}"):
+                st.markdown(f"**{t('dk_plain', lang)}:** {ar['plain']}")
+                st.markdown(f"**{t('dk_tech', lang)}:** {ar['tech']}")
+                st.markdown(f"**{t('dk_deliverables', lang)}:** {ar['deliverables']}")
+                st.caption(ar["note"])
 
-    # --- Roles del gobierno de datos ---
-    st.subheader(t("dk_roles", lang))
-    rdf = pd.DataFrame(dmbok.roles(lang))[["term", "def"]]
-    st.dataframe(rdf.rename(columns={
-        "term": t("dk_role", lang), "def": t("dk_responsibility", lang)}),
-        width="stretch", hide_index=True)
+        # --- Conceptos clave (glosario buscable) ---
+        st.subheader(t("dk_concepts", lang))
+        cq = st.text_input(t("dk_concept_search", lang), "", key="dk_cq")
+        cdf = pd.DataFrame(dmbok.concepts(lang))[["cat", "term", "def"]]
+        if cq:
+            mask = cdf.apply(lambda r: cq.lower() in " ".join(map(str, r)).lower(), axis=1)
+            cdf = cdf[mask]
+        st.dataframe(cdf.rename(columns={
+            "cat": t("p_category", lang), "term": t("g_term", lang),
+            "def": t("g_definition", lang)}), width="stretch", hide_index=True)
 
-    # --- Dashboard 2: modelo de madurez ---
-    st.subheader(t("dk_maturity", lang))
-    st.markdown(t("dk_maturity_note", lang))
-    mat = dmbok.maturity(lang)
-    mat_df = pd.DataFrame(mat)
-    fig = px.bar(mat_df, x="level", y=[1] * len(mat_df), text="name",
-                 color="level", color_continuous_scale=["#e05c5c", "#f2b441", "#00c896"],
-                 title=None)
-    fig.update_traces(textposition="inside", insidetextanchor="middle",
-                      hovertemplate="%{text}")
-    fig.update_layout(**_PLOTLY_LAYOUT, height=180, showlegend=False,
-                      coloraxis_showscale=False, yaxis={"visible": False},
-                      xaxis={"title": None, "tickmode": "linear"})
-    st.plotly_chart(fig, width="stretch", key="dk_maturity_bar")
-    for m in mat:
-        st.markdown(f"**{t('dk_level', lang)} {m['level']} · {m['name']}** — {m['desc']}")
+        # --- Roles del gobierno de datos ---
+        st.subheader(t("dk_roles", lang))
+        rdf = pd.DataFrame(dmbok.roles(lang))[["term", "def"]]
+        st.dataframe(rdf.rename(columns={
+            "term": t("dk_role", lang), "def": t("dk_responsibility", lang)}),
+            width="stretch", hide_index=True)
 
-    # --- Ciclo de vida (POSMAD) ---
-    st.subheader(t("dk_lifecycle", lang))
-    st.markdown(t("dk_lifecycle_note", lang))
-    lc_cols = st.columns(len(dmbok.lifecycle(lang)))
-    for i, ph in enumerate(dmbok.lifecycle(lang)):
-        with lc_cols[i]:
-            st.markdown(f"**{i+1}. {ph['phase']}**")
-            st.caption(ph["desc"])
+        # --- Dashboard 2: modelo de madurez ---
+        st.subheader(t("dk_maturity", lang))
+        st.markdown(t("dk_maturity_note", lang))
+        mat = dmbok.maturity(lang)
+        mat_df = pd.DataFrame(mat)
+        fig = px.bar(mat_df, x="level", y=[1] * len(mat_df), text="name",
+                     color="level", color_continuous_scale=["#e05c5c", "#f2b441", "#00c896"],
+                     title=None)
+        fig.update_traces(textposition="inside", insidetextanchor="middle",
+                          hovertemplate="%{text}")
+        fig.update_layout(**_PLOTLY_LAYOUT, height=180, showlegend=False,
+                          coloraxis_showscale=False, yaxis={"visible": False},
+                          xaxis={"title": None, "tickmode": "linear"})
+        st.plotly_chart(fig, width="stretch", key="dk_maturity_bar")
+        for m in mat:
+            st.markdown(f"**{t('dk_level', lang)} {m['level']} · {m['name']}** — {m['desc']}")
 
-    # --- Dashboard 3: las 6 dimensiones de calidad medidas en vivo ---
-    st.subheader(t("dk_quality_dims", lang))
-    by_dim = quality_by_dimension(results)
-    by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
-    fig = px.bar(by_dim, x="dimension", y="quality_index", text="quality_index",
-                 color_discrete_sequence=[BRAND["green"]])
-    fig.update_traces(texttemplate="%{text:.1f}")
-    fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
-                      xaxis_title=None, yaxis_title=None)
-    st.plotly_chart(fig, width="stretch", key="dk_quality_dims")
+        # --- Ciclo de vida (POSMAD) ---
+        st.subheader(t("dk_lifecycle", lang))
+        st.markdown(t("dk_lifecycle_note", lang))
+        lc_cols = st.columns(len(dmbok.lifecycle(lang)))
+        for i, ph in enumerate(dmbok.lifecycle(lang)):
+            with lc_cols[i]:
+                st.markdown(f"**{i+1}. {ph['phase']}**")
+                st.caption(ph["desc"])
+
+        # --- Dashboard 3: las 6 dimensiones de calidad medidas en vivo ---
+        st.subheader(t("dk_quality_dims", lang))
+        by_dim = quality_by_dimension(results)
+        by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
+        fig = px.bar(by_dim, x="dimension", y="quality_index", text="quality_index",
+                     color_discrete_sequence=[BRAND["green"]])
+        fig.update_traces(texttemplate="%{text:.1f}")
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
+                          xaxis_title=None, yaxis_title=None)
+        st.plotly_chart(fig, width="stretch", key="dk_quality_dims")
+
+    with dk_sub2:
+        st.info(t("co_intro", lang), icon="🎯")
+
+        st.subheader(t("co_radar", lang))
+        ccov = cobit_iso.cobit_coverage_summary()
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("co_covered", lang), ccov["covered"])
+        k2.metric(t("co_partial", lang), ccov["partial"])
+        k3.metric(t("co_out", lang), ccov["out"])
+        cradar = cobit_iso.cobit_coverage_scores(lang)
+        cr_theta = [name for name, _ in cradar] + [cradar[0][0]]
+        cr_r = [score for _, score in cradar] + [cradar[0][1]]
+        fig = go.Figure(go.Scatterpolar(r=cr_r, theta=cr_theta, fill="toself",
+                                        line={"color": BRAND["amber"]},
+                                        fillcolor="rgba(242,180,65,.25)"))
+        fig.update_layout(**_PLOTLY_LAYOUT, height=460,
+                          polar={"radialaxis": {"range": [0, 100], "color": BRAND["muted"]},
+                                 "bgcolor": "rgba(255,255,255,.03)"})
+        st.plotly_chart(fig, width="stretch", key="co_radar")
+
+        st.subheader(t("co_objectives", lang))
+        _CO_COV_LABEL = {"covered": t("h_dmbok_covered", lang),
+                         "partial": t("h_dmbok_partial", lang),
+                         "out": t("h_dmbok_out", lang)}
+        for ob in cobit_iso.cobit_objectives(lang):
+            with st.expander(f"{ob['code']}. {_CO_COV_LABEL[ob['coverage']]} — {ob['name']}"):
+                st.markdown(f"**{t('dk_plain', lang)}:** {ob['plain']}")
+                st.markdown(f"**{t('dk_tech', lang)}:** {ob['tech']}")
+                st.markdown(f"**{t('dk_deliverables', lang)}:** {ob['deliverables']}")
+                st.caption(ob["note"])
+
+    with dk_sub3:
+        st.info(t("iso_intro", lang), icon="🌐")
+
+        st.subheader(t("iso_radar", lang))
+        icov = cobit_iso.iso_coverage_summary()
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("iso_covered", lang), icov["covered"])
+        k2.metric(t("iso_partial", lang), icov["partial"])
+        k3.metric(t("iso_out", lang), icov["out"])
+        iradar = cobit_iso.iso_coverage_scores(lang)
+        ir_theta = [name for name, _ in iradar] + [iradar[0][0]]
+        ir_r = [score for _, score in iradar] + [iradar[0][1]]
+        fig = go.Figure(go.Scatterpolar(r=ir_r, theta=ir_theta, fill="toself",
+                                        line={"color": BRAND["amber"]},
+                                        fillcolor="rgba(242,180,65,.25)"))
+        fig.update_layout(**_PLOTLY_LAYOUT, height=460,
+                          polar={"radialaxis": {"range": [0, 100], "color": BRAND["muted"]},
+                                 "bgcolor": "rgba(255,255,255,.03)"})
+        st.plotly_chart(fig, width="stretch", key="iso_radar")
+
+        st.subheader(t("iso_principles", lang))
+        _ISO_COV_LABEL = {"covered": t("h_dmbok_covered", lang),
+                          "partial": t("h_dmbok_partial", lang),
+                          "out": t("h_dmbok_out", lang)}
+        for pr in cobit_iso.iso_principles(lang):
+            with st.expander(f"{_ISO_COV_LABEL[pr['coverage']]} — {pr['name']}"):
+                st.markdown(pr["text"])
+                st.caption(pr["note"])
+
+        st.subheader(t("iso_vrc_title", lang))
+        vrc_df = pd.DataFrame(cobit_iso.iso_vrc(lang))[["dim", "text", "mapped"]]
+        st.dataframe(vrc_df.rename(columns={
+            "dim": t("iso_vrc_col_dim", lang), "text": t("iso_vrc_col_text", lang),
+            "mapped": t("iso_vrc_col_mapped", lang)}), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
