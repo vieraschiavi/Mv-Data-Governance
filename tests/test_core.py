@@ -709,6 +709,57 @@ def test_samples_bank_classification_note_present():
         assert samples.sample_meta(key, "es")["classification_note"] is None
 
 
+def test_samples_openfda_file_versioned():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "samples", "medicamentos_openfda.csv")
+    assert os.path.exists(path), "el dataset openFDA debe estar versionado"
+    df = pd.read_csv(path)
+    assert len(df) == 1546 and len(df.columns) == 15
+    # 6 grupos multinacionales, muchas razones sociales (caso MDM real)
+    assert df["labeler_name"].nunique() > 20
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_samples_openfda_quality_real_defects(lang):
+    """Los defectos del NDC Directory son reales (no inyectados): 4 NDC
+    duplicados, huecos de marca/principio activo/clase farmacológica en
+    productos de uso humano, y listados FDA sin fecha."""
+    from mvdg import samples
+    med = samples.sample_quality_results("medicamentos_openfda", lang)
+    assert len(med) == 8
+    by_id = med.set_index("rule_id")
+    assert by_id.loc["MED-01", "affected_rows"] == 4       # NDC duplicados reales
+    assert by_id.loc["MED-01", "status"] in ("warn", "fail")
+    assert by_id.loc["MED-02", "status"] == "pass"          # formato NDC impecable
+    assert by_id.loc["MED-07", "status"] == "pass"          # fechas YYYYMMDD válidas
+    assert (med["status"] == "fail").sum() >= 3             # huecos reales del registro
+
+
+def test_samples_openfda_conditional_rules_scope():
+    """Las reglas condicionales solo evalúan medicamentos de uso humano:
+    los graneles/semielaborados sin marca NO son falsos positivos."""
+    from mvdg import samples
+    med = samples.sample_quality_results("medicamentos_openfda", "es")
+    by_id = med.set_index("rule_id")
+    df = samples.load_sample_table("medicamentos_openfda")
+    total_sin_marca = int(df["brand_name"].isna().sum())
+    humanos_sin_marca = int(df[df["product_type"].isin(
+        {"HUMAN PRESCRIPTION DRUG", "HUMAN OTC DRUG"})]["brand_name"].isna().sum())
+    assert by_id.loc["MED-04", "affected_rows"] == humanos_sin_marca
+    assert humanos_sin_marca < total_sin_marca  # la condición recorta de verdad
+
+
+def test_samples_openfda_bi_bundle_complete():
+    """End-to-end hasta el BI: el paquete de gobierno del dataset openFDA trae
+    datos + diccionario + calidad + glosario listos para exportar/servir."""
+    from mvdg import samples
+    gt = samples.sample_governance_tables("medicamentos_openfda", "es")
+    for table in ("data", "dictionary", "quality_results", "glossary"):
+        assert table in gt and len(gt[table]) > 0
+    assert len(gt["dictionary"]) == 15   # las 15 columnas documentadas
+    assert len(gt["glossary"]) == 9      # los 9 términos de negocio
+
+
 # --------------------------------------- IA externa opcional (con fallback local)
 def test_ai_provider_off_by_default(monkeypatch):
     from mvdg import ai_provider as ap
@@ -851,7 +902,8 @@ def test_bi_api_serves_sample_datasets():
     r = client.get("/")
     assert r.status_code == 200
     body = r.json()
-    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle", "bank_marketing_uci"}
+    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle",
+                                    "bank_marketing_uci", "medicamentos_openfda"}
 
     r = client.get("/api/samples/cafe_sales_kaggle?lang=en")
     assert r.status_code == 200

@@ -148,6 +148,57 @@ def _in_range(col: str, lo: float, hi: float):
     return check
 
 
+def _subset_completeness(when_col: str, when_in: set, then_col: str):
+    """Regla de negocio condicional: cuando ``when_col`` ∈ ``when_in``,
+    ``then_col`` debe estar informado (no nulo ni vacío). Las filas fuera
+    de la condición no cuentan — no son falsos positivos."""
+    def check(df: pd.DataFrame):
+        subset = df[df[when_col].isin(when_in)]
+        n = len(subset)
+        if n == 0:
+            return (100.0, 0)
+        vals = subset[then_col].astype(str).str.strip()
+        bad = int((subset[then_col].isna() | (vals == "")).sum())
+        return (100.0 * (n - bad) / n, bad)
+    return check
+
+
+def _valid_yyyymmdd(col: str):
+    """Fecha válida en el formato compacto YYYYMMDD que usa la FDA (evita el
+    falso 'válido' de interpretar 20090601 como un entero de nanosegundos)."""
+    def check(df: pd.DataFrame):
+        n = len(df)
+        parsed = pd.to_datetime(df[col].astype("Int64").astype(str),
+                                format="%Y%m%d", errors="coerce")
+        nbad = int(parsed.isna().sum())
+        return (100.0 * (n - nbad) / n if n else 100.0, nbad)
+    return check
+
+
+def _listing_current_yyyymmdd(when_col: str, when_value, then_col: str):
+    """Puntualidad: cuando ``when_col`` == ``when_value`` (producto terminado),
+    ``then_col`` debe tener fecha YYYYMMDD informada y no vencida a hoy."""
+    def check(df: pd.DataFrame):
+        subset = df[df[when_col] == when_value]
+        n = len(subset)
+        if n == 0:
+            return (100.0, 0)
+        parsed = pd.to_datetime(subset[then_col].astype("Int64").astype(str),
+                                format="%Y%m%d", errors="coerce")
+        bad = int((parsed.isna() | (parsed < pd.Timestamp.now().normalize())).sum())
+        return (100.0 * (n - bad) / n, bad)
+    return check
+
+
+def _matches_pattern(col: str, pattern: str):
+    def check(df: pd.DataFrame):
+        n = len(df)
+        ok = df[col].astype(str).str.match(pattern, na=False)
+        nbad = int((~ok).sum())
+        return (100.0 * (n - nbad) / n if n else 100.0, nbad)
+    return check
+
+
 # ---------------------------------------------------------------------------
 # 1. Rotulado de alimentos 2026 — control bromatológico real (Uruguay)
 # ---------------------------------------------------------------------------
@@ -416,6 +467,169 @@ _BNK_TERMS = [
 
 
 # ---------------------------------------------------------------------------
+# 4. Catálogo de medicamentos — laboratorios multinacionales (openFDA NDC).
+#    Datos REALES y de dominio público del registro nacional de medicamentos
+#    de EE.UU. (FDA), filtrados a 6 grupos farmacéuticos multinacionales.
+#    Los defectos que encuentran las reglas son reales, no inyectados.
+# ---------------------------------------------------------------------------
+_MED_KEY = "medicamentos_openfda"
+_MED_HUMAN = {"HUMAN PRESCRIPTION DRUG", "HUMAN OTC DRUG"}
+
+_MED_RULES = [
+    Rule("MED-01", _MED_KEY, "product_ndc", "uniqueness",
+         _d("product_ndc debe ser estrictamente único: es LA clave del registro nacional (NDC)",
+            "product_ndc must be strictly unique: it IS the national registry key (NDC)",
+            "product_ndc deve ser estritamente único: é A chave do registro nacional (NDC)"),
+         _unique("product_ndc"), 100.0),
+    Rule("MED-02", _MED_KEY, "product_ndc", "validity",
+         _d("product_ndc respeta el formato NDC (4-5 dígitos, guion, 3-4 dígitos)",
+            "product_ndc follows the NDC format (4-5 digits, hyphen, 3-4 digits)",
+            "product_ndc respeita o formato NDC (4-5 dígitos, hífen, 3-4 dígitos)"),
+         _matches_pattern("product_ndc", r"^\d{4,5}-\d{3,4}$"), 99.5),
+    Rule("MED-03", _MED_KEY, "generic_name", "completeness",
+         _d("generic_name (principio activo / denominación común) siempre informado",
+            "generic_name (active ingredient / common name) always present",
+            "generic_name (princípio ativo / denominação comum) sempre informado"),
+         _not_null_or_placeholder("generic_name", ()), 99.5),
+    Rule("MED-04", _MED_KEY, "brand_name", "consistency",
+         _d("medicamento de uso humano terminado ⇒ marca comercial informada (los graneles y semielaborados legítimamente no tienen)",
+            "finished human-use drug ⇒ brand name present (bulk and semi-finished goods legitimately have none)",
+            "medicamento de uso humano acabado ⇒ marca comercial informada (granéis e semiacabados legitimamente não têm)"),
+         _subset_completeness("product_type", _MED_HUMAN, "brand_name"), 97.0),
+    Rule("MED-05", _MED_KEY, "active_ingredients", "consistency",
+         _d("medicamento de uso humano ⇒ principios activos con concentración declarados",
+            "human-use drug ⇒ active ingredients with strength declared",
+            "medicamento de uso humano ⇒ princípios ativos com concentração declarados"),
+         _subset_completeness("product_type", _MED_HUMAN, "active_ingredients"), 95.0),
+    Rule("MED-06", _MED_KEY, "pharm_class", "completeness",
+         _d("clase farmacológica informada en medicamentos de uso humano (crítica para farmacovigilancia)",
+            "pharmacological class present on human-use drugs (critical for pharmacovigilance)",
+            "classe farmacológica informada em medicamentos de uso humano (crítica para farmacovigilância)"),
+         _subset_completeness("product_type", _MED_HUMAN, "pharm_class"), 90.0),
+    Rule("MED-07", _MED_KEY, "marketing_start_date", "validity",
+         _d("marketing_start_date es una fecha YYYYMMDD válida",
+            "marketing_start_date is a valid YYYYMMDD date",
+            "marketing_start_date é uma data YYYYMMDD válida"),
+         _valid_yyyymmdd("marketing_start_date"), 99.5),
+    Rule("MED-08", _MED_KEY, "listing_expiration_date", "timeliness",
+         _d("producto terminado ⇒ listado FDA vigente (fecha de expiración informada y no vencida)",
+            "finished product ⇒ FDA listing current (expiration date present and not past due)",
+            "produto acabado ⇒ listagem FDA vigente (data de expiração informada e não vencida)"),
+         _listing_current_yyyymmdd("finished", True, "listing_expiration_date"), 95.0),
+]
+
+_MED_COLUMNS = [
+    {"column": "product_ndc", "type": "string", "pii": False, "term": "ndc",
+     "d": _d("Código nacional de medicamento (NDC): identificador único del producto ante la FDA.",
+             "National Drug Code (NDC): the product's unique identifier before the FDA.",
+             "Código nacional de medicamento (NDC): identificador único do produto perante a FDA.")},
+    {"column": "brand_name", "type": "string", "pii": False, "term": "marca_comercial",
+     "d": _d("Marca comercial del producto (vacía en genéricos, graneles y semielaborados).",
+             "Product's commercial brand (empty on generics, bulk and semi-finished goods).",
+             "Marca comercial do produto (vazia em genéricos, granéis e semiacabados).")},
+    {"column": "generic_name", "type": "string", "pii": False, "term": "principio_activo",
+     "d": _d("Denominación común / principio activo del medicamento.",
+             "Common name / active ingredient of the drug.",
+             "Denominação comum / princípio ativo do medicamento.")},
+    {"column": "labeler_name", "type": "string", "pii": False, "term": "laboratorio_titular",
+     "d": _d("Laboratorio titular del registro. Ojo: un mismo grupo aparece escrito de varias formas (45 variantes para 6 grupos) — caso ideal para la pestaña 🔗 MDM.",
+             "Registration-holding laboratory. Note: the same group appears spelled several ways (45 variants for 6 groups) — an ideal case for the 🔗 MDM tab.",
+             "Laboratório titular do registro. Atenção: o mesmo grupo aparece escrito de várias formas (45 variantes para 6 grupos) — caso ideal para a aba 🔗 MDM.")},
+    {"column": "product_type", "type": "string", "pii": False, "term": "tipo_producto",
+     "d": _d("Tipo de producto: receta, venta libre, vacuna, granel, semielaborado, etc.",
+             "Product type: prescription, OTC, vaccine, bulk, for further processing, etc.",
+             "Tipo de produto: receita, venda livre, vacina, granel, semiacabado, etc.")},
+    {"column": "dosage_form", "type": "string", "pii": False, "term": "forma_farmaceutica",
+     "d": _d("Forma farmacéutica: comprimido, solución, crema, inyectable…",
+             "Dosage form: tablet, solution, cream, injectable…",
+             "Forma farmacêutica: comprimido, solução, creme, injetável…")},
+    {"column": "route", "type": "string", "pii": False, "term": "via_administracion",
+     "d": _d("Vía(s) de administración (oral, tópica, intravenosa…).",
+             "Route(s) of administration (oral, topical, intravenous…).",
+             "Via(s) de administração (oral, tópica, intravenosa…).")},
+    {"column": "marketing_category", "type": "string", "pii": False, "term": "categoria_comercializacion",
+     "d": _d("Categoría regulatoria bajo la que se comercializa (NDA, ANDA, BLA, OTC monograph…).",
+             "Regulatory category under which it is marketed (NDA, ANDA, BLA, OTC monograph…).",
+             "Categoria regulatória sob a qual é comercializado (NDA, ANDA, BLA, OTC monograph…).")},
+    {"column": "marketing_start_date", "type": "date", "pii": False, "term": "categoria_comercializacion",
+     "d": _d("Fecha de inicio de comercialización (YYYYMMDD).", "Marketing start date (YYYYMMDD).",
+             "Data de início de comercialização (YYYYMMDD).")},
+    {"column": "marketing_end_date", "type": "date", "pii": False, "term": "categoria_comercializacion",
+     "d": _d("Fecha de fin de comercialización — presente solo en productos discontinuados.",
+             "Marketing end date — present only on discontinued products.",
+             "Data de fim de comercialização — presente apenas em produtos descontinuados.")},
+    {"column": "active_ingredients", "type": "string", "pii": False, "term": "principio_activo",
+     "d": _d("Principios activos con su concentración, separados por «;».",
+             "Active ingredients with their strength, separated by «;».",
+             "Princípios ativos com sua concentração, separados por «;».")},
+    {"column": "pharm_class", "type": "string", "pii": False, "term": "clase_farmacologica",
+     "d": _d("Clase(s) farmacológica(s) FDA: mecanismo de acción, clase química y/o efecto fisiológico.",
+             "FDA pharmacological class(es): mechanism of action, chemical class and/or physiologic effect.",
+             "Classe(s) farmacológica(s) FDA: mecanismo de ação, classe química e/ou efeito fisiológico.")},
+    {"column": "dea_schedule", "type": "string", "pii": False, "term": "tipo_producto",
+     "d": _d("Lista DEA de sustancias controladas (CII–CV) — vacía si no es controlada.",
+             "DEA controlled-substance schedule (CII–CV) — empty if not controlled.",
+             "Lista DEA de substâncias controladas (CII–CV) — vazia se não é controlada.")},
+    {"column": "finished", "type": "bool", "pii": False, "term": "tipo_producto",
+     "d": _d("Si es producto terminado (True) o granel/semielaborado (False).",
+             "Whether it's a finished product (True) or bulk/semi-finished (False).",
+             "Se é produto acabado (True) ou granel/semiacabado (False).")},
+    {"column": "listing_expiration_date", "type": "date", "pii": False, "term": "listado_fda",
+     "d": _d("Hasta cuándo está vigente el listado del producto ante la FDA (YYYYMMDD).",
+             "Until when the product's FDA listing is current (YYYYMMDD).",
+             "Até quando a listagem do produto perante a FDA está vigente (YYYYMMDD).")},
+]
+
+_MED_TERMS = [
+    {"term_id": "ndc", "name": _d("NDC (Código nacional de medicamento)", "NDC (National Drug Code)", "NDC (Código nacional de medicamento)"),
+     "definition": _d("Identificador único que la FDA asigna a cada producto farmacéutico comercializado en EE.UU.: etiquetador-producto (y a nivel envase, presentación). Es la clave natural del catálogo.",
+                       "Unique identifier the FDA assigns to every drug product marketed in the U.S.: labeler-product (and at package level, presentation). It is the catalog's natural key.",
+                       "Identificador único que a FDA atribui a cada produto farmacêutico comercializado nos EUA: rotulador-produto (e no nível de embalagem, apresentação). É a chave natural do catálogo."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "principio_activo", "name": _d("Principio activo", "Active ingredient", "Princípio ativo"),
+     "definition": _d("Sustancia responsable del efecto terapéutico del medicamento, declarada con su concentración (ej. «SILDENAFIL (100 mg/1)»).",
+                       "Substance responsible for the drug's therapeutic effect, declared with its strength (e.g. «SILDENAFIL (100 mg/1)»).",
+                       "Substância responsável pelo efeito terapêutico do medicamento, declarada com sua concentração (ex. «SILDENAFIL (100 mg/1)»)."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "laboratorio_titular", "name": _d("Laboratorio titular", "Labeler", "Laboratório titular"),
+     "definition": _d("Empresa responsable del registro del producto ante la FDA. Un grupo multinacional opera con múltiples razones sociales (Pfizer Inc, Pfizer Ireland, Pfizer Consumer…): unificarlas es un problema clásico de datos maestros (MDM).",
+                       "Company responsible for the product's FDA registration. A multinational group operates under multiple legal entities (Pfizer Inc, Pfizer Ireland, Pfizer Consumer…): unifying them is a classic master-data (MDM) problem.",
+                       "Empresa responsável pelo registro do produto perante a FDA. Um grupo multinacional opera com múltiplas razões sociais (Pfizer Inc, Pfizer Ireland, Pfizer Consumer…): unificá-las é um problema clássico de dados mestres (MDM)."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "forma_farmaceutica", "name": _d("Forma farmacéutica", "Dosage form", "Forma farmacêutica"),
+     "definition": _d("Presentación física en la que se administra el medicamento: comprimido, cápsula, solución, crema, inyectable, parche…",
+                       "Physical presentation in which the drug is administered: tablet, capsule, solution, cream, injectable, patch…",
+                       "Apresentação física na qual o medicamento é administrado: comprimido, cápsula, solução, creme, injetável, adesivo…"),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "via_administracion", "name": _d("Vía de administración", "Route of administration", "Via de administração"),
+     "definition": _d("Camino por el que el medicamento entra al organismo: oral, tópica, intravenosa, oftálmica… Un producto puede tener más de una.",
+                       "Path by which the drug enters the body: oral, topical, intravenous, ophthalmic… A product can have more than one.",
+                       "Caminho pelo qual o medicamento entra no organismo: oral, tópica, intravenosa, oftálmica… Um produto pode ter mais de uma."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "clase_farmacologica", "name": _d("Clase farmacológica", "Pharmacological class", "Classe farmacológica"),
+     "definition": _d("Clasificación FDA del medicamento por mecanismo de acción, clase química o efecto fisiológico — la base de la farmacovigilancia y de los análisis de interacciones.",
+                       "FDA classification of the drug by mechanism of action, chemical class or physiologic effect — the basis of pharmacovigilance and interaction analyses.",
+                       "Classificação FDA do medicamento por mecanismo de ação, classe química ou efeito fisiológico — a base da farmacovigilância e das análises de interações."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "tipo_producto", "name": _d("Tipo de producto", "Product type", "Tipo de produto"),
+     "definition": _d("Categoría del registro: medicamento humano de receta o venta libre, vacuna, derivado de plasma, granel o semielaborado. Varias reglas de calidad aplican solo a los de uso humano terminados.",
+                       "Registry category: human prescription or OTC drug, vaccine, plasma derivative, bulk or for further processing. Several quality rules apply only to finished human-use products.",
+                       "Categoria do registro: medicamento humano de receita ou venda livre, vacina, derivado de plasma, granel ou semiacabado. Várias regras de qualidade aplicam-se apenas aos de uso humano acabados."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "categoria_comercializacion", "name": _d("Categoría de comercialización", "Marketing category", "Categoria de comercialização"),
+     "definition": _d("Vía regulatoria bajo la que el producto llegó al mercado: NDA (droga nueva), ANDA (genérico), BLA (biológico), monografía OTC…",
+                       "Regulatory path under which the product reached the market: NDA (new drug), ANDA (generic), BLA (biologic), OTC monograph…",
+                       "Via regulatória sob a qual o produto chegou ao mercado: NDA (droga nova), ANDA (genérico), BLA (biológico), monografia OTC…"),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+    {"term_id": "listado_fda", "name": _d("Listado FDA vigente", "Current FDA listing", "Listagem FDA vigente"),
+     "definition": _d("Los laboratorios deben renovar anualmente el listado de cada producto ante la FDA. Un listado vencido o sin fecha es una señal de puntualidad: el registro puede estar desactualizado.",
+                       "Labs must renew each product's FDA listing yearly. An expired or missing listing date is a timeliness signal: the record may be out of date.",
+                       "Os laboratórios devem renovar anualmente a listagem de cada produto perante a FDA. Uma listagem vencida ou sem data é um sinal de pontualidade: o registro pode estar desatualizado."),
+     "owner": "Equipo de Datos Regulatorios", "datasets": [_MED_KEY]},
+]
+
+
+# ---------------------------------------------------------------------------
 # Registro de datasets de ejemplo
 # ---------------------------------------------------------------------------
 SAMPLES: dict[str, dict] = {
@@ -488,6 +702,39 @@ SAMPLES: dict[str, dict] = {
             "Confidencial neste catálogo de propósito: é o critério correto para dados demográficos e financeiros "
             "a nível de pessoa dentro de um banco real, mesmo sem disparar o detector de PII."),
         "columns": _BNK_COLUMNS, "rules": _BNK_RULES, "terms": _BNK_TERMS,
+    },
+    _MED_KEY: {
+        "file": "medicamentos_openfda.csv",
+        "name": _d("Medicamentos — laboratorios multinacionales (openFDA)",
+                   "Drug products — multinational labs (openFDA)",
+                   "Medicamentos — laboratórios multinacionais (openFDA)"),
+        "domain": _d("Farmacéutica / Regulatorio", "Pharmaceutical / Regulatory", "Farmacêutica / Regulatório"),
+        "description": _d(
+            "1.546 productos farmacéuticos reales registrados ante la FDA por 6 grupos multinacionales "
+            "(Pfizer, Novartis, Bayer, Sanofi, GSK, AstraZeneca), del NDC Directory. Los defectos que "
+            "detectan las reglas son reales del registro público — no fueron inyectados.",
+            "1,546 real drug products registered with the FDA by 6 multinational groups "
+            "(Pfizer, Novartis, Bayer, Sanofi, GSK, AstraZeneca), from the NDC Directory. The defects "
+            "the rules detect are real, from the public registry — none were injected.",
+            "1.546 produtos farmacêuticos reais registrados na FDA por 6 grupos multinacionais "
+            "(Pfizer, Novartis, Bayer, Sanofi, GSK, AstraZeneca), do NDC Directory. Os defeitos que "
+            "as regras detectam são reais do registro público — não foram injetados."),
+        "owner": _d("Asuntos Regulatorios / Farmacovigilancia", "Regulatory Affairs / Pharmacovigilance",
+                    "Assuntos Regulatórios / Farmacovigilância"),
+        "steward": _d("Equipo de Datos Regulatorios", "Regulatory Data Team", "Equipe de Dados Regulatórios"),
+        "classification": "Pública",
+        "refresh": _d("diario (la FDA actualiza el NDC Directory a diario)",
+                      "daily (the FDA refreshes the NDC Directory daily)",
+                      "diário (a FDA atualiza o NDC Directory diariamente)"),
+        "source": _d(
+            "openFDA · NDC Directory (api.fda.gov/drug/ndc) · descargado 2026-07-14 · dominio público (gobierno de EE.UU.).",
+            "openFDA · NDC Directory (api.fda.gov/drug/ndc) · downloaded 2026-07-14 · public domain (U.S. government).",
+            "openFDA · NDC Directory (api.fda.gov/drug/ndc) · baixado em 2026-07-14 · domínio público (governo dos EUA)."),
+        "source_url": "https://open.fda.gov/apis/drug/ndc/",
+        "license": _d("Dominio público (obra del gobierno de EE.UU.); openFDA advierte que los datos no están validados para decisiones médicas",
+                      "Public domain (U.S. government work); openFDA warns the data is not validated for medical decisions",
+                      "Domínio público (obra do governo dos EUA); a openFDA adverte que os dados não são validados para decisões médicas"),
+        "columns": _MED_COLUMNS, "rules": _MED_RULES, "terms": _MED_TERMS,
     },
 }
 
