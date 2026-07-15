@@ -64,7 +64,7 @@ su restricción y recomienda el paquete automáticamente.
 
 | Módulo | Qué resuelve |
 |---|---|
-| 📊 **Panorama** | KPIs de gobierno: índice de calidad, reglas, PII, stewards, evolución 12 meses |
+| 📊 **Panorama** | KPIs de gobierno: índice de calidad, reglas, PII, stewards, evolución 12 meses + **🏛️ Estado del gobierno** (estilo Purview "Data Estate Insights", 100% local): índice de gobierno 0-100 con 5 coberturas — owner/steward nombrado, clasificación, reglas, definiciones curadas — que sube al usar 👥 Responsables y 🖊️ Curaduría. Comparación honesta con Purview/Collibra en [`docs/PURVIEW_COLLIBRA.md`](docs/PURVIEW_COLLIBRA.md) |
 | 🧪 **Laboratorio** | Caso completo de punta a punta (empresa retail ficticia): las 7 etapas de un proyecto de gobierno de datos —catalogar, medir ANTES, gobernar, corregir y medir DESPUÉS, linaje, políticas, publicar a BI— con teoría en criollo + técnica y dashboards reales en cada paso |
 | 📘 **Estándares** | Autoevaluación honesta frente a **3 marcos de referencia**, cada uno en su propia pestaña interna: **DAMA-DMBOK** (11 áreas de conocimiento, principios, glosario, roles, madurez, ciclo de vida POSMAD), **COBIT 2019** (los 8 objetivos de gobierno/gestión relacionados con datos, de ISACA) y **ISO/IEC 38505** (los 6 principios de gobierno de datos + modelo Valor/Riesgo/Restricción). Ninguno es una certificación — cada uno marca, con radar y cobertura honesta, qué cubre la plataforma y qué queda en manos de tu organización |
 | 📚 **Catálogo** | Inventario de datasets con dueño, steward, dominio, clasificación (PII), frescura + diccionario de columnas |
