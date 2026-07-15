@@ -1696,3 +1696,219 @@ def test_vercel_deploy_does_not_ignore_api_functions():
         "sirven /api/checkout y /api/verify-payment en producción.")
     for fname in ("checkout.js", "verify-payment.js", "_license.js"):
         assert os.path.exists(os.path.join(root, "api", fname)), fname
+
+
+# ------------------------------------------------- migración a Purview/Collibra
+def _sample_gov_tables():
+    from mvdg.exporters import governance_tables
+    gov = governance_tables("es")
+    return gov["catalog"], gov["dictionary"], gov["glossary"]
+
+
+def test_purview_off_by_default(monkeypatch):
+    for var in ("PURVIEW_TENANT_ID", "PURVIEW_CLIENT_ID", "PURVIEW_CLIENT_SECRET",
+               "PURVIEW_ACCOUNT_NAME"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import purview_export as pv
+    assert pv.configured() is False
+    cat, dic, glo = _sample_gov_tables()
+    with pytest.raises(RuntimeError):
+        pv.push_catalog(cat, dic, dry_run=False)
+
+
+def test_purview_dry_run_never_touches_network(monkeypatch):
+    """dry_run=True (el default) tiene que funcionar SIN credenciales y sin
+    pegarle a la red — es el modo de previsualización."""
+    for var in ("PURVIEW_TENANT_ID", "PURVIEW_CLIENT_ID", "PURVIEW_CLIENT_SECRET",
+               "PURVIEW_ACCOUNT_NAME"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import purview_export as pv
+    cat, dic, glo = _sample_gov_tables()
+    r = pv.push_all(cat, dic, glo, dry_run=True)
+    assert r["dry_run"] is True
+    assert r["catalog"]["entity_count"] == len(cat) + len(dic)
+    assert r["glossary"]["term_count"] == len(glo)
+    assert r["pii"]["classification_count"] > 0  # dim_customers tiene PII real
+
+
+def test_purview_glossary_status_reflects_curation(tmp_path, monkeypatch):
+    """El estado Draft/Approved en Purview tiene que salir de la curaduría
+    real: sin revisar -> Draft, validado/modificado -> Approved."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, purview_export as pv
+    cat, dic, glo = _sample_gov_tables()
+
+    def lookup(term_id):
+        rec = curation.get_record(f"glossary:demo:{term_id}", "es")
+        return (rec["status"], rec.get("text") or "") if rec else ("sugerido_ia", "")
+
+    before = pv.push_glossary(glo, curation_lookup=lookup, dry_run=True)
+    assert all(t["status"] == "Draft" for t in before["terms"])
+
+    first_term_id = glo.iloc[0]["term_id"]
+    curation.save_validation(f"glossary:demo:{first_term_id}", "es", "validado",
+                             "", "María Viera", "Data Owner")
+    after = pv.push_glossary(glo, curation_lookup=lookup, dry_run=True)
+    statuses = {t["name"]: t["status"] for t in after["terms"]}
+    approved_name = glo.iloc[0]["term"]
+    assert statuses[approved_name] == "Approved"
+    assert sum(1 for s in statuses.values() if s == "Approved") == 1
+
+
+def test_purview_classification_heuristic():
+    from mvdg.purview_export import _pii_classification
+    assert _pii_classification("email") == "MICROSOFT.PERSONAL.EMAIL"
+    assert _pii_classification("correo_electronico") == "MICROSOFT.PERSONAL.EMAIL"
+    assert _pii_classification("full_name") == "MICROSOFT.PERSONAL.NAME"
+
+
+def test_purview_push_mocked_end_to_end(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    cat, dic, glo = _sample_gov_tables()
+
+    calls = {"token": 0, "bulk": 0, "glossary_list": 0, "glossary_create": 0, "term": 0}
+
+    def fake_http_form(url, form):
+        calls["token"] += 1
+        assert "login.microsoftonline.com/tid" in url
+        assert form["resource"] == "https://purview.azure.net"
+        return {"access_token": "ptok"}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert headers["Authorization"] == "Bearer ptok"
+        if url.endswith("/entity/bulk"):
+            calls["bulk"] += 1
+            mutated = [{"guid": f"g-{i}", "attributes": {"qualifiedName": e["attributes"]["qualifiedName"]}}
+                      for i, e in enumerate(body["entities"])]
+            return {"mutatedEntities": {"CREATE": mutated, "UPDATE": []}}
+        if url.endswith("/glossary") and method == "GET":
+            calls["glossary_list"] += 1
+            return []
+        if url.endswith("/glossary") and method == "POST":
+            calls["glossary_create"] += 1
+            return {"guid": "gloss-1", "name": "MV Data Governance"}
+        if url.endswith("/glossary/term"):
+            calls["term"] += 1
+            return {"guid": f"term-{calls['term']}"}
+        if url.endswith("/entity/bulk/classification"):
+            return {}
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(pv, "_http_form", fake_http_form)
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+
+    r = pv.push_all(cat, dic, glo, dry_run=False)
+    assert calls["token"] == 1
+    assert calls["bulk"] == 1
+    assert calls["glossary_create"] == 1  # no existía -> se crea
+    assert calls["term"] == len(glo)
+    assert r["catalog"]["entity_count"] == len(cat) + len(dic)
+    assert len(r["catalog"]["guid_by_qualified_name"]) == len(cat) + len(dic)
+    assert r["pii"]["classification_count"] > 0
+
+
+def test_collibra_off_by_default(monkeypatch):
+    for var in ("COLLIBRA_BASE_URL", "COLLIBRA_USERNAME", "COLLIBRA_PASSWORD",
+               "COLLIBRA_DOMAIN_ID"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import collibra_export as cb
+    assert cb.configured() is False
+    cat, dic, glo = _sample_gov_tables()
+    with pytest.raises(RuntimeError):
+        cb.push_glossary(glo, dry_run=False)
+
+
+def test_collibra_dry_run_never_touches_network(monkeypatch):
+    for var in ("COLLIBRA_BASE_URL", "COLLIBRA_USERNAME", "COLLIBRA_PASSWORD",
+               "COLLIBRA_DOMAIN_ID"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import collibra_export as cb
+    cat, dic, glo = _sample_gov_tables()
+    r = cb.push_all(cat, dic, glo, dry_run=True)
+    assert r["dry_run"] is True
+    assert r["catalog"]["asset_count"] == len(cat) + len(dic)
+    assert r["glossary"]["term_count"] == len(glo)
+    # sin COLLIBRA_TABLE_TYPE_ID configurado, el payload usa un placeholder
+    # visible en vez de fallar en silencio
+    assert r["catalog"]["payloads"][0]["asset"]["typeId"] == "<COLLIBRA_TABLE_TYPE_ID>"
+
+
+def test_collibra_term_type_id_has_documented_default(monkeypatch):
+    for var in ("COLLIBRA_BASE_URL", "COLLIBRA_USERNAME", "COLLIBRA_PASSWORD",
+               "COLLIBRA_DOMAIN_ID", "COLLIBRA_TERM_TYPE_ID"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    from mvdg import collibra_export as cb
+    cat, dic, glo = _sample_gov_tables()
+    r = cb.push_glossary(glo, dry_run=True)
+    assert r["terms"][0]["asset"]["typeId"] == cb._DEFAULT_TERM_TYPE_ID
+
+
+def test_collibra_push_mocked_end_to_end(monkeypatch):
+    monkeypatch.setenv("COLLIBRA_BASE_URL", "https://acme.collibra.com")
+    monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+    monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    monkeypatch.setenv("COLLIBRA_TABLE_TYPE_ID", "type-table")
+    monkeypatch.setenv("COLLIBRA_COLUMN_TYPE_ID", "type-column")
+    from mvdg import collibra_export as cb
+    cat, dic, glo = _sample_gov_tables()
+
+    calls = {"login": 0, "assets": 0, "attributes": 0, "logout": 0}
+    asset_ids = iter(range(10_000))
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/sessions") and method == "POST":
+            calls["login"] += 1
+            return {}, ["JSESSIONID=abc123; Path=/; HttpOnly"]
+        if url.endswith("/auth/sessions/current") and method == "DELETE":
+            calls["logout"] += 1
+            return {}, []
+        assert headers["Cookie"] == "JSESSIONID=abc123"
+        if url.endswith("/assets"):
+            calls["assets"] += 1
+            return {"id": f"asset-{next(asset_ids)}"}, []
+        if url.endswith("/attributes"):
+            calls["attributes"] += 1
+            assert body["typeId"] == cb.DEFINITION_ATTRIBUTE_TYPE_ID
+            return {"id": "attr-1"}, []
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(cb, "_http_json", fake_http_json)
+
+    r = cb.push_catalog(cat, dic, dry_run=False)
+    assert calls["login"] == 1 and calls["logout"] == 1
+    assert calls["assets"] == len(cat) + len(dic)
+    assert calls["attributes"] == len(cat) + len(dic)  # todas tienen descripción
+    assert r["asset_count"] == len(cat) + len(dic)
+
+
+def test_collibra_logout_failure_does_not_break_push(monkeypatch):
+    """Best-effort sign-out: si el logout falla, el push ya hecho no se
+    pierde (mismo criterio que Tableau)."""
+    monkeypatch.setenv("COLLIBRA_BASE_URL", "https://acme.collibra.com")
+    monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+    monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    monkeypatch.setenv("COLLIBRA_TERM_TYPE_ID", "type-term")
+    from mvdg import collibra_export as cb
+    cat, dic, glo = _sample_gov_tables()
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/sessions") and method == "POST":
+            return {}, ["JSESSIONID=abc123; Path=/"]
+        if url.endswith("/auth/sessions/current"):
+            raise OSError("network blip")
+        if url.endswith("/assets"):
+            return {"id": "asset-x"}, []
+        if url.endswith("/attributes"):
+            return {"id": "attr-x"}, []
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cb, "_http_json", fake_http_json)
+    r = cb.push_glossary(glo, dry_run=False)  # no debe levantar
+    assert r["term_count"] == len(glo)

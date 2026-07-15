@@ -207,6 +207,22 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"encabezados detectados (ES/EN/PT) -> {n_ds} datasets con "
                 "owner+steward sugeridos por área y jerarquía, editable y persistente")
 
+    @check("Migración a Purview/Collibra (acelerador, apagado por defecto)")
+    def _():
+        from . import collibra_export as cb
+        from . import purview_export as pv
+        from .exporters import governance_tables
+        gov = governance_tables("es")
+        cat, dic, glo = gov["catalog"], gov["dictionary"], gov["glossary"]
+        assert pv.configured() is False and cb.configured() is False
+        pr = pv.push_all(cat, dic, glo, dry_run=True)
+        assert pr["catalog"]["entity_count"] == len(cat) + len(dic)
+        assert pr["pii"]["classification_count"] > 0
+        cr = cb.push_all(cat, dic, glo, dry_run=True)
+        assert cr["catalog"]["asset_count"] == len(cat) + len(dic)
+        return (f"dry-run sin credenciales: {pr['catalog']['entity_count']} entidades "
+                f"Purview + {cr['catalog']['asset_count']} assets Collibra previsualizados")
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os

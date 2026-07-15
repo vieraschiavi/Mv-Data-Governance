@@ -32,11 +32,13 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
+from mvdg import collibra_export
 from mvdg import curation
 from mvdg import insights
 from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
+from mvdg import purview_export
 from mvdg import samples as ext_samples
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
@@ -1222,6 +1224,60 @@ with tab_bi:
     st.code("\n".join([f"GET {base}/api/{name}?lang={lang}" for name in gov]) +
             f"\nGET {base}/api/catalog?lang={lang}&format=csv", language="http")
     st.caption(t("bi_guide", lang))
+
+    st.divider()
+    st.subheader(t("mig_title", lang))
+    st.info(t("mig_intro", lang), icon="🔀")
+
+    def _curation_lookup_factory(prefix):
+        def lookup(term_id):
+            rec = curation.get_record(f"{prefix}:{term_id}", lang)
+            return (rec["status"], rec.get("text") or "") if rec else ("sugerido_ia", "")
+        return lookup
+
+    mig_target = st.radio(t("mig_target", lang), ["purview", "collibra"], horizontal=True,
+                          format_func=lambda k: "Microsoft Purview" if k == "purview" else "Collibra")
+    _mig_cat, _mig_dic, _mig_glo = gov["catalog"], gov["dictionary"], gov["glossary"]
+    _mig_lookup = _curation_lookup_factory("glossary:demo")
+
+    if mig_target == "purview":
+        _mig_ready = purview_export.configured()
+        st.caption(t("mig_purview_env", lang) if not _mig_ready else t("mig_configured", lang))
+        if st.button(t("mig_preview", lang), key="mig_prev_pv"):
+            st.session_state["mig_result"] = purview_export.push_all(
+                _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=True)
+        if _mig_ready and st.button(t("mig_push", lang), type="primary", key="mig_push_pv"):
+            with st.spinner("…"):
+                try:
+                    st.session_state["mig_result"] = purview_export.push_all(
+                        _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=False)
+                    st.success(t("mig_done", lang))
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"⚠️ {exc}")
+    else:
+        _mig_ready = collibra_export.catalog_configured()
+        st.caption(t("mig_collibra_env", lang) if not _mig_ready else t("mig_configured", lang))
+        if st.button(t("mig_preview", lang), key="mig_prev_cb"):
+            st.session_state["mig_result"] = collibra_export.push_all(
+                _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=True)
+        if _mig_ready and st.button(t("mig_push", lang), type="primary", key="mig_push_cb"):
+            with st.spinner("…"):
+                try:
+                    st.session_state["mig_result"] = collibra_export.push_all(
+                        _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=False)
+                    st.success(t("mig_done", lang))
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"⚠️ {exc}")
+
+    _mig_res = st.session_state.get("mig_result")
+    if _mig_res is not None:
+        c1, c2 = st.columns(2)
+        c1.metric(t("mig_entities", lang), _mig_res["catalog"].get(
+            "entity_count", _mig_res["catalog"].get("asset_count", 0)))
+        c2.metric(t("mig_terms", lang), _mig_res["glossary"]["term_count"])
+        with st.expander(t("mig_detail", lang)):
+            st.json(_mig_res)
+    st.caption(t("mig_local_note", lang))
 
 # ---------------------------------------------------------------- Empresas
 with tab_cl:

@@ -558,6 +558,58 @@ _T: dict[str, dict[str, str]] = {
         "en": "Step-by-step guide per tool in `docs/BI_INTEGRATION.md`.",
         "pt": "Guia passo a passo por ferramenta em `docs/BI_INTEGRATION.md`.",
     },
+    # -------------------------------------------------------- migración (mig)
+    "mig_title": {"es": "🔀 Migración a Purview / Collibra", "en": "🔀 Migration to Purview / Collibra", "pt": "🔀 Migração para Purview / Collibra"},
+    "mig_intro": {
+        "es": "Empujá el catálogo, el diccionario y el glosario ya gobernados acá "
+              "hacia Purview o Collibra por API. Es un **acelerador, no un "
+              "reemplazo**: el programa hace el trabajo pesado (perfilar, reglas de "
+              "calidad, glosario, PII, curaduría con responsable) y al final "
+              "empuja el resultado — Purview/Collibra siguen siendo la plataforma "
+              "que tu equipo audita y usa después. El estado Draft/Approved de "
+              "cada término sale de la pestaña 🖊️ Curaduría real, no se inventa.",
+        "en": "Push the catalog, dictionary and glossary already governed here "
+              "into Purview or Collibra via API. It's an **accelerator, not a "
+              "replacement**: the program does the heavy lifting (profiling, "
+              "quality rules, glossary, PII, curation with a responsible person) "
+              "and pushes the result at the end — Purview/Collibra remain the "
+              "platform your team audits and uses afterward. Each term's Draft/"
+              "Approved status comes from the real 🖊️ Curation tab, not invented.",
+        "pt": "Empurre o catálogo, o dicionário e o glossário já governados aqui "
+              "para o Purview ou Collibra via API. É um **acelerador, não um "
+              "substituto**: o programa faz o trabalho pesado (perfilamento, "
+              "regras de qualidade, glossário, PII, curadoria com responsável) e "
+              "no final empurra o resultado — Purview/Collibra continuam sendo a "
+              "plataforma que sua equipe audita e usa depois. O status Draft/"
+              "Approved de cada termo vem da aba 🖊️ Curadoria real, não é inventado.",
+    },
+    "mig_target": {"es": "Destino", "en": "Target", "pt": "Destino"},
+    "mig_purview_env": {
+        "es": "Sin configurar — el preview funciona igual, sin credenciales. Para empujar de verdad, cargá `PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME` (ver `docs/PURVIEW_COLLIBRA.md`).",
+        "en": "Not configured — the preview still works, no credentials needed. To actually push, set `PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME` (see `docs/PURVIEW_COLLIBRA.md`).",
+        "pt": "Não configurado — o preview funciona igual, sem credenciais. Para empurrar de verdade, configure `PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME` (veja `docs/PURVIEW_COLLIBRA.md`).",
+    },
+    "mig_collibra_env": {
+        "es": "Sin configurar — el preview funciona igual, sin credenciales. Para empujar de verdad, cargá `COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`, `COLLIBRA_TABLE_TYPE_ID`, `COLLIBRA_COLUMN_TYPE_ID` (ver `docs/PURVIEW_COLLIBRA.md`).",
+        "en": "Not configured — the preview still works, no credentials needed. To actually push, set `COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`, `COLLIBRA_TABLE_TYPE_ID`, `COLLIBRA_COLUMN_TYPE_ID` (see `docs/PURVIEW_COLLIBRA.md`).",
+        "pt": "Não configurado — o preview funciona igual, sem credenciais. Para empurrar de verdade, configure `COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`, `COLLIBRA_TABLE_TYPE_ID`, `COLLIBRA_COLUMN_TYPE_ID` (veja `docs/PURVIEW_COLLIBRA.md`).",
+    },
+    "mig_configured": {
+        "es": "✅ Credenciales cargadas — el botón de push real está disponible.",
+        "en": "✅ Credentials loaded — the real push button is available.",
+        "pt": "✅ Credenciais carregadas — o botão de push real está disponível.",
+    },
+    "mig_preview": {"es": "👁️ Previsualizar (sin credenciales)", "en": "👁️ Preview (no credentials)", "pt": "👁️ Pré-visualizar (sem credenciais)"},
+    "mig_push": {"es": "🚀 Empujar de verdad", "en": "🚀 Push for real", "pt": "🚀 Empurrar de verdade"},
+    "mig_done": {"es": "Empujado.", "en": "Pushed.", "pt": "Empurrado."},
+    "mig_entities": {"es": "Entidades/assets", "en": "Entities/assets", "pt": "Entidades/assets"},
+    "mig_terms": {"es": "Términos de glosario", "en": "Glossary terms", "pt": "Termos de glossário"},
+    "mig_detail": {"es": "Ver el payload completo", "en": "View the full payload", "pt": "Ver o payload completo"},
+    "mig_local_note": {
+        "es": "Apagado por defecto. Las credenciales son tuyas y solo las lee este programa de las variables de entorno — nunca se piden en pantalla ni se guardan. Implementado contra la documentación oficial de cada proveedor; no probado contra un tenant/instancia real (ver docs/PURVIEW_COLLIBRA.md).",
+        "en": "Off by default. Your credentials are only read from environment variables by this program — never requested on screen or stored. Implemented against each provider's official docs; not tested against a live tenant/instance (see docs/PURVIEW_COLLIBRA.md).",
+        "pt": "Desligado por padrão. Suas credenciais são lidas apenas das variáveis de ambiente por este programa — nunca pedidas na tela nem salvas. Implementado contra a documentação oficial de cada provedor; não testado contra um tenant/instância real (veja docs/PURVIEW_COLLIBRA.md).",
+    },
     # -------------------------------------------------------------- clients
     "cl_intro": {
         "es": "Fichas de empresas clientes: contacto, BI que usan, restricciones "
