@@ -800,6 +800,91 @@ def test_curation_requires_responsible_name(tmp_path, monkeypatch):
                                  "", "Nombre", "Cargo")
 
 
+def _org_fixture():
+    return pd.DataFrame({
+        "Departamento": ["Dirección General", "Gerencia Comercial", "Gerencia Comercial",
+                         "Finanzas", "Calidad y Regulatorio", "Calidad y Regulatorio",
+                         "Marketing", "TI / Datos"],
+        "Nombre completo": ["Ana Torres", "Bruno Díaz", "Carla Gómez", "Diego Ruiz",
+                            "Elena Sosa", "Fabián López", "Gina Méndez", "Hugo Pereira"],
+        "Puesto": ["CEO", "Gerente Comercial", "Analista de Ventas", "Director de Finanzas",
+                   "Directora de Calidad", "Analista Regulatorio", "Jefa de Marketing",
+                   "Coordinador de BI"],
+        "Jefe directo": ["", "Ana Torres", "Bruno Díaz", "Ana Torres", "Ana Torres",
+                         "Elena Sosa", "Ana Torres", "Diego Ruiz"],
+    })
+
+
+def test_orgchart_header_detection_any_language_and_order():
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    assert list(org.columns) == ["nombre", "cargo", "area", "reporta_a", "email"]
+    assert len(org) == 8
+    # encabezados en inglés también
+    en = _org_fixture().rename(columns={"Departamento": "Department",
+                                        "Nombre completo": "Name",
+                                        "Puesto": "Job Title",
+                                        "Jefe directo": "Reports To"})
+    assert len(oc.parse_org_table(en)) == 8
+    # sin columnas mínimas -> error claro, no un KeyError críptico
+    with pytest.raises(ValueError):
+        oc.parse_org_table(pd.DataFrame({"x": [1], "y": [2]}))
+
+
+def test_orgchart_assignments_match_domain_and_seniority():
+    """El owner sugerido es la persona de mayor jerarquía del área que
+    matchea el dominio — y el orden de keywords es prioridad (para
+    bank_marketing gana Marketing, no Comercial)."""
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    asg = oc.suggest_assignments(org).set_index("dataset")
+    assert asg.loc["fct_payments", "owner_name"] == "Diego Ruiz"        # Finanzas
+    assert asg.loc["medicamentos_openfda", "owner_name"] == "Elena Sosa"  # Calidad/Regulatorio
+    assert asg.loc["medicamentos_openfda", "steward_name"] == "Fabián López"
+    assert asg.loc["bank_marketing_uci", "owner_name"] == "Gina Méndez"  # Marketing > Comercial
+    assert (asg["estado"] == "sugerido").all()
+    # todos los datasets del programa reciben responsable con nombre y cargo
+    assert (asg["owner_name"].str.len() > 0).all()
+    assert (asg["owner_role"].str.len() > 0).all()
+
+
+def test_orgchart_persistence_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    oc.save_org(org)
+    assert oc.load_org().equals(org)
+    asg = oc.suggest_assignments(org)
+    oc.save_assignments(asg)
+    assert oc.load_assignments().equals(asg)
+
+
+def test_orgchart_photo_ai_off_by_default(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
+                "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg.ai_provider import ai_parse_orgchart_image
+    assert ai_parse_orgchart_image(b"fake-image-bytes") is None
+
+
+def test_orgchart_photo_ai_parses_mocked_response(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    from mvdg import ai_provider as ap
+
+    def fake_post(url, headers, body):
+        assert "anthropic" in url
+        # la imagen viaja en base64 dentro del body
+        assert body["messages"][0]["content"][0]["type"] == "image"
+        return {"content": [{"text": '{"personas": [{"nombre": "Ana Torres", '
+                                     '"cargo": "CEO", "area": "Dirección", '
+                                     '"reporta_a": ""}]}'}]}
+
+    monkeypatch.setattr(ap, "_post_json", fake_post)
+    people = ap.ai_parse_orgchart_image(b"png-bytes", "image/png", "es", "claude")
+    assert people == [{"nombre": "Ana Torres", "cargo": "CEO",
+                       "area": "Dirección", "reporta_a": "", "email": ""}]
+
+
 def test_samples_openfda_bi_bundle_complete():
     """End-to-end hasta el BI: el paquete de gobierno del dataset openFDA trae
     datos + diccionario + calidad + glosario listos para exportar/servir."""

@@ -345,3 +345,113 @@ def ai_refactor_calc(field: str, formula: str, datasource: str = "",
     if not all(k in parsed and parsed[k] for k in _CALC_KEYS):
         return None
     return {k: str(parsed[k]) for k in _CALC_KEYS}
+
+
+# ------------------------------------------------- organigrama desde imagen
+# ÚNICA función del producto que manda una IMAGEN al proveedor externo: la
+# foto del organigrama que el usuario elige subir, solo cuando aprieta el
+# botón (opt-in explícito, con aviso en pantalla). No hay forma local de
+# leer una foto sin dependencias pesadas de OCR; para no mandar nada a
+# internet, usá el camino Excel/CSV/SQL, que es 100% local.
+_ORG_PROMPT_TMPL = {
+    "es": ("Esta imagen es el organigrama de una empresa. Extraé TODAS las "
+           "personas que aparecen. Respondé SOLO un objeto JSON con la forma "
+           '{"personas": [{"nombre": "...", "cargo": "...", "area": "...", '
+           '"reporta_a": "..."}]} — área es el departamento/gerencia al que '
+           "pertenece; reporta_a es el nombre de su jefe directo si se puede "
+           "deducir de las líneas del organigrama (si no, dejalo vacío). No "
+           "inventes personas que no estén en la imagen."),
+    "en": ("This image is a company org chart. Extract ALL the people shown. "
+           'Reply ONLY with a JSON object shaped {"personas": [{"nombre": '
+           '"...", "cargo": "...", "area": "...", "reporta_a": "..."}]} — '
+           "area is the department/unit they belong to; reporta_a is their "
+           "direct manager's name if it can be deduced from the chart lines "
+           "(otherwise leave it empty). Do not invent people not in the image."),
+    "pt": ("Esta imagem é o organograma de uma empresa. Extraia TODAS as "
+           "pessoas mostradas. Responda SOMENTE um objeto JSON no formato "
+           '{"personas": [{"nombre": "...", "cargo": "...", "area": "...", '
+           '"reporta_a": "..."}]} — area é o departamento/gerência; reporta_a '
+           "é o nome do chefe direto se puder ser deduzido das linhas do "
+           "organograma (senão, deixe vazio). Não invente pessoas que não "
+           "estejam na imagem."),
+}
+
+
+def _call_claude_vision(prompt: str, b64: str, media_type: str,
+                        api_key: str, model: str) -> str:
+    body = {"model": model, "max_tokens": 2000,
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                                             "media_type": media_type, "data": b64}},
+                {"type": "text", "text": prompt}]}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    data = _post_json("https://api.anthropic.com/v1/messages", headers, body)
+    return data["content"][0]["text"]
+
+
+def _call_openai_vision(prompt: str, b64: str, media_type: str,
+                        api_key: str, model: str) -> str:
+    body = {"model": model, "max_tokens": 2000,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url",
+                 "image_url": {"url": f"data:{media_type};base64,{b64}"}},
+                {"type": "text", "text": prompt}]}]}
+    headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+    data = _post_json("https://api.openai.com/v1/chat/completions", headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
+def _call_gemini_vision(prompt: str, b64: str, media_type: str,
+                        api_key: str, model: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    body = {"contents": [{"parts": [
+        {"inline_data": {"mime_type": media_type, "data": b64}},
+        {"text": prompt}]}]}
+    data = _post_json(url, {"content-type": "application/json"}, body)
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+_VISION_CALLERS = {"claude": _call_claude_vision, "openai": _call_openai_vision,
+                   "gemini": _call_gemini_vision}
+
+
+def ai_parse_orgchart_image(image_bytes: bytes, media_type: str = "image/png",
+                            lang: str = "es",
+                            provider: str | None = None) -> list[dict] | None:
+    """Extrae las personas (nombre, cargo, área, jefe) de la FOTO de un
+    organigrama usando el proveedor de IA configurado. Devuelve una lista de
+    dicts o None si no hay proveedor, la llamada falla o la respuesta no
+    trae personas. Implementado contra las APIs de visión documentadas de
+    los 3 proveedores; como el resto de la capa de IA externa, no fue
+    probado contra una cuenta real en este entorno de desarrollo."""
+    provider = provider or configured_provider()
+    if not provider or provider not in _VISION_CALLERS:
+        return None
+    env_var, _, _, _ = _PROVIDERS[provider]
+    api_key = os.environ.get(env_var)
+    if not api_key or not image_bytes:
+        return None
+    import base64
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    prompt = _ORG_PROMPT_TMPL.get(lang, _ORG_PROMPT_TMPL["es"])
+    try:
+        text = _VISION_CALLERS[provider](prompt, b64, media_type,
+                                         api_key, _model_for(provider))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            KeyError, IndexError, ValueError, OSError):
+        return None
+    parsed = _extract_json_object(text)
+    if not parsed or not isinstance(parsed.get("personas"), list):
+        return None
+    people = []
+    for p in parsed["personas"]:
+        if isinstance(p, dict) and str(p.get("nombre", "")).strip():
+            people.append({
+                "nombre": str(p.get("nombre", "")).strip(),
+                "cargo": str(p.get("cargo", "")).strip(),
+                "area": str(p.get("area", "")).strip(),
+                "reporta_a": str(p.get("reporta_a", "")).strip(),
+                "email": "",
+            })
+    return people or None

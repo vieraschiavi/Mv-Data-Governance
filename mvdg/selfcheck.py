@@ -174,6 +174,39 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"{total} definiciones pre-establecidas; validar/modificar/"
                 "resetear con responsable, verificado (local)")
 
+    @check("Organigrama -> responsables por defecto (owner/steward por dataset)")
+    def _():
+        import os
+        import tempfile
+
+        import pandas as pd
+        from . import orgchart as oc
+        org = oc.parse_org_table(pd.DataFrame({
+            "Department": ["Sales", "Sales", "Finance", "Quality", "Marketing"],
+            "Name": ["A. Uno", "B. Dos", "C. Tres", "D. Cuatro", "E. Cinco"],
+            "Job Title": ["Sales Manager", "Analyst", "Finance Director",
+                          "Quality Director", "Marketing Lead"],
+        }))
+        asg = oc.suggest_assignments(org)
+        assert (asg["owner_name"].str.len() > 0).all()
+        assert (asg["owner_role"].str.len() > 0).all()
+        n_ds = len(asg)
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                oc.save_org(org)
+                oc.save_assignments(asg)
+                assert oc.load_org().equals(org)
+                assert oc.load_assignments().equals(asg)
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return (f"encabezados detectados (ES/EN/PT) -> {n_ds} datasets con "
+                "owner+steward sugeridos por área y jerarquía, editable y persistente")
+
     @check("Centro de ayuda (speeches IA)")
     def _():
         from .help_center import SPEECHES, automation_rows

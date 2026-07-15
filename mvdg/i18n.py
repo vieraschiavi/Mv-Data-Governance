@@ -48,6 +48,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_lineage": {"es": "🧬 Linaje", "en": "🧬 Lineage", "pt": "🧬 Linhagem"},
     "tab_glossary": {"es": "📖 Glosario", "en": "📖 Glossary", "pt": "📖 Glossário"},
     "tab_curation": {"es": "🖊️ Curaduría", "en": "🖊️ Curation", "pt": "🖊️ Curadoria"},
+    "tab_responsibles": {"es": "👥 Responsables", "en": "👥 Responsibles", "pt": "👥 Responsáveis"},
     "tab_policies": {"es": "🛡️ Políticas", "en": "🛡️ Policies", "pt": "🛡️ Políticas"},
     "tab_profiler": {"es": "🔎 Mis datos", "en": "🔎 My data", "pt": "🔎 Meus dados"},
     "tab_bi": {"es": "📤 BI & API", "en": "📤 BI & API", "pt": "📤 BI & API"},
@@ -266,6 +267,80 @@ _T: dict[str, dict[str, str]] = {
         "es": "Los veredictos se guardan solo en tu equipo (~/.mv_data_governance/curaduria.json) y persisten entre sesiones.",
         "en": "Verdicts are stored only on your machine (~/.mv_data_governance/curaduria.json) and persist between sessions.",
         "pt": "Os vereditos são salvos apenas no seu equipamento (~/.mv_data_governance/curaduria.json) e persistem entre sessões.",
+    },
+    # --------------------------------------------------------- responsibles
+    "rs_intro": {
+        "es": "Cargá el organigrama de la empresa (Excel/CSV, una tabla traída por "
+              "conexión SQL, o una foto) y el programa completa automáticamente, por "
+              "defecto, el Data Owner y el Data Steward de cada dataset — con nombre y "
+              "cargo — según el área que mejor matchea cada dominio y la jerarquía de "
+              "los cargos. Después editás lo que quieras y lo guardás: la sugerencia "
+              "nunca es la palabra final.",
+        "en": "Load the company org chart (Excel/CSV, a table brought via SQL "
+              "connection, or a photo) and the program automatically fills in, by "
+              "default, each dataset's Data Owner and Data Steward — with name and "
+              "role — based on the area that best matches each domain and the "
+              "seniority of the roles. Then edit whatever you want and save: the "
+              "suggestion is never the final word.",
+        "pt": "Carregue o organograma da empresa (Excel/CSV, uma tabela trazida por "
+              "conexão SQL, ou uma foto) e o programa preenche automaticamente, por "
+              "padrão, o Data Owner e o Data Steward de cada dataset — com nome e "
+              "cargo — conforme a área que melhor combina com cada domínio e a "
+              "hierarquia dos cargos. Depois edite o que quiser e salve: a sugestão "
+              "nunca é a palavra final.",
+    },
+    "rs_source": {"es": "¿De dónde viene el organigrama?", "en": "Where does the org chart come from?", "pt": "De onde vem o organograma?"},
+    "rs_src_file": {"es": "📄 Excel / CSV", "en": "📄 Excel / CSV", "pt": "📄 Excel / CSV"},
+    "rs_src_photo": {"es": "📷 Foto (IA externa)", "en": "📷 Photo (external AI)", "pt": "📷 Foto (IA externa)"},
+    "rs_src_saved": {"es": "💾 Guardado", "en": "💾 Saved", "pt": "💾 Salvo"},
+    "rs_upload": {"es": "Subí el organigrama (.xlsx/.csv)", "en": "Upload the org chart (.xlsx/.csv)", "pt": "Envie o organograma (.xlsx/.csv)"},
+    "rs_upload_hint": {
+        "es": "Alcanza con columnas de nombre, cargo y área (jefe y email son opcionales) — se detectan por el encabezado, en cualquier orden e idioma. ¿La tabla está en una base? Traela por conexión SQL en 🔎 Mis datos, exportala y subila acá.",
+        "en": "Columns for name, role and area are enough (manager and email are optional) — detected by header, in any order and language. Is the table in a database? Bring it via SQL connection in 🔎 My data, export it and upload it here.",
+        "pt": "Bastam colunas de nome, cargo e área (chefe e email são opcionais) — detectadas pelo cabeçalho, em qualquer ordem e idioma. A tabela está num banco? Traga-a por conexão SQL em 🔎 Meus dados, exporte e envie aqui.",
+    },
+    "rs_parsed": {"es": "Organigrama leído: {n} personas.", "en": "Org chart read: {n} people.", "pt": "Organograma lido: {n} pessoas."},
+    "rs_photo_needs_ai": {
+        "es": "Leer una foto requiere la IA externa opcional (tu propia API key de Claude/ChatGPT/Gemini — ver docs/IA_EXTERNA.md). Sin eso, usá el camino Excel/CSV, que es 100% local.",
+        "en": "Reading a photo requires the optional external AI (your own Claude/ChatGPT/Gemini API key — see docs/IA_EXTERNA.md). Without it, use the Excel/CSV path, which is 100% local.",
+        "pt": "Ler uma foto requer a IA externa opcional (sua própria API key de Claude/ChatGPT/Gemini — veja docs/IA_EXTERNA.md). Sem isso, use o caminho Excel/CSV, que é 100% local.",
+    },
+    "rs_photo_disclosure": {
+        "es": "⚠️ La foto se envía a {provider} para extraer el texto — es la única función del programa que manda una imagen afuera, y solo cuando vos apretás el botón. Si el organigrama es confidencial, usá el camino Excel/CSV (100% local).",
+        "en": "⚠️ The photo is sent to {provider} to extract the text — it's the only feature in the program that sends an image out, and only when you press the button. If the org chart is confidential, use the Excel/CSV path (100% local).",
+        "pt": "⚠️ A foto é enviada a {provider} para extrair o texto — é a única função do programa que envia uma imagem para fora, e somente quando você aperta o botão. Se o organograma é confidencial, use o caminho Excel/CSV (100% local).",
+    },
+    "rs_upload_photo": {"es": "Subí la foto del organigrama", "en": "Upload the org chart photo", "pt": "Envie a foto do organograma"},
+    "rs_extract_photo": {"es": "🔍 Extraer personas de la foto", "en": "🔍 Extract people from the photo", "pt": "🔍 Extrair pessoas da foto"},
+    "rs_photo_failed": {
+        "es": "No se pudieron extraer personas de la imagen (falló la llamada o la IA no encontró un organigrama legible).",
+        "en": "Couldn't extract people from the image (the call failed or the AI found no readable org chart).",
+        "pt": "Não foi possível extrair pessoas da imagem (a chamada falhou ou a IA não encontrou um organograma legível).",
+    },
+    "rs_none_saved": {"es": "Todavía no hay un organigrama guardado — cargalo por archivo o foto.", "en": "No org chart saved yet — load it from a file or photo.", "pt": "Ainda não há organograma salvo — carregue por arquivo ou foto."},
+    "rs_people": {"es": "Personas del organigrama", "en": "People in the org chart", "pt": "Pessoas do organograma"},
+    "rs_people_edit_hint": {"es": "Editá celdas, agregá o borrá filas antes de guardar.", "en": "Edit cells, add or remove rows before saving.", "pt": "Edite células, adicione ou remova linhas antes de salvar."},
+    "rs_save_org": {"es": "💾 Guardar organigrama", "en": "💾 Save org chart", "pt": "💾 Salvar organograma"},
+    "rs_org_saved": {"es": "Organigrama guardado.", "en": "Org chart saved.", "pt": "Organograma salvo."},
+    "rs_assignments": {"es": "Responsables por dataset (nombre y cargo)", "en": "Responsibles per dataset (name and role)", "pt": "Responsáveis por dataset (nome e cargo)"},
+    "rs_suggest": {"es": "🪄 Completar responsables por defecto", "en": "🪄 Fill in default responsibles", "pt": "🪄 Preencher responsáveis por padrão"},
+    "rs_asg_hint": {
+        "es": "Sugerido por área y jerarquía (columna «match» dice qué se usó). Editá los nombres/cargos que haga falta — al guardar, esas filas quedan marcadas «editado».",
+        "en": "Suggested by area and seniority (the “match” column says what was used). Edit any names/roles as needed — on save, those rows are marked “edited”.",
+        "pt": "Sugerido por área e hierarquia (a coluna «match» diz o que foi usado). Edite os nomes/cargos que precisar — ao salvar, essas linhas ficam marcadas «editado».",
+    },
+    "rs_owner_name": {"es": "Data Owner", "en": "Data Owner", "pt": "Data Owner"},
+    "rs_owner_role": {"es": "Cargo del owner", "en": "Owner's role", "pt": "Cargo do owner"},
+    "rs_steward_name": {"es": "Data Steward", "en": "Data Steward", "pt": "Data Steward"},
+    "rs_steward_role": {"es": "Cargo del steward", "en": "Steward's role", "pt": "Cargo do steward"},
+    "rs_match": {"es": "Match", "en": "Match", "pt": "Match"},
+    "rs_estado": {"es": "Estado", "en": "Status", "pt": "Status"},
+    "rs_save_asg": {"es": "💾 Guardar responsables", "en": "💾 Save responsibles", "pt": "💾 Salvar responsáveis"},
+    "rs_asg_saved": {"es": "Responsables guardados.", "en": "Responsibles saved.", "pt": "Responsáveis salvos."},
+    "rs_local_note": {
+        "es": "El organigrama y los responsables se guardan solo en tu equipo (organigrama.json / responsables.json) y persisten entre sesiones.",
+        "en": "The org chart and responsibles are stored only on your machine (organigrama.json / responsables.json) and persist between sessions.",
+        "pt": "O organograma e os responsáveis são salvos apenas no seu equipamento (organigrama.json / responsables.json) e persistem entre sessões.",
     },
     # ------------------------------------------------------------- policies
     "p_intro": {
