@@ -35,6 +35,7 @@ from mvdg import cobit_iso
 from mvdg import dmbok
 from mvdg import mdm
 from mvdg import samples as ext_samples
+from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
 from mvdg.demo_data import load_demo_tables
@@ -111,12 +112,13 @@ results = _results(lang)
 tables = _tables()
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
- tab_pbi, tab_tab, tab_cl, tab_h) = st.tabs([
+ tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
     t("tab_profiler", lang), t("tab_bi", lang),
-    t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang), t("tab_help", lang),
+    t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang),
+    t("tab_workspace", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -699,10 +701,15 @@ with tab_p:
     }), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Mis datos
-def _render_profile(user_df):
-    """Perfila y muestra un DataFrame (venga de archivo o de base de datos)."""
+def _render_profile(user_df, dataset_name: str | None = None):
+    """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
+    Además lo deja disponible en session_state para guardarlo en el proyecto
+    del cliente (pestaña 📁 Proyecto), así el trabajo no se pierde."""
     if user_df is None or not len(user_df):
         return
+    if dataset_name:
+        st.session_state["current_dataset"] = user_df
+        st.session_state["current_dataset_name"] = dataset_name
     info = summary(user_df)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("col_rows", lang), f"{info['rows']:,}")
@@ -830,7 +837,7 @@ with tab_pr:
             except Exception as exc:  # archivo corrupto / formato raro
                 st.error(f"⚠️ {exc}")
                 user_df = None
-            _render_profile(user_df)
+            _render_profile(user_df, dataset_name=up.name if up is not None else None)
     else:
         st.markdown(t("db_intro", lang))
         existing = load_connections()
@@ -926,13 +933,15 @@ with tab_pr:
                 table = p1.selectbox(t("db_pick_table", lang), tables)
                 if p2.button(t("db_load", lang)):
                     try:
-                        _render_profile(load_table(active, table, int(lim), password=pwd or None))
+                        _render_profile(load_table(active, table, int(lim), password=pwd or None),
+                                        dataset_name=table)
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"⚠️ {exc}")
                 sql = st.text_area(t("db_query", lang), "")
                 if sql.strip() and st.button(t("db_run_query", lang)):
                     try:
-                        _render_profile(run_query(active, sql, int(lim), password=pwd or None))
+                        _render_profile(run_query(active, sql, int(lim), password=pwd or None),
+                                        dataset_name="query_result")
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"⚠️ {exc}")
             else:
@@ -1091,6 +1100,143 @@ with tab_cl:
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            width="stretch")
     st.caption(t("cl_where", lang).format(path=data_dir()))
+
+# ---------------------------------------------------------------- Proyecto
+with tab_ws:
+    st.info(t("ws_intro", lang), icon="📁")
+    ws_clients = load_clients()
+    if not ws_clients:
+        st.warning(t("ws_no_clients", lang), icon="🏢")
+    else:
+        ws_opts = {f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})": c
+                   for c in ws_clients}
+        ws_pick = st.selectbox(t("ws_pick_client", lang), list(ws_opts.keys()),
+                               key="ws_pick_client")
+        ws_client = ws_opts[ws_pick]
+        ws_cid = ws_client["client_id"]
+
+        summ = ws.project_summary(ws_cid)
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric(t("ws_summary_stages", lang), summ["stages"])
+        s2.metric(t("ws_summary_tables", lang), summ["tables"])
+        s3.metric(t("ws_summary_rows", lang), f"{summ['rows']:,}")
+        s4.metric(t("ws_summary_updated", lang), (summ["updated_at"] or "—")[:10])
+
+        # --- Guardar etapa actual ---
+        st.subheader(t("ws_save_title", lang))
+        st.caption(t("ws_capture_hint", lang))
+
+        # Reúne lo que hay disponible ahora mismo en la sesión para capturar.
+        candidates: dict[str, tuple] = {}
+        _cur_ds = st.session_state.get("current_dataset")
+        if isinstance(_cur_ds, pd.DataFrame) and not _cur_ds.empty:
+            _nm = st.session_state.get("current_dataset_name", "dataset")
+            candidates["dataset"] = (
+                t("ws_include_dataset", lang).format(name=_nm), {"dataset": _cur_ds})
+        _mdm_rep = st.session_state.get("mdm_report")
+        if isinstance(_mdm_rep, pd.DataFrame) and not _mdm_rep.empty:
+            candidates["mdm"] = (
+                t("ws_include_mdm", lang),
+                {"mdm_report": _mdm_rep.drop(columns="row_indices", errors="ignore")})
+        _pbi_res = st.session_state.get("pbi_tenant_result")
+        if isinstance(_pbi_res, dict):
+            _pt = {f"powerbi_{k}": v for k, v in _pbi_res.items()
+                   if isinstance(v, pd.DataFrame) and not v.empty}
+            if _pt:
+                candidates["powerbi"] = (t("ws_include_powerbi", lang), _pt)
+        _tab_res = st.session_state.get("tab_scan_result")
+        if isinstance(_tab_res, dict):
+            _tt = {f"tableau_{k}": v for k, v in _tab_res.items()
+                   if isinstance(v, pd.DataFrame) and not v.empty}
+            if _tt:
+                candidates["tableau"] = (t("ws_include_tableau", lang), _tt)
+        # El paquete de gobierno (9 tablas) siempre está disponible.
+        candidates["governance"] = (t("ws_include_governance", lang), None)
+
+        chosen = []
+        for _key, (_label, _tbls) in candidates.items():
+            if st.checkbox(_label, key=f"ws_inc_{_key}", value=(_key == "dataset")):
+                chosen.append(_key)
+
+        ws_name = st.text_input(t("ws_stage_name", lang), key="ws_stage_name_in")
+        ws_notes = st.text_area(t("ws_stage_notes", lang), key="ws_stage_notes_in")
+        if st.button(t("ws_save_btn", lang), key="ws_save_stage_btn"):
+            if not ws_name.strip():
+                st.error(t("ws_need_name", lang))
+            elif not chosen:
+                st.error(t("ws_need_selection", lang))
+            else:
+                _tables: dict = {}
+                for _key in chosen:
+                    if _key == "governance":
+                        for _gk, _gv in governance_tables(lang).items():
+                            _tables[f"gob_{_gk}"] = _gv
+                    else:
+                        _tables.update(candidates[_key][1])
+                _kind = chosen[0] if len(chosen) == 1 else "mixto"
+                try:
+                    _m = ws.save_stage(ws_cid, ws_name, _tables, kind=_kind,
+                                       notes=ws_notes,
+                                       meta={"lang": lang, "artifacts": chosen})
+                    st.success(t("ws_saved_ok", lang).format(
+                        name=_m["name"], n=len(_m["tables"])))
+                except ValueError as exc:
+                    st.error(str(exc), icon="⚠️")
+
+        # --- Etapas guardadas ---
+        st.subheader(t("ws_stages_title", lang))
+        _stages = ws.list_stages(ws_cid)
+        if not _stages:
+            st.caption(t("ws_no_stages", lang))
+        for _sm in _stages:
+            _sid = _sm["stage_id"]
+            _hdr = (f"📌 {_sm['name']} · {_sm.get('kind', '')} · "
+                    f"{_sm.get('created_at', '')[:16].replace('T', ' ')}")
+            with st.expander(_hdr):
+                if _sm.get("notes"):
+                    st.caption(_sm["notes"])
+                _tinfo = pd.DataFrame([{
+                    t("ws_col_table", lang): _e["name"],
+                    t("col_rows", lang): _e["rows"],
+                    t("col_column", lang): _e["cols"],
+                } for _e in _sm.get("tables", [])])
+                st.dataframe(_tinfo, hide_index=True, width="stretch")
+                _cc1, _cc2 = st.columns(2)
+                if _cc1.button(t("ws_reload", lang), key=f"ws_reload_{_sid}"):
+                    st.session_state["ws_open_stage"] = _sid
+                if _cc2.button(t("ws_delete", lang), key=f"ws_del_{_sid}"):
+                    ws.delete_stage(ws_cid, _sid)
+                    if st.session_state.get("ws_open_stage") == _sid:
+                        st.session_state["ws_open_stage"] = None
+                    st.success(t("ws_deleted", lang))
+                if st.session_state.get("ws_open_stage") == _sid:
+                    _loaded = ws.load_stage(ws_cid, _sid)
+                    for _tname, _tdf in _loaded["loaded_tables"].items():
+                        st.markdown(f"**{_tname}** — {len(_tdf):,} × {_tdf.shape[1]}")
+                        st.dataframe(_tdf.head(50), width="stretch", hide_index=True)
+                        st.download_button(
+                            t("bi_download_csv", lang), to_csv_bytes(_tdf),
+                            f"{_sm['name']}_{_tname}.csv".replace(" ", "_"),
+                            "text/csv", key=f"ws_dl_{_sid}_{_tname}")
+
+        # --- Exportar / importar el proyecto completo ---
+        st.subheader(t("ws_export_title", lang))
+        st.caption(t("ws_export_hint", lang))
+        _ex1, _ex2 = st.columns(2)
+        _ex1.download_button(t("ws_export_btn", lang), ws.export_project(ws_cid),
+                             f"proyecto_{ws_cid[:6]}.zip", "application/zip",
+                             width="stretch")
+        _up_zip = _ex2.file_uploader(t("ws_import_btn", lang), type=["zip"],
+                                     key="ws_import_zip")
+        _ws_replace = st.checkbox(t("ws_import_replace", lang), key="ws_import_replace")
+        if _up_zip is not None and st.button(t("ws_do_import", lang), key="ws_do_import"):
+            try:
+                _n = ws.import_project(ws_cid, _up_zip.read(), replace=_ws_replace)
+                st.success(t("ws_imported_ok", lang).format(n=_n))
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+
+        st.caption(t("ws_where", lang).format(path=ws.client_root(ws_cid)))
 
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
