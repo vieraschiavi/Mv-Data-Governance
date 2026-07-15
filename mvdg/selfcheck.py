@@ -207,6 +207,29 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"encabezados detectados (ES/EN/PT) -> {n_ds} datasets con "
                 "owner+steward sugeridos por área y jerarquía, editable y persistente")
 
+    @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
+    def _():
+        import os
+        import tempfile
+
+        from . import insights
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                s = insights.governance_summary("es")
+                assert s["datasets"] == 8
+                assert 0 <= s["governance_index"] <= 100
+                df = insights.governance_coverage("es")
+                assert len(df) == 8 and df["classified"].all()
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return (f"8 datasets, índice de gobierno {s['governance_index']}/100 "
+                "(sube al usar Responsables y Curaduría)")
+
     @check("Centro de ayuda (speeches IA)")
     def _():
         from .help_center import SPEECHES, automation_rows

@@ -268,6 +268,30 @@ _T: dict[str, dict[str, str]] = {
         "en": "Verdicts are stored only on your machine (~/.mv_data_governance/curaduria.json) and persist between sessions.",
         "pt": "Os vereditos são salvos apenas no seu equipamento (~/.mv_data_governance/curaduria.json) e persistem entre sessões.",
     },
+    # ---------------------------------------------------- governance insights
+    "gi_title": {"es": "🏛️ Estado del gobierno (estilo Purview, 100% local)", "en": "🏛️ Governance estate (Purview-style, 100% local)", "pt": "🏛️ Estado da governança (estilo Purview, 100% local)"},
+    "gi_caption": {
+        "es": "No mide la calidad de los datos — mide la salud del GOBIERNO sobre esos datos: cuánto del patrimonio tiene responsable con nombre, clasificación, reglas y definiciones revisadas. Mejora a medida que usás las pestañas 👥 Responsables y 🖊️ Curaduría.",
+        "en": "It doesn't measure data quality — it measures the health of the GOVERNANCE over that data: how much of the estate has a named responsible, classification, rules and reviewed definitions. It improves as you use the 👥 Responsibles and 🖊️ Curation tabs.",
+        "pt": "Não mede a qualidade dos dados — mede a saúde da GOVERNANÇA sobre esses dados: quanto do patrimônio tem responsável com nome, classificação, regras e definições revisadas. Melhora à medida que você usa as abas 👥 Responsáveis e 🖊️ Curadoria.",
+    },
+    "gi_index": {"es": "Índice de gobierno", "en": "Governance index", "pt": "Índice de governança"},
+    "gi_owner": {"es": "Con owner nombrado", "en": "Named owner", "pt": "Com owner nomeado"},
+    "gi_steward": {"es": "Con steward nombrado", "en": "Named steward", "pt": "Com steward nomeado"},
+    "gi_classified": {"es": "Clasificados", "en": "Classified", "pt": "Classificados"},
+    "gi_rules": {"es": "Con reglas de calidad", "en": "With quality rules", "pt": "Com regras de qualidade"},
+    "gi_curation": {"es": "Definiciones revisadas", "en": "Definitions reviewed", "pt": "Definições revisadas"},
+    "gi_detail": {"es": "Detalle por dataset", "en": "Per-dataset detail", "pt": "Detalhe por dataset"},
+    "gi_col_owner": {"es": "Owner nombrado", "en": "Named owner", "pt": "Owner nomeado"},
+    "gi_col_steward": {"es": "Steward nombrado", "en": "Named steward", "pt": "Steward nomeado"},
+    "gi_col_classified": {"es": "Clasificado", "en": "Classified", "pt": "Classificado"},
+    "gi_col_rules": {"es": "Reglas", "en": "Rules", "pt": "Regras"},
+    "gi_col_curation": {"es": "% curado", "en": "% curated", "pt": "% curado"},
+    "gi_how_to_improve": {
+        "es": "¿Cómo subir el índice? Asigná personas con nombre y cargo en 👥 Responsables (los datasets de ejemplo arrancan con equipos genéricos a propósito) y validá definiciones en 🖊️ Curaduría.",
+        "en": "How to raise the index? Assign named people in 👥 Responsibles (the sample datasets start with generic teams on purpose) and validate definitions in 🖊️ Curation.",
+        "pt": "Como subir o índice? Atribua pessoas com nome e cargo em 👥 Responsáveis (os datasets de exemplo começam com equipes genéricas de propósito) e valide definições em 🖊️ Curadoria.",
+    },
     # --------------------------------------------------------- responsibles
     "rs_intro": {
         "es": "Cargá el organigrama de la empresa (Excel/CSV, una tabla traída por "

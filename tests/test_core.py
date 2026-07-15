@@ -885,6 +885,35 @@ def test_orgchart_photo_ai_parses_mocked_response(monkeypatch):
                        "area": "Dirección", "reporta_a": "", "email": ""}]
 
 
+def test_insights_governance_coverage(tmp_path, monkeypatch):
+    """El índice de gobierno cubre los 8 datasets y sube cuando se asignan
+    responsables con nombre (👥) y se curan definiciones (🖊️)."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, insights, orgchart
+    base = insights.governance_summary("es")
+    assert base["datasets"] == 8
+    assert base["classified_pct"] == 100.0 and base["rules_pct"] == 100.0
+    assert 0 < base["governance_index"] < 100  # honesto: no arranca en 10/10
+    # asignar responsables con nombre a todo -> owner/steward suben
+    org = orgchart.parse_org_table(_org_fixture())
+    orgchart.save_assignments(orgchart.suggest_assignments(org))
+    # curar una definición -> curaduría sube
+    curation.save_validation("glossary:medicamentos_openfda:ndc", "es",
+                             "validado", "", "María Viera", "Data Owner")
+    after = insights.governance_summary("es")
+    assert after["owner_pct"] == 100.0 and after["steward_pct"] == 100.0
+    assert after["curation_pct"] > base["curation_pct"]
+    assert after["governance_index"] > base["governance_index"]
+
+
+def test_insights_named_heuristic():
+    from mvdg.insights import _named
+    assert _named("María Viera") and _named("J. Pérez")
+    assert not _named("Gerencia Comercial")
+    assert not _named("Equipo de Datos de Ventas")
+    assert not _named("")
+
+
 def test_samples_openfda_bi_bundle_complete():
     """End-to-end hasta el BI: el paquete de gobierno del dataset openFDA trae
     datos + diccionario + calidad + glosario listos para exportar/servir."""

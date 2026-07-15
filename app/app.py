@@ -33,6 +33,7 @@ from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
 from mvdg import curation
+from mvdg import insights
 from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
@@ -238,6 +239,36 @@ with tab_ov:
         fig.update_layout(**_PLOTLY_LAYOUT, showlegend=False,
                           xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig, width="stretch")
+
+    # --- Insights del estado de gobierno (estilo Purview, 100% local) ---
+    st.divider()
+    st.subheader(t("gi_title", lang))
+    st.caption(t("gi_caption", lang))
+    _gi = insights.governance_summary(lang)
+    g1, g2, g3, g4, g5, g6 = st.columns(6)
+    g1.metric(t("gi_index", lang), f"{_gi['governance_index']} / 100")
+    g2.metric(t("gi_owner", lang), f"{_gi['owner_pct']}%")
+    g3.metric(t("gi_steward", lang), f"{_gi['steward_pct']}%")
+    g4.metric(t("gi_classified", lang), f"{_gi['classified_pct']}%")
+    g5.metric(t("gi_rules", lang), f"{_gi['rules_pct']}%")
+    g6.metric(t("gi_curation", lang), f"{_gi['curation_pct']}%")
+    with st.expander(t("gi_detail", lang), expanded=False):
+        _gi_df = insights.governance_coverage(lang)
+        _B = {True: "✅", False: "—"}
+        st.dataframe(
+            _gi_df.assign(owner_named=_gi_df["owner_named"].map(_B),
+                          steward_named=_gi_df["steward_named"].map(_B),
+                          classified=_gi_df["classified"].map(_B),
+                          has_rules=_gi_df["has_rules"].map(_B))
+            .rename(columns={
+                "dataset": t("col_dataset", lang),
+                "owner_named": t("gi_col_owner", lang),
+                "steward_named": t("gi_col_steward", lang),
+                "classified": t("gi_col_classified", lang),
+                "has_rules": t("gi_col_rules", lang),
+                "curation_pct": t("gi_col_curation", lang)}),
+            width="stretch", hide_index=True)
+        st.caption(t("gi_how_to_improve", lang))
 
 # ------------------------------------------------------------ Laboratorio
 with tab_lab:
