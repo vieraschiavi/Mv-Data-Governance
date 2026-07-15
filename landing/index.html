@@ -362,7 +362,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
 <section class="panel" id="plataforma"><div class="wrap">
   <div class="eyebrow" data-i="p_eye">La plataforma</div>
   <h2 class="h2" data-i="p_h2">Todo el gobierno de datos, sin fricción</h2>
-  <p class="lead-d" data-i="p_lead">Seis módulos que trabajan juntos sobre los mismos metadatos,
+  <p class="lead-d" data-i="p_lead">Nueve módulos que trabajan juntos sobre los mismos metadatos,
     disponibles en la web y en el programa de escritorio.</p>
   <div class="fgrid">
     <div class="feat"><div class="ic">📚</div><h3 data-i="f1t">Catálogo de datos</h3>
@@ -377,6 +377,12 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
       <p data-i="f5p">Cada política se verifica automáticamente contra el catálogo y las reglas: evidencia, no casillas marcadas a mano.</p></div>
     <div class="feat"><div class="ic">🔎</div><h3 data-i="f6t">Perfilador de tus datos</h3>
       <p data-i="f6p">Subí un CSV o Excel y obtené al instante esquema, nulos, duplicados, PII detectada y reglas sugeridas.</p></div>
+    <div class="feat"><div class="ic">🔗</div><h3 data-i="f7t">MDM y golden record</h3>
+      <p data-i="f7p">Encuentra filas que probablemente son la misma entidad y arma el registro dorado que las unifica — sin falsos positivos por nombres comunes.</p></div>
+    <div class="feat"><div class="ic">🖊️</div><h3 data-i="f8t">Curaduría con dueño</h3>
+      <p data-i="f8p">Toda definición sale pre-establecida por IA; el Data Owner o Steward la valida o la corrige — con nombre, cargo y fecha, igual que Purview o Collibra.</p></div>
+    <div class="feat"><div class="ic">👥</div><h3 data-i="f9t">Organigrama → responsables</h3>
+      <p data-i="f9p">Subí el organigrama (Excel, SQL o foto) y el programa asigna Data Owner y Steward por dataset automáticamente — editable siempre.</p></div>
   </div>
 </div></section>
 
@@ -473,7 +479,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   <div class="fgrid">
     <div class="feat"><div class="ic">🔒</div><h3 data-i="df1t">Datos 100% locales</h3><p data-i="df1p">Corre en tu PC o tu servidor. Nada viaja a internet: apto para banca, salud y sector público.</p></div>
     <div class="feat"><div class="ic">🌎</div><h3 data-i="df2t">Trilingüe de verdad</h3><p data-i="df2p">ES/EN/PT en todo: programa, web, API, instalador, glosario y documentación.</p></div>
-    <div class="feat"><div class="ic">🩺</div><h3 data-i="df3t">Auto-diagnóstico 100% operativo</h3><p data-i="df3p">Un comando (<b>python -m mvdg.selfcheck</b>) verifica que todo funcione: 12 chequeos, cero bugs.</p></div>
+    <div class="feat"><div class="ic">🩺</div><h3 data-i="df3t">Auto-diagnóstico 100% operativo</h3><p data-i="df3p">Un comando (<b>python -m mvdg.selfcheck</b>) verifica que todo funcione: 30 chequeos, cero bugs.</p></div>
     <div class="feat"><div class="ic">🔌</div><h3 data-i="df4t">Compatible con cualquier BI</h3><p data-i="df4p">Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — por archivo o API REST.</p></div>
     <div class="feat"><div class="ic">🖥️</div><h3 data-i="df5t">Web + PC, sin APK</h3><p data-i="df5p">Tres formas de desplegar (.exe, .bat, web) según lo que permita la TI de cada empresa.</p></div>
     <div class="feat"><div class="ic">🎙️</div><h3 data-i="df6t">Cierra el círculo humano</h3><p data-i="df6p">Fichas de clientes y speeches IA para lo que ningún software automatiza: dueños, definiciones, adopción.</p></div>
@@ -662,7 +668,7 @@ en:{
   df_lead:"Six things almost no tool combines: enterprise power, SMB price and zero friction.",
   df1t:"100% local data",df1p:"Runs on your PC or server. Nothing travels to the internet: fit for banking, healthcare and public sector.",
   df2t:"Truly trilingual",df2p:"ES/EN/PT everywhere: program, website, API, installer, glossary and docs.",
-  df3t:"100%-operational self-check",df3p:"One command (<b>python -m mvdg.selfcheck</b>) verifies everything works: 12 checks, zero bugs.",
+  df3t:"100%-operational self-check",df3p:"One command (<b>python -m mvdg.selfcheck</b>) verifies everything works: 30 checks, zero bugs.",
   df4t:"Works with any BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — by file or REST API.",
   df5t:"Web + PC, no APK",df5p:"Three ways to deploy (.exe, .bat, web) depending on each company's IT policy.",
   df6t:"Closes the human loop",df6p:"Client records and AI speeches for what no software automates: owners, definitions, adoption.",
@@ -716,13 +722,16 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   fq6q:"Can I try it for free? How soon do I see results?",
   fq6a:"Yes: the Starter plan is free forever with demo data, and you can profile your own files from day one. You see your real quality index on day 1; full governance running takes about 90 days (see the rollout plan above).",
   p_eye:"The platform",p_h2:"All of data governance, without friction",
-  p_lead:"Six modules working together on the same metadata, available on the web and in the desktop app.",
+  p_lead:"Nine modules working together on the same metadata, available on the web and in the desktop app.",
   f1t:"Data catalog",f1p:"Single inventory with owner, steward, domain, classification (PII included), freshness and column dictionary.",
   f2t:"Quality across 6 dimensions",f2p:"Rule engine: completeness, uniqueness, validity, consistency, timeliness and accuracy, with thresholds and alerts.",
   f3t:"End-to-end lineage",f3p:"From source to dashboard: interactive graph with upstream and downstream traversal for every asset.",
   f4t:"Business glossary",f4p:"One official definition per term — in Spanish, English and Portuguese — linked to the datasets that use it.",
   f5t:"Policies & compliance",f5p:"Every policy is automatically verified against the catalog and the rules: evidence, not hand-ticked boxes.",
   f6t:"Profile your own data",f6p:"Upload a CSV or Excel file and instantly get schema, nulls, duplicates, detected PII and suggested rules.",
+  f7t:"MDM & golden record",f7p:"Finds rows that likely represent the same entity and builds the golden record that unifies them — no false positives from common names.",
+  f8t:"Curation with an owner",f8p:"Every definition ships pre-established by AI; the Data Owner or Steward validates or corrects it — with name, role and date, same pattern as Purview or Collibra.",
+  f9t:"Org chart → responsibles",f9p:"Upload the org chart (Excel, SQL or a photo) and the program assigns Data Owner and Steward per dataset automatically — always editable.",
   bi_eye:"Works with your BI",bi_h2:"Connect any BI tool",
   bi_lead:"Every governance table (catalog, quality, lineage, glossary, policies and KPIs) exports as CSV, Excel, JSON or Parquet, and is also served over a REST API — your tool picks the format, not us.",
   bi_guide:"Step-by-step guide per tool in docs/BI_INTEGRATION.md.",
@@ -770,7 +779,7 @@ pt:{
   df_lead:"Seis coisas que quase nenhuma ferramenta junta: potência enterprise, preço de PME e zero atrito.",
   df1t:"Dados 100% locais",df1p:"Roda no seu PC ou servidor. Nada viaja para a internet: apto para bancos, saúde e setor público.",
   df2t:"Trilíngue de verdade",df2p:"ES/EN/PT em tudo: programa, site, API, instalador, glossário e documentação.",
-  df3t:"Autodiagnóstico 100% operacional",df3p:"Um comando (<b>python -m mvdg.selfcheck</b>) verifica que tudo funciona: 12 checagens, zero bugs.",
+  df3t:"Autodiagnóstico 100% operacional",df3p:"Um comando (<b>python -m mvdg.selfcheck</b>) verifica que tudo funciona: 30 checagens, zero bugs.",
   df4t:"Compatível com qualquer BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — por arquivo ou API REST.",
   df5t:"Web + PC, sem APK",df5p:"Três formas de implantar (.exe, .bat, web) conforme a política de TI de cada empresa.",
   df6t:"Fecha o ciclo humano",df6p:"Fichas de clientes e speeches IA para o que nenhum software automatiza: donos, definições, adoção.",
@@ -824,13 +833,16 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   fq6q:"Posso testar grátis? Quando vejo resultados?",
   fq6a:"Sim: o plano Starter é grátis para sempre com dados de demo, e você pode perfilar seus próprios arquivos desde o primeiro dia. O índice de qualidade real você vê no dia 1; a governança completa funcionando, em cerca de 90 dias (veja o plano de implantação acima).",
   p_eye:"A plataforma",p_h2:"Toda a governança de dados, sem atrito",
-  p_lead:"Seis módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
+  p_lead:"Nove módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
   f1t:"Catálogo de dados",f1p:"Inventário único com dono, steward, domínio, classificação (PII incluída), atualidade e dicionário de colunas.",
   f2t:"Qualidade em 6 dimensões",f2p:"Motor de regras: completude, unicidade, validade, consistência, pontualidade e exatidão, com limites e alertas.",
   f3t:"Linhagem de ponta a ponta",f3p:"Da fonte ao dashboard: grafo interativo com navegação a montante e a jusante para cada ativo.",
   f4t:"Glossário de negócio",f4p:"Uma definição oficial por termo — em espanhol, inglês e português — vinculada aos datasets que a usam.",
   f5t:"Políticas e conformidade",f5p:"Cada política é verificada automaticamente contra o catálogo e as regras: evidência, não caixas marcadas à mão.",
   f6t:"Perfile seus próprios dados",f6p:"Envie um CSV ou Excel e obtenha na hora esquema, nulos, duplicados, PII detectada e regras sugeridas.",
+  f7t:"MDM e golden record",f7p:"Encontra linhas que provavelmente são a mesma entidade e monta o registro dourado que as unifica — sem falsos positivos por nomes comuns.",
+  f8t:"Curadoria com dono",f8p:"Toda definição sai pré-estabelecida por IA; o Data Owner ou Steward valida ou corrige — com nome, cargo e data, mesmo padrão do Purview ou Collibra.",
+  f9t:"Organograma → responsáveis",f9p:"Envie o organograma (Excel, SQL ou foto) e o programa atribui Data Owner e Steward por dataset automaticamente — sempre editável.",
   bi_eye:"Compatível com seu BI",bi_h2:"Conecte qualquer ferramenta de BI",
   bi_lead:"Todas as tabelas de governança (catálogo, qualidade, linhagem, glossário, políticas e KPIs) são exportadas como CSV, Excel, JSON ou Parquet, e também servidas por API REST — o formato quem escolhe é a sua ferramenta.",
   bi_guide:"Guia passo a passo por ferramenta em docs/BI_INTEGRATION.md.",
