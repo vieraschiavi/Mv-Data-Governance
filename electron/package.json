@@ -1,0 +1,53 @@
+{
+  "name": "mv-data-governance-desktop",
+  "productName": "MV Data Governance",
+  "version": "1.0.0",
+  "description": "MV Data Governance · aplicación de escritorio (Electron + React) que envuelve el servidor local Streamlit — 100% local, sin telemetría.",
+  "main": "main.js",
+  "author": "MV Data Governance",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "test": "node lib/server-manager.test.js",
+    "build-launcher": "node scripts/build-launcher.mjs",
+    "start": "npm run build-launcher && electron .",
+    "dist-win": "npm run build-launcher && electron-builder --win",
+    "dist-linux": "npm run build-launcher && electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.24.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "build": {
+    "appId": "com.mvdatagovernance.desktop",
+    "productName": "MV Data Governance",
+    "directories": { "output": "dist_electron" },
+    "files": ["main.js", "preload.js", "launcher/dist/**"],
+    "extraResources": [
+      { "from": "../app", "to": "server/app" },
+      { "from": "../mvdg", "to": "server/mvdg" },
+      { "from": "../bi_api", "to": "server/bi_api" },
+      { "from": "../assets/brand", "to": "server/assets/brand" },
+      { "from": "../assets/samples", "to": "server/assets/samples" },
+      { "from": "../docs", "to": "server/docs" },
+      { "from": "../requirements.txt", "to": "server/requirements.txt" }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "../assets/brand/mv.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "../assets/brand/mv_icon_256.png",
+      "category": "Office"
+    }
+  }
+}

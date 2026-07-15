@@ -1,0 +1,35 @@
+/* Launcher · misma paleta navy/ámbar del producto */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(1200px 600px at 30% 20%, #16263c 0%, #0e1a2b 60%);
+  color: #e8eef7;
+}
+.wrap { height: 100%; display: flex; align-items: center; justify-content: center; }
+.card { text-align: center; max-width: 560px; padding: 48px; }
+.brand { display: flex; gap: 14px; align-items: center; justify-content: center; }
+.shield { font-size: 44px; }
+h1 { font-size: 34px; font-weight: 300; letter-spacing: .5px; }
+h1 b { font-weight: 700; color: #f2b441; }
+.tagline { margin-top: 6px; color: #93a5bd; font-size: 15px; }
+.spinner {
+  margin: 34px auto 0; width: 46px; height: 46px; border-radius: 50%;
+  border: 4px solid rgba(242, 180, 65, .25); border-top-color: #f2b441;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.status { margin-top: 22px; font-size: 16px; }
+.status.error { color: #ff7a7a; margin-top: 34px; }
+.detail { margin-top: 8px; color: #6d7f98; font-size: 12px; }
+.log {
+  margin-top: 14px; color: #55647c; font-size: 11px; font-family: Consolas, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.retry {
+  margin-top: 18px; background: #f2b441; color: #12203a; border: 0;
+  padding: 10px 30px; border-radius: 8px; font-size: 15px; font-weight: 700;
+  cursor: pointer;
+}
+.retry:hover { filter: brightness(1.08); }
+.local { margin-top: 40px; color: #55647c; font-size: 12px; }
