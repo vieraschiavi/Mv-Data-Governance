@@ -41,9 +41,36 @@ casos reales. Se citan aquí las fuentes y licencias, tal como corresponde.
   el criterio correcto para un banco real, más allá de que no dispare el
   detector heurístico de PII.
 
-Ninguno de los tres contiene datos personales identificables: el primero es
-información de producto/inspección (no de personas), el segundo es
-enteramente sintético, y el tercero está anonimizado en su fuente original.
+## medicamentos_openfda.csv
+
+- **Qué es:** 1.546 productos farmacéuticos reales registrados ante la FDA
+  (EE.UU.) por 6 grupos farmacéuticos multinacionales — Pfizer, Novartis,
+  Bayer, Sanofi, GlaxoSmithKline y AstraZeneca — tomados del **NDC
+  Directory** (registro nacional de medicamentos).
+- **Fuente:** <https://open.fda.gov/apis/drug/ndc/> (openFDA,
+  `api.fda.gov/drug/ndc`), descargado el **2026-07-14** filtrando por
+  `labeler_name` de los 6 grupos. Las listas anidadas (vías de
+  administración, principios activos, clases farmacológicas) se aplanaron
+  uniéndolas con «;» — es la única transformación aplicada.
+- **Licencia:** dominio público (obra del gobierno de EE.UU.). openFDA
+  advierte que sus datos **no están validados para decisiones de atención
+  médica** — acá se usan exclusivamente como caso de práctica de gobierno
+  de datos, no como referencia clínica.
+- **Honestidad de los defectos:** a diferencia del dataset de cafetería
+  (errores inyectados a propósito por su autor), los defectos que las
+  reglas MED-01…MED-08 detectan acá son **reales, del registro público**:
+  4 códigos NDC duplicados, marcas y principios activos faltantes en
+  productos terminados, ~26% de medicamentos humanos sin clase
+  farmacológica y ~8% de productos terminados sin fecha de listado FDA
+  informada. Nada fue alterado para que las reglas «encuentren algo».
+- **Extra:** el mismo grupo aparece con hasta 45 razones sociales distintas
+  (Pfizer Inc / Pfizer Ireland / Pfizer Consumer…), lo que lo vuelve un
+  caso ideal para la pestaña 🔗 MDM (unificación de datos maestros).
+
+Ninguno de los cuatro contiene datos personales identificables: el primero
+es información de producto/inspección (no de personas), el segundo es
+enteramente sintético, el tercero está anonimizado en su fuente original y
+el cuarto es un registro público de productos (no de personas).
 
 ## powerbi/AdventureWorksDemo/ (modelo Power BI real, formato .pbip/TMDL)
 

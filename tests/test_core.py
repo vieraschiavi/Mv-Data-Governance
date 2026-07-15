@@ -709,6 +709,193 @@ def test_samples_bank_classification_note_present():
         assert samples.sample_meta(key, "es")["classification_note"] is None
 
 
+def test_samples_openfda_file_versioned():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "samples", "medicamentos_openfda.csv")
+    assert os.path.exists(path), "el dataset openFDA debe estar versionado"
+    df = pd.read_csv(path)
+    assert len(df) == 1546 and len(df.columns) == 15
+    # 6 grupos multinacionales, muchas razones sociales (caso MDM real)
+    assert df["labeler_name"].nunique() > 20
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_samples_openfda_quality_real_defects(lang):
+    """Los defectos del NDC Directory son reales (no inyectados): 4 NDC
+    duplicados, huecos de marca/principio activo/clase farmacológica en
+    productos de uso humano, y listados FDA sin fecha."""
+    from mvdg import samples
+    med = samples.sample_quality_results("medicamentos_openfda", lang)
+    assert len(med) == 8
+    by_id = med.set_index("rule_id")
+    assert by_id.loc["MED-01", "affected_rows"] == 4       # NDC duplicados reales
+    assert by_id.loc["MED-01", "status"] in ("warn", "fail")
+    assert by_id.loc["MED-02", "status"] == "pass"          # formato NDC impecable
+    assert by_id.loc["MED-07", "status"] == "pass"          # fechas YYYYMMDD válidas
+    assert (med["status"] == "fail").sum() >= 3             # huecos reales del registro
+
+
+def test_samples_openfda_conditional_rules_scope():
+    """Las reglas condicionales solo evalúan medicamentos de uso humano:
+    los graneles/semielaborados sin marca NO son falsos positivos."""
+    from mvdg import samples
+    med = samples.sample_quality_results("medicamentos_openfda", "es")
+    by_id = med.set_index("rule_id")
+    df = samples.load_sample_table("medicamentos_openfda")
+    total_sin_marca = int(df["brand_name"].isna().sum())
+    humanos_sin_marca = int(df[df["product_type"].isin(
+        {"HUMAN PRESCRIPTION DRUG", "HUMAN OTC DRUG"})]["brand_name"].isna().sum())
+    assert by_id.loc["MED-04", "affected_rows"] == humanos_sin_marca
+    assert humanos_sin_marca < total_sin_marca  # la condición recorta de verdad
+
+
+def test_curation_inventory_covers_all_definitions():
+    """Toda definición del programa (glosario demo + samples, catálogo,
+    diccionario) aparece en el inventario de curaduría, pre-establecida y en
+    estado 'sugerido_ia' hasta que un responsable la revise."""
+    from mvdg import curation
+    for lang in LANGS:
+        df = curation.list_items(lang)
+        assert len(df) > 100
+        assert set(df["kind"]) == {"glossary", "catalog", "column"}
+        assert (df["proposed"].str.len() > 0).all()  # nada arranca en blanco
+
+
+def test_curation_validate_modify_reset(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation
+    item = "glossary:medicamentos_openfda:ndc"
+    # validar tal cual
+    rec = curation.save_validation(item, "es", "validado", "",
+                                   "María Viera", "Data Owner Regulatorio")
+    assert rec["status"] == "validado" and rec["date"]
+    df = curation.list_items("es").set_index("item_id")
+    assert df.loc[item, "status"] == "validado"
+    assert df.loc[item, "responsible_name"] == "María Viera"
+    assert df.loc[item, "text"] == df.loc[item, "proposed"]  # validar no cambia el texto
+    # modificar con texto oficial
+    curation.save_validation(item, "es", "modificado", "Definición oficial corregida.",
+                             "J. Pérez", "Data Steward")
+    df = curation.list_items("es").set_index("item_id")
+    assert df.loc[item, "status"] == "modificado"
+    assert df.loc[item, "text"] == "Definición oficial corregida."
+    assert curation.effective_text(item, "es", "fallback") == "Definición oficial corregida."
+    # el veredicto es por idioma: en inglés sigue sugerido_ia
+    assert curation.list_items("en").set_index("item_id").loc[item, "status"] == "sugerido_ia"
+    # resumen y reset
+    s = curation.summary("es")
+    assert s["modificado"] == 1 and s["reviewed_pct"] > 0
+    assert curation.reset_item(item, "es")
+    assert curation.get_record(item, "es") is None
+
+
+def test_curation_requires_responsible_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation
+    with pytest.raises(ValueError):
+        curation.save_validation("glossary:demo:customer", "es", "validado",
+                                 "", "", "Data Owner")
+    with pytest.raises(ValueError):
+        curation.save_validation("glossary:demo:customer", "es", "sugerido_ia",
+                                 "", "Nombre", "Cargo")
+
+
+def _org_fixture():
+    return pd.DataFrame({
+        "Departamento": ["Dirección General", "Gerencia Comercial", "Gerencia Comercial",
+                         "Finanzas", "Calidad y Regulatorio", "Calidad y Regulatorio",
+                         "Marketing", "TI / Datos"],
+        "Nombre completo": ["Ana Torres", "Bruno Díaz", "Carla Gómez", "Diego Ruiz",
+                            "Elena Sosa", "Fabián López", "Gina Méndez", "Hugo Pereira"],
+        "Puesto": ["CEO", "Gerente Comercial", "Analista de Ventas", "Director de Finanzas",
+                   "Directora de Calidad", "Analista Regulatorio", "Jefa de Marketing",
+                   "Coordinador de BI"],
+        "Jefe directo": ["", "Ana Torres", "Bruno Díaz", "Ana Torres", "Ana Torres",
+                         "Elena Sosa", "Ana Torres", "Diego Ruiz"],
+    })
+
+
+def test_orgchart_header_detection_any_language_and_order():
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    assert list(org.columns) == ["nombre", "cargo", "area", "reporta_a", "email"]
+    assert len(org) == 8
+    # encabezados en inglés también
+    en = _org_fixture().rename(columns={"Departamento": "Department",
+                                        "Nombre completo": "Name",
+                                        "Puesto": "Job Title",
+                                        "Jefe directo": "Reports To"})
+    assert len(oc.parse_org_table(en)) == 8
+    # sin columnas mínimas -> error claro, no un KeyError críptico
+    with pytest.raises(ValueError):
+        oc.parse_org_table(pd.DataFrame({"x": [1], "y": [2]}))
+
+
+def test_orgchart_assignments_match_domain_and_seniority():
+    """El owner sugerido es la persona de mayor jerarquía del área que
+    matchea el dominio — y el orden de keywords es prioridad (para
+    bank_marketing gana Marketing, no Comercial)."""
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    asg = oc.suggest_assignments(org).set_index("dataset")
+    assert asg.loc["fct_payments", "owner_name"] == "Diego Ruiz"        # Finanzas
+    assert asg.loc["medicamentos_openfda", "owner_name"] == "Elena Sosa"  # Calidad/Regulatorio
+    assert asg.loc["medicamentos_openfda", "steward_name"] == "Fabián López"
+    assert asg.loc["bank_marketing_uci", "owner_name"] == "Gina Méndez"  # Marketing > Comercial
+    assert (asg["estado"] == "sugerido").all()
+    # todos los datasets del programa reciben responsable con nombre y cargo
+    assert (asg["owner_name"].str.len() > 0).all()
+    assert (asg["owner_role"].str.len() > 0).all()
+
+
+def test_orgchart_persistence_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import orgchart as oc
+    org = oc.parse_org_table(_org_fixture())
+    oc.save_org(org)
+    assert oc.load_org().equals(org)
+    asg = oc.suggest_assignments(org)
+    oc.save_assignments(asg)
+    assert oc.load_assignments().equals(asg)
+
+
+def test_orgchart_photo_ai_off_by_default(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
+                "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg.ai_provider import ai_parse_orgchart_image
+    assert ai_parse_orgchart_image(b"fake-image-bytes") is None
+
+
+def test_orgchart_photo_ai_parses_mocked_response(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    from mvdg import ai_provider as ap
+
+    def fake_post(url, headers, body):
+        assert "anthropic" in url
+        # la imagen viaja en base64 dentro del body
+        assert body["messages"][0]["content"][0]["type"] == "image"
+        return {"content": [{"text": '{"personas": [{"nombre": "Ana Torres", '
+                                     '"cargo": "CEO", "area": "Dirección", '
+                                     '"reporta_a": ""}]}'}]}
+
+    monkeypatch.setattr(ap, "_post_json", fake_post)
+    people = ap.ai_parse_orgchart_image(b"png-bytes", "image/png", "es", "claude")
+    assert people == [{"nombre": "Ana Torres", "cargo": "CEO",
+                       "area": "Dirección", "reporta_a": "", "email": ""}]
+
+
+def test_samples_openfda_bi_bundle_complete():
+    """End-to-end hasta el BI: el paquete de gobierno del dataset openFDA trae
+    datos + diccionario + calidad + glosario listos para exportar/servir."""
+    from mvdg import samples
+    gt = samples.sample_governance_tables("medicamentos_openfda", "es")
+    for table in ("data", "dictionary", "quality_results", "glossary"):
+        assert table in gt and len(gt[table]) > 0
+    assert len(gt["dictionary"]) == 15   # las 15 columnas documentadas
+    assert len(gt["glossary"]) == 9      # los 9 términos de negocio
+
+
 # --------------------------------------- IA externa opcional (con fallback local)
 def test_ai_provider_off_by_default(monkeypatch):
     from mvdg import ai_provider as ap
@@ -851,7 +1038,8 @@ def test_bi_api_serves_sample_datasets():
     r = client.get("/")
     assert r.status_code == 200
     body = r.json()
-    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle", "bank_marketing_uci"}
+    assert set(body["samples"]) == {"rotulado_alimentos", "cafe_sales_kaggle",
+                                    "bank_marketing_uci", "medicamentos_openfda"}
 
     r = client.get("/api/samples/cafe_sales_kaggle?lang=en")
     assert r.status_code == 200

@@ -32,6 +32,8 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
+from mvdg import curation
+from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
 from mvdg import samples as ext_samples
@@ -46,7 +48,8 @@ from mvdg.i18n import LANG_NAMES, LANGS, t
 from mvdg.lineage import NODES, graph_from_lineage, lineage_df, lineage_figure
 from mvdg import powerbi_meta as pbi
 from mvdg import tableau_meta as tabl
-from mvdg.ai_provider import ai_refactor_calc, ai_refactor_dax
+from mvdg.ai_provider import (ai_parse_orgchart_image, ai_refactor_calc,
+                              ai_refactor_dax)
 from mvdg.policies import policies_df
 from mvdg.profiler import profile_table, suggest_rules, summary
 from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
@@ -111,14 +114,14 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
- tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_cu, tab_resp, tab_p,
+ tab_pr, tab_bi, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
-    t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
-    t("tab_profiler", lang), t("tab_bi", lang),
-    t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang),
-    t("tab_workspace", lang), t("tab_help", lang),
+    t("tab_lineage", lang), t("tab_glossary", lang), t("tab_curation", lang),
+    t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
+    t("tab_bi", lang), t("tab_pbi", lang), t("tab_tableau", lang),
+    t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -685,6 +688,202 @@ with tab_g:
         "term": t("g_term", lang), "definition": t("g_definition", lang),
         "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
     }).drop(columns=["term_id"]), width="stretch", hide_index=True)
+
+# --------------------------------------------------------------- Curaduría
+with tab_cu:
+    st.info(t("cu_intro", lang), icon="🖊️")
+    _cu_sum = curation.summary(lang)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(t("cu_total", lang), _cu_sum["total"])
+    c2.metric(t("cu_pending", lang), _cu_sum["sugerido_ia"])
+    c3.metric(t("cu_validated", lang), _cu_sum["validado"])
+    c4.metric(t("cu_modified", lang), _cu_sum["modificado"])
+    st.progress(_cu_sum["reviewed_pct"] / 100.0,
+                text=t("cu_progress", lang).format(pct=_cu_sum["reviewed_pct"]))
+
+    _cu_df = curation.list_items(lang)
+    _CU_KIND = {"glossary": t("cu_kind_glossary", lang),
+                "catalog": t("cu_kind_catalog", lang),
+                "column": t("cu_kind_column", lang)}
+    _CU_STATUS = {"sugerido_ia": t("cu_st_ai", lang),
+                  "validado": t("cu_st_val", lang),
+                  "modificado": t("cu_st_mod", lang)}
+    f1, f2, f3 = st.columns(3)
+    _cu_kind = f1.selectbox(t("cu_filter_kind", lang), ["(todos)"] + list(_CU_KIND),
+                            format_func=lambda k: _CU_KIND.get(k, t("cu_all", lang)))
+    _cu_ds = f2.selectbox(t("cu_filter_dataset", lang),
+                          ["(todos)"] + sorted(_cu_df["dataset"].unique()))
+    _cu_st = f3.selectbox(t("cu_filter_status", lang), ["(todos)"] + list(_CU_STATUS),
+                          format_func=lambda k: _CU_STATUS.get(k, t("cu_all", lang)))
+    _cu_view = _cu_df
+    if _cu_kind != "(todos)":
+        _cu_view = _cu_view[_cu_view["kind"] == _cu_kind]
+    if _cu_ds != "(todos)":
+        _cu_view = _cu_view[_cu_view["dataset"] == _cu_ds]
+    if _cu_st != "(todos)":
+        _cu_view = _cu_view[_cu_view["status"] == _cu_st]
+
+    st.dataframe(
+        _cu_view[["kind", "dataset", "label", "status", "text",
+                  "responsible_name", "responsible_role", "validated_at"]]
+        .assign(kind=lambda d: d["kind"].map(_CU_KIND),
+                status=lambda d: d["status"].map(_CU_STATUS))
+        .rename(columns={
+            "kind": t("cu_col_kind", lang), "dataset": t("col_dataset", lang),
+            "label": t("cu_col_item", lang), "status": t("cu_col_status", lang),
+            "text": t("cu_col_text", lang),
+            "responsible_name": t("cu_col_resp", lang),
+            "responsible_role": t("cu_col_role", lang),
+            "validated_at": t("cu_col_date", lang)}),
+        width="stretch", hide_index=True, height=280)
+
+    st.divider()
+    st.subheader(t("cu_review_one", lang))
+    if len(_cu_view):
+        _cu_pick = st.selectbox(
+            t("cu_pick", lang), _cu_view["item_id"].tolist(),
+            format_func=lambda i: (
+                f"{_CU_KIND[_cu_view.set_index('item_id').loc[i, 'kind']]} · "
+                f"{_cu_view.set_index('item_id').loc[i, 'dataset']} · "
+                f"{_cu_view.set_index('item_id').loc[i, 'label']}"))
+        _cu_row = _cu_view.set_index("item_id").loc[_cu_pick]
+        st.caption(t("cu_proposed", lang))
+        st.markdown(f"> {_cu_row['proposed']}")
+        if _cu_row["status"] != "sugerido_ia":
+            st.success(t("cu_already", lang).format(
+                status=_CU_STATUS[_cu_row["status"]], name=_cu_row["responsible_name"],
+                role=_cu_row["responsible_role"], date=_cu_row["validated_at"]))
+            if _cu_row["status"] == "modificado":
+                st.markdown(f"**{t('cu_official_text', lang)}:** {_cu_row['text']}")
+
+        _cu_action = st.radio(t("cu_action", lang), ["validar", "modificar"],
+                              horizontal=True,
+                              format_func=lambda a: t(f"cu_action_{a}", lang))
+        _cu_newtext = ""
+        if _cu_action == "modificar":
+            _cu_newtext = st.text_area(t("cu_new_text", lang), _cu_row["text"])
+        r1, r2 = st.columns(2)
+        _cu_name = r1.text_input(t("cu_resp_name", lang),
+                                 _cu_row["responsible_name"] or "")
+        _cu_role = r2.text_input(t("cu_resp_role", lang),
+                                 _cu_row["responsible_role"] or _cu_row["default_owner"])
+        _cu_notes = st.text_input(t("cu_notes", lang), _cu_row["notes"] or "")
+        b1, b2 = st.columns(2)
+        if b1.button(t("cu_save", lang), type="primary"):
+            try:
+                curation.save_validation(
+                    _cu_pick, lang,
+                    "modificado" if _cu_action == "modificar" else "validado",
+                    _cu_newtext, _cu_name, _cu_role, _cu_notes)
+                st.success(t("cu_saved", lang))
+                st.rerun()
+            except ValueError:
+                st.error(t("cu_need_name", lang))
+        if _cu_row["status"] != "sugerido_ia" and b2.button(t("cu_reset", lang)):
+            curation.reset_item(_cu_pick, lang)
+            st.success(t("cu_reset_ok", lang))
+            st.rerun()
+    st.caption(t("cu_local_note", lang))
+
+# ------------------------------------------------------------- Responsables
+with tab_resp:
+    st.info(t("rs_intro", lang), icon="👥")
+
+    _RS_SRC = {"file": t("rs_src_file", lang), "photo": t("rs_src_photo", lang),
+               "saved": t("rs_src_saved", lang)}
+    rs_src = st.radio(t("rs_source", lang), list(_RS_SRC), horizontal=True,
+                      key="rs_source", format_func=lambda k: _RS_SRC[k])
+
+    org_df = st.session_state.get("rs_org")
+    if rs_src == "file":
+        rs_up = st.file_uploader(t("rs_upload", lang), type=["xlsx", "xls", "csv"],
+                                 key="rs_up")
+        st.caption(t("rs_upload_hint", lang))
+        if rs_up is not None:
+            try:
+                raw = (pd.read_csv(rs_up) if rs_up.name.lower().endswith(".csv")
+                       else pd.read_excel(rs_up))
+                org_df = orgchart.parse_org_table(raw)
+                st.session_state["rs_org"] = org_df
+                st.success(t("rs_parsed", lang).format(n=len(org_df)))
+            except ValueError as exc:
+                st.error(f"⚠️ {exc}")
+            except Exception as exc:  # noqa: BLE001 - archivo corrupto
+                st.error(f"⚠️ {exc}")
+    elif rs_src == "photo":
+        _rs_provider = configured_provider()
+        if not _rs_provider:
+            st.warning(t("rs_photo_needs_ai", lang))
+        else:
+            st.warning(t("rs_photo_disclosure", lang).format(
+                provider=provider_label(_rs_provider)))
+            rs_img = st.file_uploader(t("rs_upload_photo", lang),
+                                      type=["png", "jpg", "jpeg", "webp"], key="rs_img")
+            if rs_img is not None and st.button(t("rs_extract_photo", lang)):
+                _mt = ("image/png" if rs_img.name.lower().endswith(".png")
+                       else "image/webp" if rs_img.name.lower().endswith(".webp")
+                       else "image/jpeg")
+                with st.spinner("…"):
+                    people = ai_parse_orgchart_image(rs_img.getvalue(), _mt, lang,
+                                                     _rs_provider)
+                if people:
+                    org_df = pd.DataFrame(people)
+                    st.session_state["rs_org"] = org_df
+                    st.success(t("rs_parsed", lang).format(n=len(org_df)))
+                else:
+                    st.error(t("rs_photo_failed", lang))
+    else:
+        org_df = orgchart.load_org()
+        if org_df is None:
+            st.caption(t("rs_none_saved", lang))
+        else:
+            st.session_state["rs_org"] = org_df
+
+    if org_df is not None and len(org_df):
+        st.subheader(t("rs_people", lang))
+        st.caption(t("rs_people_edit_hint", lang))
+        org_edit = st.data_editor(org_df, width="stretch", num_rows="dynamic",
+                                  key="rs_org_editor")
+        if st.button(t("rs_save_org", lang)):
+            orgchart.save_org(org_edit)
+            st.session_state["rs_org"] = org_edit
+            st.success(t("rs_org_saved", lang))
+
+        st.divider()
+        st.subheader(t("rs_assignments", lang))
+        saved_asg = orgchart.load_assignments()
+        if st.button(t("rs_suggest", lang), type="primary"):
+            st.session_state["rs_asg"] = orgchart.suggest_assignments(org_edit)
+        asg_df = st.session_state.get("rs_asg")
+        if asg_df is None and saved_asg is not None:
+            asg_df = saved_asg
+        if asg_df is not None:
+            st.caption(t("rs_asg_hint", lang))
+            asg_edit = st.data_editor(
+                asg_df, width="stretch", key="rs_asg_editor",
+                column_config={
+                    "dataset": st.column_config.TextColumn(t("col_dataset", lang), disabled=True),
+                    "domain": st.column_config.TextColumn(t("cat_domain", lang), disabled=True),
+                    "owner_name": st.column_config.TextColumn(t("rs_owner_name", lang)),
+                    "owner_role": st.column_config.TextColumn(t("rs_owner_role", lang)),
+                    "steward_name": st.column_config.TextColumn(t("rs_steward_name", lang)),
+                    "steward_role": st.column_config.TextColumn(t("rs_steward_role", lang)),
+                    "match": st.column_config.TextColumn(t("rs_match", lang), disabled=True),
+                    "estado": st.column_config.TextColumn(t("rs_estado", lang), disabled=True),
+                })
+            if st.button(t("rs_save_asg", lang)):
+                base = st.session_state.get("rs_asg")
+                if base is not None and len(base) == len(asg_edit):
+                    changed = (asg_edit[["owner_name", "owner_role",
+                                         "steward_name", "steward_role"]]
+                               != base[["owner_name", "owner_role",
+                                        "steward_name", "steward_role"]]).any(axis=1)
+                    asg_edit = asg_edit.copy()
+                    asg_edit.loc[changed, "estado"] = "editado"
+                orgchart.save_assignments(asg_edit)
+                st.session_state["rs_asg"] = asg_edit
+                st.success(t("rs_asg_saved", lang))
+    st.caption(t("rs_local_note", lang))
 
 # --------------------------------------------------------------- Políticas
 with tab_p:

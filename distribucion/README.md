@@ -19,6 +19,7 @@ pacote automaticamente.
 |---|---|---|
 | [`opcion_A_instalador_exe/`](opcion_A_instalador_exe/LEEME.md) | ES: permite instalar software (.exe) · EN: allows installing software · PT: permite instalar software | ❌ Python **no** requerido / not required |
 | [`opcion_B_portable_bat/`](opcion_B_portable_bat/LEEME.md) | ES: bloquea .exe pero permite Python · EN: blocks .exe but allows Python · PT: bloqueia .exe mas permite Python | ✅ Python 3.10+ |
+| [`owner/`](owner/LEEME.md) | ES: **solo para el dueño del producto** — las dos versiones + web de venta + docs de negocio en un ZIP; no se entrega a clientes · EN: **product owner only**, not delivered to clients · PT: **somente para o dono do produto**, não se entrega a clientes | 🔑 interno / internal |
 
 **ES:** ¿Ninguna de las dos? Tercera vía: despliegue 100% web en un servidor
 de la empresa (`streamlit run app/app.py`), sin nada instalado en las PCs.

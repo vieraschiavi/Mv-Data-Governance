@@ -16,6 +16,12 @@ Produce los ZIP de las dos opciones de distribución:
       (sin la landing ni el video): solo lo necesario para correr el programa
       por cualquiera de los 3 medios (.bat, .exe, web). Lo sirve Vercel.
 
+  Kit del owner (siempre): MVDataGovernance_Owner_v{ver}.zip
+      Las DOS versiones en un solo paquete para el dueño del producto:
+      el portable .bat completo (con web de venta, video, docs de negocio y
+      tests) + el Setup.exe si ya fue construido en Windows. No se entrega
+      a clientes — ver distribucion/owner/LEEME.md.
+
 Uso:
     python packaging/build_release.py
 """
@@ -106,6 +112,25 @@ def build_option_a() -> str | None:
     return out
 
 
+def build_owner() -> tuple[str, bool]:
+    """Kit del owner: portable .bat completo + Setup.exe (si existe) en un
+    solo ZIP. Devuelve (ruta, exe_incluido). No se entrega a clientes."""
+    os.makedirs(DIST, exist_ok=True)
+    out = os.path.join(DIST, f"MVDataGovernance_Owner_v{__version__}.zip")
+    setup = os.path.join(DIST, f"MVDataGovernance_Setup_v{__version__}.exe")
+    has_exe = os.path.exists(setup)
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(os.path.join(ROOT, "distribucion", "owner", "LEEME.md"),
+                "LEEME_OWNER.md")
+        if has_exe:
+            z.write(setup, os.path.basename(setup))
+        for path in _iter_files(_INCLUDE_DIRS, _INCLUDE_FILES):
+            arc = os.path.join("MVDataGovernance",
+                               os.path.relpath(path, ROOT))
+            z.write(path, arc)
+    return out, has_exe
+
+
 def main() -> None:
     d = build_web_demo()
     print(f"[Web] Demo directa : {d} ({os.path.getsize(d) / 1e6:.2f} MB)")
@@ -118,6 +143,9 @@ def main() -> None:
         print("[A]   Instalador exe: aun no existe dist/MVDataGovernance_Setup_"
               f"v{__version__}.exe — generalo en Windows con "
               "packaging\\build_exe.bat y volve a correr este script.")
+    o, has_exe = build_owner()
+    exe_note = "con Setup.exe" if has_exe else "sin Setup.exe (generalo en Windows y volvé a correr)"
+    print(f"[👑]  Kit del owner : {o} ({os.path.getsize(o) / 1e6:.1f} MB, {exe_note})")
 
 
 if __name__ == "__main__":
