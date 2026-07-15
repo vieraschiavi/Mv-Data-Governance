@@ -145,6 +145,35 @@ def run_checks() -> list[tuple[str, bool, str]]:
                     os.environ["MVDG_DATA_DIR"] = prev
         return "guardar → cargar → exportar ZIP → importar, verificado (local)"
 
+    @check("Curaduría: definiciones pre-establecidas + validación del responsable")
+    def _():
+        import os
+        import tempfile
+
+        from . import curation
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                df = curation.list_items("es")
+                total = len(df)
+                assert total > 100 and (df["status"] == "sugerido_ia").all()
+                assert (df["proposed"].str.len() > 0).all()
+                item = df.iloc[0]["item_id"]
+                curation.save_validation(item, "es", "modificado",
+                                         "Texto oficial.", "Resp. Selfcheck",
+                                         "Data Steward")
+                assert curation.effective_text(item, "es", "x") == "Texto oficial."
+                assert curation.summary("es")["modificado"] == 1
+                assert curation.reset_item(item, "es")
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return (f"{total} definiciones pre-establecidas; validar/modificar/"
+                "resetear con responsable, verificado (local)")
+
     @check("Centro de ayuda (speeches IA)")
     def _():
         from .help_center import SPEECHES, automation_rows

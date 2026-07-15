@@ -32,6 +32,7 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
+from mvdg import curation
 from mvdg import dmbok
 from mvdg import mdm
 from mvdg import samples as ext_samples
@@ -111,12 +112,12 @@ st.caption(t("app_tagline", lang))
 results = _results(lang)
 tables = _tables()
 
-(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_p, tab_pr, tab_bi,
- tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_cu, tab_p, tab_pr,
+ tab_bi, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
-    t("tab_lineage", lang), t("tab_glossary", lang), t("tab_policies", lang),
-    t("tab_profiler", lang), t("tab_bi", lang),
+    t("tab_lineage", lang), t("tab_glossary", lang), t("tab_curation", lang),
+    t("tab_policies", lang), t("tab_profiler", lang), t("tab_bi", lang),
     t("tab_pbi", lang), t("tab_tableau", lang), t("tab_clients", lang),
     t("tab_workspace", lang), t("tab_help", lang),
 ])
@@ -685,6 +686,102 @@ with tab_g:
         "term": t("g_term", lang), "definition": t("g_definition", lang),
         "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
     }).drop(columns=["term_id"]), width="stretch", hide_index=True)
+
+# --------------------------------------------------------------- Curaduría
+with tab_cu:
+    st.info(t("cu_intro", lang), icon="🖊️")
+    _cu_sum = curation.summary(lang)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(t("cu_total", lang), _cu_sum["total"])
+    c2.metric(t("cu_pending", lang), _cu_sum["sugerido_ia"])
+    c3.metric(t("cu_validated", lang), _cu_sum["validado"])
+    c4.metric(t("cu_modified", lang), _cu_sum["modificado"])
+    st.progress(_cu_sum["reviewed_pct"] / 100.0,
+                text=t("cu_progress", lang).format(pct=_cu_sum["reviewed_pct"]))
+
+    _cu_df = curation.list_items(lang)
+    _CU_KIND = {"glossary": t("cu_kind_glossary", lang),
+                "catalog": t("cu_kind_catalog", lang),
+                "column": t("cu_kind_column", lang)}
+    _CU_STATUS = {"sugerido_ia": t("cu_st_ai", lang),
+                  "validado": t("cu_st_val", lang),
+                  "modificado": t("cu_st_mod", lang)}
+    f1, f2, f3 = st.columns(3)
+    _cu_kind = f1.selectbox(t("cu_filter_kind", lang), ["(todos)"] + list(_CU_KIND),
+                            format_func=lambda k: _CU_KIND.get(k, t("cu_all", lang)))
+    _cu_ds = f2.selectbox(t("cu_filter_dataset", lang),
+                          ["(todos)"] + sorted(_cu_df["dataset"].unique()))
+    _cu_st = f3.selectbox(t("cu_filter_status", lang), ["(todos)"] + list(_CU_STATUS),
+                          format_func=lambda k: _CU_STATUS.get(k, t("cu_all", lang)))
+    _cu_view = _cu_df
+    if _cu_kind != "(todos)":
+        _cu_view = _cu_view[_cu_view["kind"] == _cu_kind]
+    if _cu_ds != "(todos)":
+        _cu_view = _cu_view[_cu_view["dataset"] == _cu_ds]
+    if _cu_st != "(todos)":
+        _cu_view = _cu_view[_cu_view["status"] == _cu_st]
+
+    st.dataframe(
+        _cu_view[["kind", "dataset", "label", "status", "text",
+                  "responsible_name", "responsible_role", "validated_at"]]
+        .assign(kind=lambda d: d["kind"].map(_CU_KIND),
+                status=lambda d: d["status"].map(_CU_STATUS))
+        .rename(columns={
+            "kind": t("cu_col_kind", lang), "dataset": t("col_dataset", lang),
+            "label": t("cu_col_item", lang), "status": t("cu_col_status", lang),
+            "text": t("cu_col_text", lang),
+            "responsible_name": t("cu_col_resp", lang),
+            "responsible_role": t("cu_col_role", lang),
+            "validated_at": t("cu_col_date", lang)}),
+        width="stretch", hide_index=True, height=280)
+
+    st.divider()
+    st.subheader(t("cu_review_one", lang))
+    if len(_cu_view):
+        _cu_pick = st.selectbox(
+            t("cu_pick", lang), _cu_view["item_id"].tolist(),
+            format_func=lambda i: (
+                f"{_CU_KIND[_cu_view.set_index('item_id').loc[i, 'kind']]} · "
+                f"{_cu_view.set_index('item_id').loc[i, 'dataset']} · "
+                f"{_cu_view.set_index('item_id').loc[i, 'label']}"))
+        _cu_row = _cu_view.set_index("item_id").loc[_cu_pick]
+        st.caption(t("cu_proposed", lang))
+        st.markdown(f"> {_cu_row['proposed']}")
+        if _cu_row["status"] != "sugerido_ia":
+            st.success(t("cu_already", lang).format(
+                status=_CU_STATUS[_cu_row["status"]], name=_cu_row["responsible_name"],
+                role=_cu_row["responsible_role"], date=_cu_row["validated_at"]))
+            if _cu_row["status"] == "modificado":
+                st.markdown(f"**{t('cu_official_text', lang)}:** {_cu_row['text']}")
+
+        _cu_action = st.radio(t("cu_action", lang), ["validar", "modificar"],
+                              horizontal=True,
+                              format_func=lambda a: t(f"cu_action_{a}", lang))
+        _cu_newtext = ""
+        if _cu_action == "modificar":
+            _cu_newtext = st.text_area(t("cu_new_text", lang), _cu_row["text"])
+        r1, r2 = st.columns(2)
+        _cu_name = r1.text_input(t("cu_resp_name", lang),
+                                 _cu_row["responsible_name"] or "")
+        _cu_role = r2.text_input(t("cu_resp_role", lang),
+                                 _cu_row["responsible_role"] or _cu_row["default_owner"])
+        _cu_notes = st.text_input(t("cu_notes", lang), _cu_row["notes"] or "")
+        b1, b2 = st.columns(2)
+        if b1.button(t("cu_save", lang), type="primary"):
+            try:
+                curation.save_validation(
+                    _cu_pick, lang,
+                    "modificado" if _cu_action == "modificar" else "validado",
+                    _cu_newtext, _cu_name, _cu_role, _cu_notes)
+                st.success(t("cu_saved", lang))
+                st.rerun()
+            except ValueError:
+                st.error(t("cu_need_name", lang))
+        if _cu_row["status"] != "sugerido_ia" and b2.button(t("cu_reset", lang)):
+            curation.reset_item(_cu_pick, lang)
+            st.success(t("cu_reset_ok", lang))
+            st.rerun()
+    st.caption(t("cu_local_note", lang))
 
 # --------------------------------------------------------------- Políticas
 with tab_p:

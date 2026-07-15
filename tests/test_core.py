@@ -749,6 +749,57 @@ def test_samples_openfda_conditional_rules_scope():
     assert humanos_sin_marca < total_sin_marca  # la condición recorta de verdad
 
 
+def test_curation_inventory_covers_all_definitions():
+    """Toda definición del programa (glosario demo + samples, catálogo,
+    diccionario) aparece en el inventario de curaduría, pre-establecida y en
+    estado 'sugerido_ia' hasta que un responsable la revise."""
+    from mvdg import curation
+    for lang in LANGS:
+        df = curation.list_items(lang)
+        assert len(df) > 100
+        assert set(df["kind"]) == {"glossary", "catalog", "column"}
+        assert (df["proposed"].str.len() > 0).all()  # nada arranca en blanco
+
+
+def test_curation_validate_modify_reset(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation
+    item = "glossary:medicamentos_openfda:ndc"
+    # validar tal cual
+    rec = curation.save_validation(item, "es", "validado", "",
+                                   "María Viera", "Data Owner Regulatorio")
+    assert rec["status"] == "validado" and rec["date"]
+    df = curation.list_items("es").set_index("item_id")
+    assert df.loc[item, "status"] == "validado"
+    assert df.loc[item, "responsible_name"] == "María Viera"
+    assert df.loc[item, "text"] == df.loc[item, "proposed"]  # validar no cambia el texto
+    # modificar con texto oficial
+    curation.save_validation(item, "es", "modificado", "Definición oficial corregida.",
+                             "J. Pérez", "Data Steward")
+    df = curation.list_items("es").set_index("item_id")
+    assert df.loc[item, "status"] == "modificado"
+    assert df.loc[item, "text"] == "Definición oficial corregida."
+    assert curation.effective_text(item, "es", "fallback") == "Definición oficial corregida."
+    # el veredicto es por idioma: en inglés sigue sugerido_ia
+    assert curation.list_items("en").set_index("item_id").loc[item, "status"] == "sugerido_ia"
+    # resumen y reset
+    s = curation.summary("es")
+    assert s["modificado"] == 1 and s["reviewed_pct"] > 0
+    assert curation.reset_item(item, "es")
+    assert curation.get_record(item, "es") is None
+
+
+def test_curation_requires_responsible_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation
+    with pytest.raises(ValueError):
+        curation.save_validation("glossary:demo:customer", "es", "validado",
+                                 "", "", "Data Owner")
+    with pytest.raises(ValueError):
+        curation.save_validation("glossary:demo:customer", "es", "sugerido_ia",
+                                 "", "Nombre", "Cargo")
+
+
 def test_samples_openfda_bi_bundle_complete():
     """End-to-end hasta el BI: el paquete de gobierno del dataset openFDA trae
     datos + diccionario + calidad + glosario listos para exportar/servir."""

@@ -47,6 +47,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_quality": {"es": "✅ Calidad", "en": "✅ Quality", "pt": "✅ Qualidade"},
     "tab_lineage": {"es": "🧬 Linaje", "en": "🧬 Lineage", "pt": "🧬 Linhagem"},
     "tab_glossary": {"es": "📖 Glosario", "en": "📖 Glossary", "pt": "📖 Glossário"},
+    "tab_curation": {"es": "🖊️ Curaduría", "en": "🖊️ Curation", "pt": "🖊️ Curadoria"},
     "tab_policies": {"es": "🛡️ Políticas", "en": "🛡️ Policies", "pt": "🛡️ Políticas"},
     "tab_profiler": {"es": "🔎 Mis datos", "en": "🔎 My data", "pt": "🔎 Meus dados"},
     "tab_bi": {"es": "📤 BI & API", "en": "📤 BI & API", "pt": "📤 BI & API"},
@@ -197,6 +198,75 @@ _T: dict[str, dict[str, str]] = {
     "g_term": {"es": "Término", "en": "Term", "pt": "Termo"},
     "g_definition": {"es": "Definición", "en": "Definition", "pt": "Definição"},
     "g_linked": {"es": "Datasets vinculados", "en": "Linked datasets", "pt": "Datasets vinculados"},
+    # ------------------------------------------------------------- curation
+    "cu_intro": {
+        "es": "Ninguna definición arranca en blanco y ninguna queda sin responsable: "
+              "todo lo que ves (glosario, catálogo, diccionario) viene pre-establecido "
+              "por IA como recomendación inicial, y acá el Data Owner o Data Steward "
+              "lo valida tal cual o lo modifica con su texto oficial — con nombre, "
+              "cargo y fecha, guardado en tu equipo. Es el mismo flujo de curaduría "
+              "que usan Purview y Collibra.",
+        "en": "No definition starts blank and none is left without a responsible person: "
+              "everything you see (glossary, catalog, dictionary) comes pre-established "
+              "by AI as an initial recommendation, and here the Data Owner or Data Steward "
+              "validates it as-is or replaces it with their official text — with name, "
+              "role and date, stored on your machine. It's the same curation flow "
+              "Purview and Collibra use.",
+        "pt": "Nenhuma definição começa em branco e nenhuma fica sem responsável: "
+              "tudo o que você vê (glossário, catálogo, dicionário) vem pré-estabelecido "
+              "por IA como recomendação inicial, e aqui o Data Owner ou Data Steward "
+              "valida como está ou substitui pelo seu texto oficial — com nome, "
+              "cargo e data, salvo no seu equipamento. É o mesmo fluxo de curadoria "
+              "que Purview e Collibra usam.",
+    },
+    "cu_total": {"es": "Definiciones", "en": "Definitions", "pt": "Definições"},
+    "cu_pending": {"es": "Sugeridas por IA (sin revisar)", "en": "AI-suggested (unreviewed)", "pt": "Sugeridas por IA (sem revisão)"},
+    "cu_validated": {"es": "Validadas", "en": "Validated", "pt": "Validadas"},
+    "cu_modified": {"es": "Modificadas", "en": "Modified", "pt": "Modificadas"},
+    "cu_progress": {"es": "{pct}% revisado por un responsable", "en": "{pct}% reviewed by a responsible person", "pt": "{pct}% revisado por um responsável"},
+    "cu_kind_glossary": {"es": "Término de glosario", "en": "Glossary term", "pt": "Termo de glossário"},
+    "cu_kind_catalog": {"es": "Descripción de dataset", "en": "Dataset description", "pt": "Descrição de dataset"},
+    "cu_kind_column": {"es": "Descripción de columna", "en": "Column description", "pt": "Descrição de coluna"},
+    "cu_st_ai": {"es": "🤖 Sugerido por IA", "en": "🤖 AI-suggested", "pt": "🤖 Sugerido por IA"},
+    "cu_st_val": {"es": "✅ Validado", "en": "✅ Validated", "pt": "✅ Validado"},
+    "cu_st_mod": {"es": "🖊️ Modificado", "en": "🖊️ Modified", "pt": "🖊️ Modificado"},
+    "cu_filter_kind": {"es": "Tipo", "en": "Kind", "pt": "Tipo"},
+    "cu_filter_dataset": {"es": "Dataset", "en": "Dataset", "pt": "Dataset"},
+    "cu_filter_status": {"es": "Estado", "en": "Status", "pt": "Status"},
+    "cu_all": {"es": "(todos)", "en": "(all)", "pt": "(todos)"},
+    "cu_col_kind": {"es": "Tipo", "en": "Kind", "pt": "Tipo"},
+    "cu_col_item": {"es": "Ítem", "en": "Item", "pt": "Item"},
+    "cu_col_status": {"es": "Estado", "en": "Status", "pt": "Status"},
+    "cu_col_text": {"es": "Definición vigente", "en": "Current definition", "pt": "Definição vigente"},
+    "cu_col_resp": {"es": "Responsable", "en": "Responsible", "pt": "Responsável"},
+    "cu_col_role": {"es": "Cargo", "en": "Role", "pt": "Cargo"},
+    "cu_col_date": {"es": "Fecha", "en": "Date", "pt": "Data"},
+    "cu_review_one": {"es": "Revisar una definición", "en": "Review a definition", "pt": "Revisar uma definição"},
+    "cu_pick": {"es": "Definición a revisar", "en": "Definition to review", "pt": "Definição a revisar"},
+    "cu_proposed": {"es": "Texto pre-establecido (recomendación IA):", "en": "Pre-established text (AI recommendation):", "pt": "Texto pré-estabelecido (recomendação IA):"},
+    "cu_already": {
+        "es": "{status} por {name} ({role}) el {date}.",
+        "en": "{status} by {name} ({role}) on {date}.",
+        "pt": "{status} por {name} ({role}) em {date}.",
+    },
+    "cu_official_text": {"es": "Texto oficial del responsable", "en": "Responsible's official text", "pt": "Texto oficial do responsável"},
+    "cu_action": {"es": "¿Qué hace el responsable?", "en": "What does the responsible person do?", "pt": "O que o responsável faz?"},
+    "cu_action_validar": {"es": "✅ Validar tal cual", "en": "✅ Validate as-is", "pt": "✅ Validar como está"},
+    "cu_action_modificar": {"es": "🖊️ Modificar el texto", "en": "🖊️ Modify the text", "pt": "🖊️ Modificar o texto"},
+    "cu_new_text": {"es": "Texto oficial (reemplaza al sugerido)", "en": "Official text (replaces the suggested one)", "pt": "Texto oficial (substitui o sugerido)"},
+    "cu_resp_name": {"es": "Nombre del responsable", "en": "Responsible person's name", "pt": "Nome do responsável"},
+    "cu_resp_role": {"es": "Cargo (ej. Data Owner de Ventas)", "en": "Role (e.g. Sales Data Owner)", "pt": "Cargo (ex. Data Owner de Vendas)"},
+    "cu_notes": {"es": "Notas (opcional)", "en": "Notes (optional)", "pt": "Notas (opcional)"},
+    "cu_save": {"es": "💾 Guardar veredicto", "en": "💾 Save verdict", "pt": "💾 Salvar veredito"},
+    "cu_saved": {"es": "Veredicto guardado.", "en": "Verdict saved.", "pt": "Veredito salvo."},
+    "cu_need_name": {"es": "Falta el nombre del responsable.", "en": "The responsible person's name is missing.", "pt": "Falta o nome do responsável."},
+    "cu_reset": {"es": "↩️ Volver a la sugerencia IA", "en": "↩️ Back to the AI suggestion", "pt": "↩️ Voltar à sugestão IA"},
+    "cu_reset_ok": {"es": "Definición devuelta al estado sugerido por IA.", "en": "Definition returned to AI-suggested state.", "pt": "Definição devolvida ao estado sugerido por IA."},
+    "cu_local_note": {
+        "es": "Los veredictos se guardan solo en tu equipo (~/.mv_data_governance/curaduria.json) y persisten entre sesiones.",
+        "en": "Verdicts are stored only on your machine (~/.mv_data_governance/curaduria.json) and persist between sessions.",
+        "pt": "Os vereditos são salvos apenas no seu equipamento (~/.mv_data_governance/curaduria.json) e persistem entre sessões.",
+    },
     # ------------------------------------------------------------- policies
     "p_intro": {
         "es": "Políticas de datos y su cumplimiento verificado automáticamente "
