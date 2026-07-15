@@ -34,8 +34,7 @@ echo  [PT] Primeira execucao: criando ambiente e instalando dependencias (2-5 mi
 echo.
 %PYCMD% -m venv .venv
 if errorlevel 1 goto errvenv
-".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt
+call :install_deps
 if errorlevel 1 goto errdeps
 
 :launch
@@ -53,6 +52,30 @@ echo.
 ".venv\Scripts\python.exe" -m mvdg.server
 goto end
 
+rem ------------------------------------------------------------------
+rem  install_deps: instala requirements.txt con reintentos (ver la
+rem  misma rutina, comentada, en MV_DataGovernance.bat).
+rem ------------------------------------------------------------------
+:install_deps
+set "MVDG_TRIES=4"
+:install_deps_try
+".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
+".venv\Scripts\python.exe" -m pip install -r requirements.txt
+if not errorlevel 1 exit /b 0
+set /a MVDG_TRIES-=1
+if %MVDG_TRIES% gtr 0 (
+    echo.
+    echo  [ES] La instalacion choco con un archivo en uso ^(comun si esta carpeta
+    echo       se sincroniza con OneDrive/Google Drive/Dropbox^). Reintentando...
+    echo  [EN] Install hit a file in use ^(common if this folder is synced by
+    echo       OneDrive/Google Drive/Dropbox^). Retrying...
+    echo  [PT] A instalacao encontrou um arquivo em uso ^(comum se esta pasta
+    echo       e sincronizada pelo OneDrive/Google Drive/Dropbox^). Tentando de novo...
+    timeout /t 4 /nobreak >nul
+    goto install_deps_try
+)
+exit /b 1
+
 :nopython
 echo.
 echo  [ES] No se encontro Python. Descargalo de https://www.python.org/downloads/
@@ -69,9 +92,21 @@ goto end
 
 :errdeps
 echo.
-echo  [ES] Fallo la instalacion de dependencias. Revisa tu conexion a internet.
-echo  [EN] Dependency install failed. Check your internet connection.
-echo  [PT] Falha ao instalar dependencias. Verifique sua conexao com a internet.
+echo  [ES] No se pudo instalar las dependencias despues de varios intentos. Antes de
+echo       reintentar: (1) cerra cualquier otra ventana de MV Data Governance que
+echo       haya quedado abierta, (2) si esta carpeta esta dentro de OneDrive/Google
+echo       Drive/Dropbox, pausa la sincronizacion o movela fuera de esa carpeta,
+echo       (3) revisa tu conexion a internet. Despues borra .venv y reintenta.
+echo  [EN] Couldn't install dependencies after several attempts. Before retrying:
+echo       (1) close any other MV Data Governance window still open, (2) if this
+echo       folder is inside OneDrive/Google Drive/Dropbox, pause syncing or move it
+echo       outside that folder, (3) check your internet connection. Then delete
+echo       .venv and retry.
+echo  [PT] Nao foi possivel instalar as dependencias apos varias tentativas. Antes
+echo       de tentar de novo: (1) feche qualquer outra janela do MV Data Governance
+echo       ainda aberta, (2) se esta pasta esta dentro do OneDrive/Google Drive/
+echo       Dropbox, pause a sincronizacao ou mova-a para fora dessa pasta,
+echo       (3) verifique sua conexao com a internet. Depois apague .venv e tente de novo.
 goto end
 
 :end

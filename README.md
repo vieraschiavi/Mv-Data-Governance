@@ -50,14 +50,15 @@ Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA
 estándar DAMA-DMBOK? [`docs/DMBOK.md`](docs/DMBOK.md) (explicado para
 técnicos y no técnicos, en los 3 idiomas).
 
-### 📦 Dos paquetes según las restricciones de TI de cada empresa
+### 📦 Paquetes según las restricciones de TI de cada empresa
 
 | Carpeta | Cuándo | Cómo se genera |
 |---|---|---|
 | [`distribucion/opcion_A_instalador_exe/`](distribucion/opcion_A_instalador_exe/LEEME.md) | La empresa **permite instalar .exe** (no requiere Python) | `packaging\build_exe.bat` en Windows |
 | [`distribucion/opcion_B_portable_bat/`](distribucion/opcion_B_portable_bat/LEEME.md) | La empresa **bloquea .exe pero permite Python** (no instala nada en el sistema) | `python packaging/build_release.py` → ZIP portable |
+| [`electron/`](electron/README.md) | Instalador `.exe` con ventana de escritorio nativa (Electron + React) en vez del navegador — tercera forma de empaquetar el mismo programa | `cd electron && npm run dist-win` en Windows |
 
-Mismas funcionalidades en ambas. La ficha de cada empresa (pestaña 🏢) guarda
+Mismas funcionalidades en las tres. La ficha de cada empresa (pestaña 🏢) guarda
 su restricción y recomienda el paquete automáticamente.
 
 ## 🧩 Módulos

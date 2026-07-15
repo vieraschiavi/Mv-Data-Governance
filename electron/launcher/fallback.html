@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Fallback sin React: se usa solo si launcher/dist no fue construido
+     (npm run build-launcher). El shell funciona igual. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MV Data Governance</title>
+<style>
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #0e1a2b;
+         color: #e8eef7; display: flex; align-items: center; justify-content: center;
+         height: 100vh; margin: 0; }
+  .card { text-align: center; }
+  h1 { font-weight: 300; } b { color: #f2b441; }
+  #st { color: #93a5bd; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🛡️ MV <b>Data Governance</b></h1>
+  <p id="st">Levantando el servidor local…</p>
+</div>
+<script>
+  if (window.mvdg) window.mvdg.onStatus(function (s) {
+    document.getElementById("st").textContent = s.key + (s.detail ? " · " + s.detail : "");
+  });
+</script>
+</body>
+</html>

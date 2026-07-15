@@ -19,5 +19,10 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 
+# Electron shell (electron/README.md explica cómo regenerar)
+electron/node_modules/
+electron/launcher/dist/
+electron/dist_electron/
+
 # Video build outputs (regenerable; served copies live in landing/video/)
 assets/video/*.mp4
