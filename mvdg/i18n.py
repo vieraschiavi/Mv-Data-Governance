@@ -51,6 +51,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_profiler": {"es": "🔎 Mis datos", "en": "🔎 My data", "pt": "🔎 Meus dados"},
     "tab_bi": {"es": "📤 BI & API", "en": "📤 BI & API", "pt": "📤 BI & API"},
     "tab_clients": {"es": "🏢 Empresas", "en": "🏢 Companies", "pt": "🏢 Empresas"},
+    "tab_workspace": {"es": "📁 Proyecto", "en": "📁 Project", "pt": "📁 Projeto"},
     "tab_help": {"es": "❓ Ayuda", "en": "❓ Help", "pt": "❓ Ajuda"},
     "tab_lab": {"es": "🧪 Laboratorio", "en": "🧪 Lab", "pt": "🧪 Laboratório"},
     "tab_dmbok": {"es": "📘 Estándares", "en": "📘 Standards", "pt": "📘 Padrões"},
@@ -428,6 +429,85 @@ _T: dict[str, dict[str, str]] = {
         "es": "Se guardan en {path} (JSON). Podés respaldarlas copiando ese archivo.",
         "en": "Stored at {path} (JSON). Back them up by copying that file.",
         "pt": "Salvas em {path} (JSON). Faça backup copiando esse arquivo.",
+    },
+    # ------------------------------------------------------------- workspace
+    "ws_intro": {
+        "es": "El proyecto de cada cliente: guardá cada etapa de tu trabajo "
+              "(el dataset que perfilaste, los duplicados/MDM, el escaneo de "
+              "Power BI o Tableau, el paquete para BI) en disco, para no "
+              "perder nada y retomar donde quedaste. 100% local.",
+        "en": "Each client's project: save every stage of your work (the "
+              "dataset you profiled, the duplicates/MDM, the Power BI or "
+              "Tableau scan, the BI bundle) to disk, so nothing is lost and "
+              "you can pick up where you left off. 100% local.",
+        "pt": "O projeto de cada cliente: salve cada etapa do seu trabalho (o "
+              "dataset que perfilou, os duplicados/MDM, o escaneamento de "
+              "Power BI ou Tableau, o pacote para BI) em disco, para não "
+              "perder nada e retomar de onde parou. 100% local.",
+    },
+    "ws_no_clients": {
+        "es": "Primero creá una empresa en la pestaña 🏢 Empresas: el proyecto "
+              "se guarda por cliente.",
+        "en": "First create a company in the 🏢 Companies tab: the project is "
+              "saved per client.",
+        "pt": "Primeiro crie uma empresa na aba 🏢 Empresas: o projeto é salvo "
+              "por cliente.",
+    },
+    "ws_pick_client": {"es": "Cliente", "en": "Client", "pt": "Cliente"},
+    "ws_summary_stages": {"es": "Etapas guardadas", "en": "Saved stages", "pt": "Etapas salvas"},
+    "ws_summary_tables": {"es": "Tablas", "en": "Tables", "pt": "Tabelas"},
+    "ws_summary_rows": {"es": "Filas guardadas", "en": "Saved rows", "pt": "Linhas salvas"},
+    "ws_summary_updated": {"es": "Última actualización", "en": "Last update", "pt": "Última atualização"},
+    "ws_save_title": {"es": "💾 Guardar la etapa actual", "en": "💾 Save the current stage", "pt": "💾 Salvar a etapa atual"},
+    "ws_capture_hint": {
+        "es": "Elegí qué de lo que trabajaste hasta ahora en esta sesión querés "
+              "guardar en el proyecto del cliente. Lo que no aparezca acá es "
+              "porque todavía no lo generaste en esta sesión.",
+        "en": "Choose what you've worked on so far in this session to save into "
+              "the client's project. Anything not shown here is because you "
+              "haven't generated it yet in this session.",
+        "pt": "Escolha o que você trabalhou até agora nesta sessão para salvar "
+              "no projeto do cliente. O que não aparece aqui é porque você "
+              "ainda não gerou nesta sessão.",
+    },
+    "ws_include_dataset": {"es": "Dataset perfilado ({name})", "en": "Profiled dataset ({name})", "pt": "Dataset perfilado ({name})"},
+    "ws_include_mdm": {"es": "Reporte de duplicados / MDM", "en": "Duplicates / MDM report", "pt": "Relatório de duplicados / MDM"},
+    "ws_include_powerbi": {"es": "Escaneo de Power BI (catálogo, calidad, linaje)", "en": "Power BI scan (catalog, quality, lineage)", "pt": "Escaneamento de Power BI (catálogo, qualidade, linhagem)"},
+    "ws_include_tableau": {"es": "Escaneo de Tableau (catálogo, calidad, linaje)", "en": "Tableau scan (catalog, quality, lineage)", "pt": "Escaneamento de Tableau (catálogo, qualidade, linhagem)"},
+    "ws_include_governance": {"es": "Paquete de gobierno (catálogo, reglas, glosario, linaje, políticas…)", "en": "Governance bundle (catalog, rules, glossary, lineage, policies…)", "pt": "Pacote de governança (catálogo, regras, glossário, linhagem, políticas…)"},
+    "ws_stage_name": {"es": "Nombre de la etapa (ej. \"Catálogo inicial\", \"Después de corregir\")", "en": "Stage name (e.g. \"Initial catalog\", \"After fixing\")", "pt": "Nome da etapa (ex. \"Catálogo inicial\", \"Depois de corrigir\")"},
+    "ws_stage_notes": {"es": "Notas (opcional)", "en": "Notes (optional)", "pt": "Notas (opcional)"},
+    "ws_save_btn": {"es": "💾 Guardar etapa", "en": "💾 Save stage", "pt": "💾 Salvar etapa"},
+    "ws_saved_ok": {"es": "Etapa \"{name}\" guardada ({n} tabla/s).", "en": "Stage \"{name}\" saved ({n} table/s).", "pt": "Etapa \"{name}\" salva ({n} tabela/s)."},
+    "ws_need_name": {"es": "Poné un nombre para la etapa.", "en": "Enter a name for the stage.", "pt": "Informe um nome para a etapa."},
+    "ws_need_selection": {"es": "Elegí al menos una cosa para guardar.", "en": "Select at least one thing to save.", "pt": "Escolha ao menos uma coisa para salvar."},
+    "ws_stages_title": {"es": "📚 Etapas guardadas", "en": "📚 Saved stages", "pt": "📚 Etapas salvas"},
+    "ws_no_stages": {"es": "Todavía no guardaste ninguna etapa para este cliente.", "en": "You haven't saved any stage for this client yet.", "pt": "Você ainda não salvou nenhuma etapa para este cliente."},
+    "ws_col_table": {"es": "Tabla", "en": "Table", "pt": "Tabela"},
+    "ws_reload": {"es": "👁️ Ver / descargar", "en": "👁️ View / download", "pt": "👁️ Ver / baixar"},
+    "ws_delete": {"es": "🗑️ Eliminar etapa", "en": "🗑️ Delete stage", "pt": "🗑️ Excluir etapa"},
+    "ws_deleted": {"es": "Etapa eliminada.", "en": "Stage deleted.", "pt": "Etapa excluída."},
+    "ws_export_title": {"es": "📦 Respaldar / restaurar el proyecto completo", "en": "📦 Back up / restore the whole project", "pt": "📦 Backup / restaurar o projeto completo"},
+    "ws_export_hint": {
+        "es": "Descargá todo el proyecto del cliente (todas las etapas) en un "
+              "ZIP para respaldarlo o llevarlo a otra máquina, o restaurá uno "
+              "que hayas descargado antes.",
+        "en": "Download the client's whole project (all stages) as a ZIP to "
+              "back it up or move it to another machine, or restore one you "
+              "downloaded before.",
+        "pt": "Baixe todo o projeto do cliente (todas as etapas) em um ZIP "
+              "para backup ou para levar a outra máquina, ou restaure um que "
+              "você baixou antes.",
+    },
+    "ws_export_btn": {"es": "⬇️ Descargar proyecto (ZIP)", "en": "⬇️ Download project (ZIP)", "pt": "⬇️ Baixar projeto (ZIP)"},
+    "ws_import_btn": {"es": "Restaurar desde un ZIP", "en": "Restore from a ZIP", "pt": "Restaurar de um ZIP"},
+    "ws_import_replace": {"es": "Reemplazar las etapas actuales (en vez de sumar)", "en": "Replace current stages (instead of merging)", "pt": "Substituir as etapas atuais (em vez de somar)"},
+    "ws_do_import": {"es": "⬆️ Importar", "en": "⬆️ Import", "pt": "⬆️ Importar"},
+    "ws_imported_ok": {"es": "Proyecto importado: {n} etapa/s en total.", "en": "Project imported: {n} stage/s in total.", "pt": "Projeto importado: {n} etapa/s no total."},
+    "ws_where": {
+        "es": "Se guarda en {path} (local). Respaldalo copiando esa carpeta o con el ZIP de arriba.",
+        "en": "Stored at {path} (local). Back it up by copying that folder or with the ZIP above.",
+        "pt": "Salvo em {path} (local). Faça backup copiando essa pasta ou com o ZIP acima.",
     },
     # ----------------------------------------------------------------- help
     "h_intro": {

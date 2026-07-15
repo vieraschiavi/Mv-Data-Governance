@@ -428,6 +428,68 @@ def test_connectors_save_connection_persists_extra(tmp_path, monkeypatch):
     assert reloaded["extra"] == {"account": "xy123", "warehouse": "WH"}
 
 
+# --------------------------------------------------------- proyecto por cliente
+def test_workspace_save_load_stage_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import workspace as ws
+    cid = "cli0001"
+    df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
+    m = ws.save_stage(cid, "Catálogo inicial", {"dataset": df},
+                      kind="dataset", notes="primera carga")
+    assert m["stage_id"] and m["name"] == "Catálogo inicial"
+    assert m["tables"][0]["rows"] == 3 and m["tables"][0]["cols"] == 2
+    # relectura fría (nueva llamada, disco)
+    loaded = ws.load_stage(cid, m["stage_id"])
+    assert list(loaded["loaded_tables"].keys()) == ["dataset"]
+    pd.testing.assert_frame_equal(loaded["loaded_tables"]["dataset"], df)
+
+
+def test_workspace_list_summary_and_delete(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import workspace as ws
+    cid = "cli0002"
+    df1 = pd.DataFrame({"a": [1, 2]})
+    df2 = pd.DataFrame({"b": [1, 2, 3]})
+    s1 = ws.save_stage(cid, "Etapa 1", {"t1": df1})
+    s2 = ws.save_stage(cid, "Etapa 2", {"t2": df2, "t1": df1})
+    stages = ws.list_stages(cid)
+    assert [s["name"] for s in stages] == ["Etapa 2", "Etapa 1"]  # más nueva primero
+    summ = ws.project_summary(cid)
+    assert summ["stages"] == 2 and summ["tables"] == 3 and summ["rows"] == 2 + 3 + 2
+    assert ws.delete_stage(cid, s1["stage_id"]) is True
+    assert ws.delete_stage(cid, "nope") is False
+    assert ws.project_summary(cid)["stages"] == 1
+
+
+def test_workspace_rejects_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import workspace as ws
+    with pytest.raises(ValueError):
+        ws.save_stage("c", "", {"t": pd.DataFrame({"a": [1]})})  # sin nombre
+    with pytest.raises(ValueError):
+        ws.save_stage("c", "Etapa", {})  # sin tablas
+    with pytest.raises(ValueError):
+        ws.save_stage("c", "Etapa", {"t": pd.DataFrame()})  # tabla vacía
+
+
+def test_workspace_export_import_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import workspace as ws
+    cid = "cli0003"
+    df = pd.DataFrame({"id": [1, 2, 3, 4]})
+    ws.save_stage(cid, "E1", {"d": df})
+    ws.save_stage(cid, "E2", {"d": df})
+    blob = ws.export_project(cid)
+    assert isinstance(blob, bytes) and len(blob) > 0
+    # borrar todo y restaurar desde el ZIP
+    assert ws.delete_project(cid) is True
+    assert ws.project_summary(cid)["stages"] == 0
+    n = ws.import_project(cid, blob, replace=True)
+    assert n == 2
+    names = sorted(s["name"] for s in ws.list_stages(cid))
+    assert names == ["E1", "E2"]
+
+
 # ------------------------------------------------------------- tutorial DMBOK
 @pytest.mark.parametrize("lang", LANGS)
 def test_dmbok_content_complete(lang):

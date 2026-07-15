@@ -117,6 +117,34 @@ def run_checks() -> list[tuple[str, bool, str]]:
             assert url.startswith(eng if eng != "bigquery" else "bigquery")
         return f"{len(ENGINES)} motores ({len(CLOUD_ENGINES)} cloud DW/lake), SQLite verificado"
 
+    @check("Proyecto por cliente (etapas persistentes + export/import ZIP)")
+    def _():
+        import os
+        import tempfile
+
+        import pandas as pd
+        from . import workspace as ws
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                cid = "selfcheck"
+                df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
+                m = ws.save_stage(cid, "Etapa 1", {"dataset": df}, kind="dataset")
+                loaded = ws.load_stage(cid, m["stage_id"])
+                assert loaded["loaded_tables"]["dataset"].equals(df)
+                blob = ws.export_project(cid)
+                assert ws.delete_project(cid) is True
+                assert ws.import_project(cid, blob, replace=True) == 1
+                summ = ws.project_summary(cid)
+                assert summ["stages"] == 1 and summ["rows"] == 3
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return "guardar → cargar → exportar ZIP → importar, verificado (local)"
+
     @check("Centro de ayuda (speeches IA)")
     def _():
         from .help_center import SPEECHES, automation_rows
