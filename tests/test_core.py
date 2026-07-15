@@ -1678,3 +1678,21 @@ def test_ai_tableau_calc_refactor_offline(monkeypatch):
     for lg in LANGS:
         p = _build_calc_prompt("Margen %", "SUM([Margen])/SUM([Monto])", "DS Ventas", lg)
         assert "Margen %" in p and "SUM([Margen])" in p
+
+
+def test_vercel_deploy_does_not_ignore_api_functions():
+    """Regresión: .vercelignore excluía la carpeta api/ (arrastrado de antes
+    de que existieran las funciones serverless de MercadoPago ahí adentro),
+    lo que hacía que Vercel nunca subiera checkout.js/verify-payment.js y el
+    checkout devolviera 404 en producción. api/ tiene que seguir publicada."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    vercelignore = os.path.join(root, ".vercelignore")
+    assert os.path.exists(vercelignore)
+    with open(vercelignore, encoding="utf-8") as fh:
+        lines = {ln.strip() for ln in fh if ln.strip()}
+    assert "api" not in lines, (
+        "api/ no puede estar en .vercelignore: ahí viven las funciones "
+        "serverless de MercadoPago (checkout.js, verify-payment.js) que "
+        "sirven /api/checkout y /api/verify-payment en producción.")
+    for fname in ("checkout.js", "verify-payment.js", "_license.js"):
+        assert os.path.exists(os.path.join(root, "api", fname)), fname
