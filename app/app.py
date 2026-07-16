@@ -28,13 +28,16 @@ from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
 from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
                              delete_connection, list_tables,
                              load_connections, load_table, run_query,
-                             save_connection, stored_password, test_connection)
+                             save_connection, scan_all_connections,
+                             stored_password, test_connection)
 from mvdg.help_center import automation_rows, speeches
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import cobit_iso
 from mvdg import collibra_export
 from mvdg import curation
+from mvdg import enforcement
 from mvdg import insights
+from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
@@ -1278,6 +1281,99 @@ with tab_bi:
         with st.expander(t("mig_detail", lang)):
             st.json(_mig_res)
     st.caption(t("mig_local_note", lang))
+
+    st.divider()
+    st.subheader(t("enf_title", lang))
+    st.warning(t("enf_intro", lang), icon="🔒")
+    e1, e2 = st.columns(2)
+    enf_engine = e1.selectbox(t("enf_engine", lang), enforcement.SUPPORTED_MASKING_ENGINES,
+                              format_func=lambda k: "PostgreSQL" if k == "postgresql" else "SQL Server")
+    _CLASS_OPTS = sorted(_mig_cat["classification"].unique().tolist())
+    enf_roles_raw = st.text_area(
+        t("enf_roles", lang),
+        "\n".join(f"{c}: rol_{c.lower()}" for c in _CLASS_OPTS),
+        help=t("enf_roles_help", lang))
+    enf_roles = {}
+    for line in enf_roles_raw.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            enf_roles.setdefault(k.strip(), []).append(v.strip())
+    if st.button(t("enf_generate", lang)):
+        _enf_plan = enforcement.enforcement_plan(_mig_cat, _mig_dic, enf_roles, engine=enf_engine)
+        st.session_state["enf_plan"] = _enf_plan
+    _enf_plan = st.session_state.get("enf_plan")
+    if _enf_plan is not None:
+        f1, f2 = st.columns(2)
+        f1.metric(t("enf_grants", lang), _enf_plan["grant_statements"])
+        f2.metric(t("enf_masks", lang), _enf_plan["masking_statements"])
+        st.code(_enf_plan["script"], language="sql")
+        st.download_button(t("enf_download", lang), _enf_plan["script"],
+                           f"mvdg_enforcement_{enf_engine}.sql", "text/plain")
+    st.caption(t("enf_local_note", lang))
+
+    st.divider()
+    st.subheader(t("mip_title", lang))
+    st.info(t("mip_intro", lang), icon="🏷️")
+    _mip_ready = mip_labels.configured()
+    st.caption(t("mip_env", lang) if not _mip_ready else t("mig_configured", lang))
+    st.caption(t("mip_scope_note", lang))
+    mip_map_raw = st.text_area(
+        t("mip_file_map", lang), "",
+        placeholder="dim_customers: https://empresa.sharepoint.com/:x:/s/team/EjEMPLO",
+        help=t("mip_file_map_help", lang))
+    _mip_file_map = {}
+    for line in mip_map_raw.splitlines():
+        if ":" not in line:
+            continue
+        ds, url = line.split(":", 1)
+        ds, url = ds.strip(), url.strip()
+        if not ds or not url:
+            continue
+        try:
+            resolved = mip_labels.resolve_share_url(url) if _mip_ready else None
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"⚠️ {ds}: {exc}")
+            resolved = None
+        if resolved and resolved.get("itemId"):
+            _mip_file_map[ds] = resolved
+        elif not _mip_ready:
+            st.caption(t("mip_needs_creds_to_resolve", lang).format(dataset=ds))
+    if st.button(t("mip_preview", lang), key="mip_prev"):
+        st.session_state["mip_result"] = mip_labels.push_labels(_mig_cat, _mip_file_map, dry_run=True)
+    if _mip_ready and _mip_file_map and st.button(t("mip_push", lang), type="primary", key="mip_push"):
+        with st.spinner("…"):
+            try:
+                st.session_state["mip_result"] = mip_labels.push_labels(
+                    _mig_cat, _mip_file_map, dry_run=False)
+                st.success(t("mig_done", lang))
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+    _mip_res = st.session_state.get("mip_result")
+    if _mip_res is not None:
+        st.dataframe(pd.DataFrame(_mip_res["plan"]) if _mip_res["plan"] else pd.DataFrame(),
+                    width="stretch", hide_index=True)
+        if _mip_res.get("skipped_no_file"):
+            st.caption(t("mip_skipped", lang).format(datasets=", ".join(_mip_res["skipped_no_file"])))
+    st.caption(t("mip_local_note", lang))
+
+    st.divider()
+    st.subheader(t("scanall_title", lang))
+    st.caption(t("scanall_intro", lang))
+    if st.button(t("scanall_run", lang)):
+        with st.spinner("…"):
+            st.session_state["scanall_result"] = scan_all_connections()
+    _scanall_res = st.session_state.get("scanall_result")
+    if _scanall_res is not None:
+        if len(_scanall_res):
+            n_ok = int(_scanall_res["error"].isna().sum())
+            n_err = int(_scanall_res["error"].notna().sum())
+            g1, g2 = st.columns(2)
+            g1.metric(t("scanall_tables", lang), n_ok)
+            g2.metric(t("scanall_errors", lang), n_err)
+            st.dataframe(_scanall_res, width="stretch", hide_index=True)
+        else:
+            st.caption(t("scanall_none", lang))
+    st.caption(t("scanall_local_note", lang))
 
 # ---------------------------------------------------------------- Empresas
 with tab_cl:

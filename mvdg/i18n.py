@@ -610,6 +610,85 @@ _T: dict[str, dict[str, str]] = {
         "en": "Off by default. Your credentials are only read from environment variables by this program — never requested on screen or stored. Implemented against each provider's official docs; not tested against a live tenant/instance (see docs/PURVIEW_COLLIBRA.md).",
         "pt": "Desligado por padrão. Suas credenciais são lidas apenas das variáveis de ambiente por este programa — nunca pedidas na tela nem salvas. Implementado contra a documentação oficial de cada provedor; não testado contra um tenant/instância real (veja docs/PURVIEW_COLLIBRA.md).",
     },
+    # ------------------------------------------------------- enforcement (enf)
+    "enf_title": {"es": "🔒 Enforcement de acceso (genera DDL, no bloquea nada solo)", "en": "🔒 Access enforcement (generates DDL, blocks nothing by itself)", "pt": "🔒 Enforcement de acesso (gera DDL, não bloqueia nada sozinho)"},
+    "enf_intro": {
+        "es": "Bloquear una consulta en vivo requiere estar en el camino del dato (un proxy, o Purview dentro de Azure) — este programa NO se hace pasar por eso. Lo que sí hace: te genera el DDL real (GRANT/REVOKE por clasificación + enmascaramiento de columnas PII) a partir de tu catálogo ya gobernado, para que vos (o tu DBA) lo revises y lo corras contra la base. Nunca se conecta a ejecutar nada de esto.",
+        "en": "Blocking a live query requires sitting in the data path (a proxy, or Purview inside Azure) — this program does NOT pretend to be that. What it does: generates real DDL (GRANT/REVOKE by classification + PII column masking) from your already-governed catalog, for you (or your DBA) to review and run against the database. It never connects to execute any of this.",
+        "pt": "Bloquear uma consulta em tempo real exige estar no caminho do dado (um proxy, ou o Purview dentro do Azure) — este programa NÃO finge ser isso. O que ele faz: gera o DDL real (GRANT/REVOKE por classificação + mascaramento de colunas PII) a partir do seu catálogo já governado, para você (ou seu DBA) revisar e rodar contra o banco. Nunca se conecta para executar nada disso.",
+    },
+    "enf_engine": {"es": "Motor de base de datos", "en": "Database engine", "pt": "Motor de banco de dados"},
+    "enf_roles": {"es": "Roles autorizados por clasificación (uno por línea: clasificación: rol)", "en": "Authorized roles per classification (one per line: classification: role)", "pt": "Papéis autorizados por classificação (um por linha: classificação: papel)"},
+    "enf_roles_help": {
+        "es": "Ej: PII: rol_rrhh — el rol que sí puede ver las tablas clasificadas PII. Podés agregar varios roles a la misma clasificación en líneas separadas.",
+        "en": "E.g.: PII: rol_rrhh — the role allowed to see PII-classified tables. You can add several roles to the same classification on separate lines.",
+        "pt": "Ex: PII: rol_rrhh — o papel que pode ver as tabelas classificadas como PII. Você pode adicionar vários papéis à mesma classificação em linhas separadas.",
+    },
+    "enf_generate": {"es": "📝 Generar DDL", "en": "📝 Generate DDL", "pt": "📝 Gerar DDL"},
+    "enf_grants": {"es": "Sentencias GRANT/REVOKE", "en": "GRANT/REVOKE statements", "pt": "Sentenças GRANT/REVOKE"},
+    "enf_masks": {"es": "Sentencias de enmascaramiento", "en": "Masking statements", "pt": "Sentenças de mascaramento"},
+    "enf_download": {"es": "⬇️ Descargar el .sql", "en": "⬇️ Download the .sql", "pt": "⬇️ Baixar o .sql"},
+    "enf_local_note": {
+        "es": "100% local: es texto SQL generado a partir de tu catálogo — el programa nunca abre una conexión para ejecutarlo. Cubre PostgreSQL (Row-Level Security nativo) y SQL Server (Dynamic Data Masking + Row-Level Security nativos).",
+        "en": "100% local: it's SQL text generated from your catalog — the program never opens a connection to run it. Covers PostgreSQL (native Row-Level Security) and SQL Server (native Dynamic Data Masking + Row-Level Security).",
+        "pt": "100% local: é texto SQL gerado a partir do seu catálogo — o programa nunca abre uma conexão para executá-lo. Cobre PostgreSQL (Row-Level Security nativo) e SQL Server (Dynamic Data Masking + Row-Level Security nativos).",
+    },
+    # -------------------------------------------------------------- MIP (mip)
+    "mip_title": {"es": "🏷️ Etiquetas de sensibilidad (Microsoft Information Protection)", "en": "🏷️ Sensitivity labels (Microsoft Information Protection)", "pt": "🏷️ Rótulos de sensibilidade (Microsoft Information Protection)"},
+    "mip_intro": {
+        "es": "Una etiqueta MIP es cifrado real embebido en el archivo de Office, atado a la infraestructura de Microsoft — no hay forma de reimplementarla localmente. Este conector llama a la API REAL de Microsoft Graph para aplicar una etiqueta de verdad a un archivo que ya vive en OneDrive/SharePoint, usando la clasificación que este catálogo ya calculó.",
+        "en": "An MIP label is real encryption embedded in the Office file, tied to Microsoft's infrastructure — there's no way to reimplement it locally. This connector calls the REAL Microsoft Graph API to apply a real label to a file that already lives in OneDrive/SharePoint, using the classification this catalog already computed.",
+        "pt": "Um rótulo MIP é criptografia real embutida no arquivo do Office, atrelada à infraestrutura da Microsoft — não há como reimplementá-lo localmente. Este conector chama a API REAL do Microsoft Graph para aplicar um rótulo de verdade a um arquivo que já vive no OneDrive/SharePoint, usando a classificação que este catálogo já calculou.",
+    },
+    "mip_scope_note": {
+        "es": "⚠️ Solo aplica a datasets cuyo archivo fuente ya está en OneDrive/SharePoint — una tabla de base de datos o un CSV que nunca pasó por Microsoft 365 no tiene \"etiqueta MIP\" posible (la etiqueta vive en el formato del archivo, no en el dato en abstracto).",
+        "en": "⚠️ Only applies to datasets whose source file already lives in OneDrive/SharePoint — a database table or a CSV that never went through Microsoft 365 has no possible \"MIP label\" (the label lives in the file format, not in the abstract data).",
+        "pt": "⚠️ Só se aplica a datasets cujo arquivo fonte já está no OneDrive/SharePoint — uma tabela de banco de dados ou um CSV que nunca passou pelo Microsoft 365 não tem \"rótulo MIP\" possível (o rótulo vive no formato do arquivo, não no dado em abstrato).",
+    },
+    "mip_env": {
+        "es": "Sin configurar — cargá `MIP_TENANT_ID`, `MIP_CLIENT_ID`, `MIP_CLIENT_SECRET` (mismo service principal que Power BI/Purview, con permiso `Files.ReadWrite.All`) para resolver links y aplicar etiquetas de verdad.",
+        "en": "Not configured — set `MIP_TENANT_ID`, `MIP_CLIENT_ID`, `MIP_CLIENT_SECRET` (same service principal pattern as Power BI/Purview, with `Files.ReadWrite.All` permission) to resolve links and apply real labels.",
+        "pt": "Não configurado — configure `MIP_TENANT_ID`, `MIP_CLIENT_ID`, `MIP_CLIENT_SECRET` (mesmo padrão de service principal do Power BI/Purview, com permissão `Files.ReadWrite.All`) para resolver links e aplicar rótulos de verdade.",
+    },
+    "mip_file_map": {"es": "Datasets con archivo en OneDrive/SharePoint (uno por línea: dataset: link para compartir)", "en": "Datasets with a file in OneDrive/SharePoint (one per line: dataset: sharing link)", "pt": "Datasets com arquivo no OneDrive/SharePoint (um por linha: dataset: link de compartilhamento)"},
+    "mip_file_map_help": {
+        "es": "Pegá el link para compartir del archivo (clic derecho → Compartir → Copiar vínculo) de cada dataset que corresponda. Los datasets sin línea acá se listan aparte, sin etiqueta posible.",
+        "en": "Paste the sharing link (right-click → Share → Copy link) for each matching dataset. Datasets without a line here are listed separately, with no possible label.",
+        "pt": "Cole o link de compartilhamento (clique direito → Compartilhar → Copiar link) de cada dataset correspondente. Datasets sem linha aqui são listados à parte, sem rótulo possível.",
+    },
+    "mip_needs_creds_to_resolve": {
+        "es": "{dataset}: cargá las credenciales para resolver este link.",
+        "en": "{dataset}: load credentials to resolve this link.",
+        "pt": "{dataset}: carregue as credenciais para resolver este link.",
+    },
+    "mip_preview": {"es": "👁️ Previsualizar etiquetas", "en": "👁️ Preview labels", "pt": "👁️ Pré-visualizar rótulos"},
+    "mip_push": {"es": "🚀 Aplicar etiquetas reales", "en": "🚀 Apply real labels", "pt": "🚀 Aplicar rótulos reais"},
+    "mip_skipped": {
+        "es": "Sin archivo mapeado (no tienen etiqueta MIP posible): {datasets}",
+        "en": "No file mapped (no possible MIP label): {datasets}",
+        "pt": "Sem arquivo mapeado (sem rótulo MIP possível): {datasets}",
+    },
+    "mip_local_note": {
+        "es": "Apagado por defecto. Implementado contra Microsoft Graph API v1.0/beta (Microsoft Learn); no probado contra un tenant M365 real. La etiqueta sugerida sale SIEMPRE de las etiquetas reales configuradas en tu tenant — nunca se inventa un id.",
+        "en": "Off by default. Implemented against Microsoft Graph API v1.0/beta (Microsoft Learn); not tested against a live M365 tenant. The suggested label ALWAYS comes from the real labels configured in your tenant — never an invented id.",
+        "pt": "Desligado por padrão. Implementado contra a Microsoft Graph API v1.0/beta (Microsoft Learn); não testado contra um tenant M365 real. O rótulo sugerido SEMPRE vem dos rótulos reais configurados no seu tenant — nunca um id inventado.",
+    },
+    # -------------------------------------------------------- scan all (scanall)
+    "scanall_title": {"es": "🔎 Escanear todas las conexiones guardadas", "en": "🔎 Scan all saved connections", "pt": "🔎 Escanear todas as conexões salvas"},
+    "scanall_intro": {
+        "es": "Un clic en vez de elegir conexión por conexión: lista las tablas de TODAS tus conexiones guardadas de una vez. Cubre los motores que vos configuraste acá (9 hoy) — no es descubrimiento automático de fuentes nuevas como el escaneo de tenant de Purview, que agrega agentes dentro de Azure y encuentra recursos sin que nadie cargue una conexión a mano.",
+        "en": "One click instead of picking connections one by one: lists the tables of ALL your saved connections at once. Covers the engines you configured here (9 today) — it's not automatic discovery of new sources like Purview's tenant scan, which deploys agents inside Azure and finds resources without anyone loading a connection by hand.",
+        "pt": "Um clique em vez de escolher conexão por conexão: lista as tabelas de TODAS as suas conexões salvas de uma vez. Cobre os motores que você configurou aqui (9 hoje) — não é descoberta automática de fontes novas como o escaneamento de tenant do Purview, que implanta agentes dentro do Azure e encontra recursos sem que ninguém carregue uma conexão manualmente.",
+    },
+    "scanall_run": {"es": "▶️ Escanear todas ahora", "en": "▶️ Scan all now", "pt": "▶️ Escanear todas agora"},
+    "scanall_tables": {"es": "Tablas encontradas", "en": "Tables found", "pt": "Tabelas encontradas"},
+    "scanall_errors": {"es": "Conexiones con error", "en": "Connections with errors", "pt": "Conexões com erro"},
+    "scanall_none": {"es": "No hay conexiones guardadas todavía — agregá una en 🔎 Mis datos.", "en": "No saved connections yet — add one in 🔎 My data.", "pt": "Ainda não há conexões salvas — adicione uma em 🔎 Meus dados."},
+    "scanall_local_note": {
+        "es": "Una conexión caída no frena el escaneo de las demás — el error queda registrado en su fila.",
+        "en": "A connection that's down doesn't stop the scan of the rest — the error is recorded in its row.",
+        "pt": "Uma conexão fora do ar não interrompe o escaneamento das demais — o erro fica registrado na sua linha.",
+    },
     # -------------------------------------------------------------- clients
     "cl_intro": {
         "es": "Fichas de empresas clientes: contacto, BI que usan, restricciones "

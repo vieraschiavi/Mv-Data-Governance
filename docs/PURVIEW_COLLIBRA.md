@@ -20,10 +20,10 @@ local-first para PyMEs), también se dice.
 | **Insights del estado del gobierno** | ✅ ("Data Estate Insights") | ✅ Panorama → 🏛️ **Estado del gobierno**: índice 0-100 con 5 coberturas (owner nombrado, steward, clasificación, reglas, curaduría) |
 | Calidad de datos con reglas y umbrales | ✅ (DQ modules) | ✅ pestaña ✅ Calidad: 6 dimensiones DAMA + remediación IA |
 | Linaje | ✅ multi-sistema automático | ✅ pestaña 🧬 Linaje + linaje real SQL→tabla→dataset→reporte para Power BI/Tableau. Lo que NO hay: descubrimiento automático de linaje entre decenas de sistemas — acá el linaje sale de las fuentes que conectás |
-| Escaneo de fuentes | ✅ cientos de conectores gestionados | 🟡 9 motores SQL/cloud (PostgreSQL…Snowflake/BigQuery/Databricks/Synapse) + Power BI tenant + Tableau site + archivos. Suficiente para una PyME; un tenant enterprise multi-nube con cientos de fuentes es territorio Purview |
-| Detección/clasificación de datos sensibles | ✅ (clasificadores gestionados + etiquetas MIP) | 🟡 detección heurística de PII + clasificación por dataset (Pública/Interna/Confidencial/PII). Lo que NO hay: etiquetas de sensibilidad aplicadas al documento/columna que viajen con el dato (eso requiere la integración Microsoft Information Protection) |
+| Escaneo de fuentes | ✅ cientos de conectores gestionados | 🟡 9 motores SQL/cloud + Power BI tenant + Tableau site + archivos, con **escaneo batch de todas tus conexiones guardadas de un clic** (📤 BI & API → 🔎 Escanear todas). Sigue sin ser descubrimiento automático de fuentes nuevas a escala de tenant — ver detalle abajo |
+| Detección/clasificación de datos sensibles | ✅ (clasificadores gestionados + etiquetas MIP) | 🟡 detección heurística de PII + clasificación por dataset + **conector real a Microsoft Graph para aplicar etiquetas MIP de verdad** (🏷️ pestaña nueva) — con el límite honesto de que solo aplica a archivos que ya viven en OneDrive/SharePoint, ver detalle abajo |
 | MDM / deduplicación | ➖ (Collibra parcial, Purview no) | ✅ pestaña 🔗 MDM con golden record — acá el programa cubre algo que Purview no trae |
-| **Enforcement de acceso a datos** (políticas que bloquean consultas) | ✅ Purview (en el stack Azure) | ❌ **Fuera de alcance a propósito**: para bloquear un acceso hay que estar en el camino del dato (proxy/gateway). Este programa audita y documenta en modo lectura; el enforcement es de la base/warehouse o de herramientas como Purview dentro de Azure |
+| **Enforcement de acceso a datos** (políticas que bloquean consultas) | ✅ Purview (en el stack Azure) | 🟡 **Generador de DDL real** (🔒 pestaña nueva): GRANT/REVOKE por clasificación + enmascaramiento de columnas PII, para PostgreSQL y SQL Server — el programa arma la receta, un DBA (o Purview) la ejecuta. Sigue sin bloquear nada por sí mismo — ver el porqué abajo |
 | Data sharing / contratos de datos | ✅ | ❌ Fuera de alcance: aplica a organizaciones que publican datos entre unidades/empresas |
 | Precio y despliegue | Suscripción cloud, por capacidad; requiere tenant/infra | Licencia única o suscripción chica; corre en una notebook, sin nube, sin telemetría |
 
@@ -37,40 +37,96 @@ local-first para PyMEs), también se dice.
 - **La IA propone, el humano decide, y queda registrado** — el mismo
   patrón en Curaduría, Responsables, reglas sugeridas y remediación.
 
-## Lo que falta a propósito (y por qué)
+## Los tres gaps que se cerraron parcialmente (con el techo explícito)
 
-1. **Enforcement de acceso**: bloquear consultas exige interponerse entre
-   el usuario y la base. Un producto de escritorio no debe hacer eso — y
-   simularlo sería vender humo. Se documenta qué política se incumple
-   (pestaña 🛡️), y el bloqueo se implementa en la base/warehouse.
-2. **Escaneo automático de cientos de fuentes gestionadas**: el valor de
-   Purview ahí es su parque de conectores cloud administrados. Este
-   programa cubre los 9 motores + BI más comunes; agregar conectores es
-   incremental según lo pidan los clientes.
-3. **Etiquetas de sensibilidad que viajan con el dato** (MIP): son un
-   feature del ecosistema Microsoft 365, no replicable desde afuera.
+Estos tres quedaron marcados "fuera de alcance a propósito" en una versión
+anterior de este documento. Se construyó lo máximo genuinamente posible de
+cada uno — sin fingir ser algo que un programa de escritorio local no
+puede ser.
+
+### 1. Enforcement de acceso → generador de DDL (🔒 nueva sección en 📤 BI & API)
+
+**Por qué sigue sin bloquear nada en vivo:** bloquear una consulta exige
+estar parado en el camino del dato — un proxy o gateway entre el usuario y
+la base, o una plataforma cloud-native como Purview dentro de Azure. Montar
+un interceptor de consultas desde un programa de escritorio sería frágil,
+peligroso en producción real, y — sobre todo — vendería humo sobre lo que
+este programa es.
+
+**Lo que sí se construyó:** `mvdg/enforcement.py` toma el catálogo/
+diccionario ya gobernados y genera el **DDL real** — `GRANT`/`REVOKE` por
+clasificación, enmascaramiento de columnas PII (Row-Level Security nativo
+en PostgreSQL, Dynamic Data Masking nativo en SQL Server) — como texto
+SQL para copiar y correr. El módulo **no importa ningún driver de base de
+datos ni abre ninguna conexión** (verificado por test: se audita el código
+fuente para confirmar que no hay `sqlalchemy`/`.execute(` en ningún lado).
+El programa arma la receta; quien tiene las llaves de la base la ejecuta.
+
+### 2. Escaneo de fuentes → batch de todas las conexiones (🔎 en 📤 BI & API)
+
+**Por qué sigue sin ser "cientos de conectores gestionados":** el valor de
+Purview ahí es desplegar agentes de escaneo DENTRO de la infraestructura
+de Azure del cliente, que descubren recursos nuevos automáticamente sin
+que nadie cargue una conexión a mano. Eso es, literalmente, ser
+infraestructura cloud — no algo que un programa Python de escritorio deba
+intentar ser.
+
+**Lo que sí se construyó:** `scan_all_connections()` escanea de un clic
+TODAS las conexiones que ya cargaste en el programa (hoy: 9 motores SQL/
+cloud), en vez de elegir una por vez. Si una conexión está caída, no frena
+el resto — el error queda registrado en su fila. Sigue siendo un batch
+sobre lo que vos conectaste, no descubrimiento autónomo de fuentes nuevas.
+
+### 3. Etiquetas de sensibilidad → conector real a Microsoft Graph (🏷️ en 📤 BI & API)
+
+**Por qué sigue teniendo un límite real:** una etiqueta MIP no es texto —
+es cifrado y Rights Management embebidos en el propio archivo de Office,
+atados a la infraestructura de Azure Information Protection de Microsoft.
+No hay forma de reimplementar eso localmente, en este programa ni en
+ningún otro fuera del ecosistema Microsoft.
+
+**Lo que sí se construyó:** `mvdg/mip_labels.py` llama a la Microsoft
+Graph API **real** (`assignSensitivityLabel`, documentada en Microsoft
+Learn) para aplicar una etiqueta de verdad a un archivo que ya vive en
+OneDrive/SharePoint, eligiendo la etiqueta según la clasificación que este
+catálogo ya calculó — y **siempre resuelta contra la lista real de
+etiquetas configuradas en tu tenant**, nunca un id inventado. El límite
+honesto: solo funciona para datasets cuyo archivo fuente ya está en
+Microsoft 365 (una tabla de PostgreSQL no tiene "etiqueta MIP" posible,
+porque la etiqueta vive en el formato del archivo, no en el dato en
+abstracto) — esos datasets se listan aparte, explícitamente.
 
 ---
 
 **English (summary):** honest comparison with Purview/Collibra. Covered
 equally: catalog, glossary, curation workflow (🖊️), stewardship assignment
 (👥), governance insights (🏛️), quality, lineage for connected sources, MDM
-(which Purview lacks). Partially: source scanning (9 engines + BI vs.
-hundreds of managed connectors), sensitive-data classification (heuristic
-PII vs. managed classifiers + MIP labels). Deliberately out of scope:
-access enforcement (requires sitting in the data path), data sharing
-contracts, MIP labels. The trade-off: 100% local, zero telemetry, runs on a
-laptop.
+(which Purview lacks). Partially covered, each with an explicit ceiling:
+source scanning (batch scan of all your saved connections vs. hundreds of
+cloud-managed connectors), sensitive-data classification (heuristic PII +
+a real Microsoft Graph connector that applies genuine MIP labels to files
+already in OneDrive/SharePoint — can't apply to a database table, since
+the label lives in the file format), access enforcement (generates real
+GRANT/REVOKE + masking DDL for PostgreSQL/SQL Server — never executes it,
+since blocking a live query requires sitting in the data path). Still
+deliberately out of scope: data sharing contracts (enterprise data-mesh
+territory). The trade-off: 100% local, zero telemetry, runs on a laptop.
 
 **Português (resumo):** comparação honesta com Purview/Collibra. Coberto
 igual: catálogo, glossário, workflow de curadoria (🖊️), atribuição de
 stewardship (👥), insights de governança (🏛️), qualidade, linhagem das
-fontes conectadas, MDM (que o Purview não tem). Parcial: varredura de
-fontes (9 motores + BI vs. centenas de conectores gerenciados),
-classificação de dados sensíveis (PII heurística vs. classificadores
-gerenciados + rótulos MIP). Fora de escopo de propósito: enforcement de
-acesso (exige estar no caminho do dado), contratos de compartilhamento,
-rótulos MIP. A contrapartida: 100% local, zero telemetria, roda num laptop.
+fontes conectadas, MDM (que o Purview não tem). Parcialmente coberto, cada
+um com um teto explícito: varredura de fontes (escaneamento em lote de
+todas as suas conexões salvas vs. centenas de conectores gerenciados na
+nuvem), classificação de dados sensíveis (PII heurística + um conector
+real ao Microsoft Graph que aplica rótulos MIP verdadeiros a arquivos já
+no OneDrive/SharePoint — não se aplica a uma tabela de banco, pois o
+rótulo vive no formato do arquivo), enforcement de acesso (gera DDL real
+de GRANT/REVOKE + mascaramento para PostgreSQL/SQL Server — nunca o
+executa, já que bloquear uma consulta em tempo real exige estar no
+caminho do dado). Ainda fora de escopo de propósito: contratos de
+compartilhamento de dados (território enterprise de data mesh). A
+contrapartida: 100% local, zero telemetria, roda num laptop.
 
 ---
 
@@ -180,3 +236,25 @@ end-to-end para validar la forma exacta de cada request contra lo
 documentado, incluyendo el caso donde el estado de un término refleja una
 curaduría real (validado por un Data Owner) vs. una sugerencia de IA sin
 revisar.
+
+### Verificación de los tres gaps parcialmente cerrados
+
+`python -m mvdg.selfcheck` incluye tres chequeos dedicados:
+
+- **"Enforcement de acceso"**: confirma que `enforcement.py` genera GRANT/
+  REVOKE + DDL de enmascaramiento para PostgreSQL y SQL Server, y que el
+  código fuente del módulo no importa ningún driver de base de datos ni
+  usa `.execute(` en ningún lado — no hay ningún camino posible para que
+  ejecute algo por accidente.
+- **"Etiquetas MIP"**: confirma que está apagado por defecto (sin
+  credenciales, `list_labels()` devuelve `[]` sin intentar conectarse), y
+  que los datasets sin archivo mapeado en OneDrive/SharePoint quedan
+  listados explícitamente, nunca salteados en silencio. Un test de
+  integración levanta un servidor HTTP local que responde exactamente
+  como documenta Microsoft Graph, y corre el conector real contra él (con
+  sockets HTTP de verdad — mismo patrón que la simulación de Purview/
+  Collibra) para confirmar que arma bien la codificación de sharing URL,
+  el token y el payload de `assignSensitivityLabel`.
+- **"Escaneo batch de todas las conexiones"**: confirma con una conexión
+  real (SQLite) que funciona, y otra rota a propósito, que una conexión
+  caída no frena el escaneo de las demás.
