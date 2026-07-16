@@ -5,14 +5,14 @@
 // (MP_LINK_LICENCIA, MP_LINK_PRO, MP_LINK_CRED100, MP_LINK_CRED550,
 // MP_LINK_CRED2500) — ver docs/MERCADOPAGO.md.
 //
-// POST + JSON (no GET/redirect): si el proyecto tiene Vercel BotID activado,
-// solo puede adjuntar su verificación a pedidos hechos por fetch/XHR desde
-// el navegador, nunca a una navegación de página completa (location.href).
-// El cliente hace fetch acá y recién después navega él mismo a la URL de
-// pago que devolvemos.
-
-let checkBotId = null;
-try { checkBotId = require("botid/server").checkBotId; } catch (e) { /* opcional */ }
+// Sin verificación BotID: la tuvimos y BLOQUEABA A TODOS LOS COMPRADORES
+// REALES — checkBotId clasifica como bot cualquier pedido que no traiga la
+// firma del cliente de BotID, y esta landing (HTML estático) nunca integró
+// ese cliente, así que el 100% de los clics reales en "Comprar" recibían
+// 403 {"error":"bot"}. Si algún día se reincorpora, tiene que ser junto
+// con la instrumentación del lado del navegador, nunca solo del lado del
+// servidor. El riesgo sin ella es bajo: esto solo crea una preferencia de
+// pago (nadie cobra nada sin pagar de verdad en MercadoPago).
 
 const PLANS = {
   licencia: { title: "MV Data Governance · Licencia PC (pago único)", price: 149.0 },
@@ -25,11 +25,6 @@ const CURRENCY = process.env.MP_CURRENCY || "USD";  // coincide con los precios 
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") { res.status(405).json({ error: "method" }); return; }
-
-  if (checkBotId) {
-    const verification = await checkBotId({ advancedOptions: { headers: req.headers } });
-    if (verification.isBot) { res.status(403).json({ error: "bot" }); return; }
-  }
 
   const body = typeof req.body === "string" ? safeJson(req.body) : (req.body || {});
   const plan = String(body.plan || "").toLowerCase();

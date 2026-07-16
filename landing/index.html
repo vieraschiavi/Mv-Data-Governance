@@ -1,5 +1,13 @@
+<!doctype html>
+<!-- lang declarado + notranslate: la página ya es trilingüe (ES/EN/PT, botones
+     arriba a la derecha). El traductor automático del navegador la rompía:
+     convertía la marca "MV Data Governance" en "MV Gobernanza de Datos",
+     "US$ 390" en "390 dólares estadounidenses", y tocaba nombres de producto
+     como Purview/Collibra que nunca deben traducirse. -->
+<html lang="es" translate="no">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="google" content="notranslate">
 <title>MV Data Governance · Gobierno de datos claro y listo para BI</title>
 <link rel="icon" type="image/png" href="mv_icon.png">
 <style>
@@ -27,7 +35,8 @@ h1,h2,h3{margin:0;line-height:1.08;text-wrap:balance;letter-spacing:-.02em}
 /* NAV */
 nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
 nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap}
+@media(max-width:640px){.brand small{display:none}}
 .mk{width:30px;height:30px;border-radius:8px;display:block}
 .brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
 .nlinks{display:flex;gap:4px;margin-left:14px}
@@ -529,7 +538,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <th data-i="cmp_c4">BI cloud<br><small>(Purview, Atlan)</small></th>
     </tr></thead>
     <tbody>
-      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia US$149 · US$390/mes</td><td class="no" data-i="cmp_r1b">US$60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">US$40k+/año</td></tr>
+      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia USD 149 · USD 390/mes</td><td class="no" data-i="cmp_r1b">USD 60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">USD 40k+/año</td></tr>
       <tr><td data-i="cmp_r2">Datos 100% locales</td><td class="yes">✓</td><td>Parcial</td><td class="yes">✓</td><td class="no">✗ (nube)</td></tr>
       <tr><td data-i="cmp_r3">Listo para usar sin equipo técnico</td><td class="yes">✓</td><td>Parcial</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td data-i="cmp_r4">Trilingüe ES/EN/PT</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
@@ -550,7 +559,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   <div class="pgrid four">
     <div class="plan">
       <h3 data-i="pl1t">Gratis</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
-      <div class="amt">US$ 0</div><div class="per" data-i="pl1per">Para siempre</div>
+      <div class="amt">USD 0</div><div class="per" data-i="pl1per">Para siempre</div>
       <ul>
         <li data-i="pl1a">Demo completa con datos sintéticos</li>
         <li data-i="pl1b">3 idiomas incluidos</li>
@@ -561,7 +570,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     </div>
     <div class="plan pop"><span class="tag" data-i="pl2tag">Mejor valor</span>
       <h3 data-i="pl2t">Licencia PC</h3><div class="who" data-i="pl2w">Pago único, tuya para siempre. Descarga por MercadoPago.</div>
-      <div class="amt">US$ <span id="priceLic">149</span></div><div class="uyu" id="uyuLic"></div><div class="per" data-i="pl2per">Pago único · 1 equipo</div>
+      <div class="amt">USD <span id="priceLic">149</span></div><div class="uyu" id="uyuLic"></div><div class="per" data-i="pl2per">Pago único · 1 equipo</div>
       <ul>
         <li data-i="pl2a">Todo el programa sin límite de tiempo</li>
         <li data-i="pl2b">Conectores a bases de datos</li>
@@ -572,7 +581,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     </div>
     <div class="plan">
       <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (mensual).</div>
-      <div class="amt">US$ <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
+      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
       <ul>
         <li data-i="pl3a">API REST para BI ilimitada</li>
         <li data-i="pl3b">Instalador Windows (.exe)</li>
@@ -602,21 +611,21 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   <div class="crgrid">
     <div class="crcard">
       <div class="crn"><span id="cr100c">100</span> <span data-i="cr_credits">créditos</span></div>
-      <div class="cramt">US$ <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
+      <div class="cramt">USD <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
       <div class="crx" data-i="cr100x">Para probar la IA y bajar un pack de ejemplo.</div>
-      <a class="btn btn-o" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
+      <a class="btn btn-od" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
     </div>
     <div class="crcard pop"><span class="crtag" data-i="cr_best">+10% bonus</span>
       <div class="crn"><span id="cr550c">550</span> <span data-i="cr_credits2">créditos</span></div>
-      <div class="cramt">US$ <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
+      <div class="cramt">USD <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
       <div class="crx" data-i="cr550x">El más elegido para uso regular.</div>
       <a class="btn btn-a" data-mp="cred550" href="#" data-i="cr_buy2">Comprar</a>
     </div>
     <div class="crcard">
       <div class="crn"><span id="cr2500c">2.500</span> <span data-i="cr_credits3">créditos</span></div>
-      <div class="cramt">US$ <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
+      <div class="cramt">USD <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
       <div class="crx" data-i="cr2500x">Mejor precio por crédito, para equipos.</div>
-      <a class="btn btn-o" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
+      <a class="btn btn-od" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
     </div>
   </div>
   <p class="paynote" data-i="cr_use">Ejemplos de consumo: 1 sugerencia IA = 1 crédito · auto-definición de glosario = 2 créditos · pack de ejemplo (ZIP) = 20 créditos. Los créditos no vencen.</p>
@@ -671,6 +680,12 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     <label><span data-i="c_msg">Mensaje</span><textarea name="msg" required></textarea></label>
     <div><button class="btn btn-a" type="submit" data-i="c_send">Enviar</button></div>
   </form>
+  <p class="lead-d" style="font-size:13.5px;margin:14px 0 0" data-i="c_direct">
+    O escribinos directo a <a href="mailto:vieraschiavi@gmail.com" style="color:var(--blue);font-weight:700">vieraschiavi@gmail.com</a>.</p>
+  <div id="mailFallback" style="display:none;margin-top:14px;background:var(--tint);border:1px solid var(--line-d);
+    border-radius:12px;padding:14px 16px;color:var(--ink-d);font-size:14px" data-i="c_fallback">
+    ✉️ Se intentó abrir tu app de correo. Si no se abrió, tu mensaje ya quedó <b>copiado al portapapeles</b>:
+    pegalo en un mail a <b>vieraschiavi@gmail.com</b>.</div>
 </div></section>
 
 <footer><div class="wrap">
@@ -686,7 +701,7 @@ en:{
   cmp_eye:"Why MV",cmp_h2:"How we compare",
   cmp_lead:"Data governance for those who can't pay an enterprise suite nor run an open-source tool without a dedicated technical team.",
   cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Entry price",cmp_r1a:"Free · License US$149 · US$390/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
+  cmp_r1:"Entry price",cmp_r1a:"Free · License USD 149 · USD 390/mo",cmp_r1b:"USD 60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"USD 40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   cmp_r8:"Migrates to and from Purview / Collibra",cmp_r8a:"✓ (real API)",cmp_r8b:"Not applicable (they're the destination)",cmp_r8c:"Partial",cmp_r8d:"Not applicable (they're the destination)",
   nav_guide:"What is it?",
@@ -801,13 +816,15 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   c_eye:"Contact",c_h2:"Let's talk about your data",
   c_lead:"Tell us what you need to govern and we'll reply with a concrete proposal.",
   c_name:"Name",c_mail:"Email",c_msg:"Message",c_send:"Send",
+  c_direct:'Or write to us directly at <a href="mailto:vieraschiavi@gmail.com" style="color:var(--blue);font-weight:700">vieraschiavi@gmail.com</a>.',
+  c_fallback:"✉️ We tried to open your mail app. If it didn't open, your message is already <b>copied to the clipboard</b>: paste it into an email to <b>vieraschiavi@gmail.com</b>.",
   ft_a:"Built with the same DNA as MV Kobra AI",ft_b:"Español · English · Português — no APK, 100% web and PC"
 },
 pt:{
   cmp_eye:"Por que MV",cmp_h2:"Como nos comparamos",
   cmp_lead:"Governança de dados para quem não pode pagar uma suíte enterprise nem operar uma ferramenta open source sem equipe técnica dedicada.",
   cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença US$149 · US$390/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
+  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença USD 149 · USD 390/mês",cmp_r1b:"USD 60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"USD 40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   cmp_r8:"Migra para e desde Purview / Collibra",cmp_r8a:"✓ (API real)",cmp_r8b:"Não se aplica (são o destino)",cmp_r8c:"Parcial",cmp_r8d:"Não se aplica (são o destino)",
   nav_guide:"O que é?",
@@ -922,6 +939,8 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
   c_lead:"Conte o que você precisa governar e responderemos com uma proposta concreta.",
   c_name:"Nome",c_mail:"E-mail",c_msg:"Mensagem",c_send:"Enviar",
+  c_direct:'Ou escreva direto para <a href="mailto:vieraschiavi@gmail.com" style="color:var(--blue);font-weight:700">vieraschiavi@gmail.com</a>.',
+  c_fallback:"✉️ Tentamos abrir seu app de e-mail. Se não abriu, sua mensagem já foi <b>copiada para a área de transferência</b>: cole em um e-mail para <b>vieraschiavi@gmail.com</b>.",
   ft_a:"Feito com o mesmo DNA do MV Kobra AI",ft_b:"Español · English · Português — sem APK, 100% web e PC"
 }};
 var ES={};
@@ -932,6 +951,7 @@ function setLang(lang){
     var k=el.getAttribute('data-i');
     if(dict&&dict[k]!==undefined){
       if(k==='h1_a'){el.innerHTML=dict[k].replace('\n','<br>').replace(/confiáveis|trustworthy/,'<span class="am">$&</span>');}
+      else if(k==='c_direct'||k==='c_fallback'){el.innerHTML=dict[k];}
       else{el.textContent=dict[k];}
     }else{el.innerHTML=ES[k];}
   });
@@ -986,7 +1006,17 @@ try{
 document.getElementById('cform').addEventListener('submit',function(ev){
   ev.preventDefault();
   var f=ev.target;
-  var body='Nombre: '+f.name.value+'%0D%0AEmail: '+f.email.value+'%0D%0A%0D%0A'+encodeURIComponent(f.msg.value);
+  var plain='Nombre: '+f.name.value+'\nEmail: '+f.email.value+'\n\n'+f.msg.value;
+  // location.href='mailto:...' falla EN SILENCIO si el visitante no tiene una
+  // app de correo configurada (típico en PCs de empresa). Por eso: (1) se copia
+  // el mensaje al portapapeles, (2) se muestra el respaldo visible con la
+  // dirección, y (3) recién después se intenta abrir la app de correo.
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(plain);}
+  }catch(e){}
+  var fb=document.getElementById('mailFallback');
+  if(fb){fb.style.display='block';}
+  var body='Nombre: '+encodeURIComponent(f.name.value)+'%0D%0AEmail: '+encodeURIComponent(f.email.value)+'%0D%0A%0D%0A'+encodeURIComponent(f.msg.value);
   location.href='mailto:vieraschiavi@gmail.com?subject=MV%20Data%20Governance&body='+body;
 });
 

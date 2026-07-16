@@ -1698,6 +1698,93 @@ def test_vercel_deploy_does_not_ignore_api_functions():
         assert os.path.exists(os.path.join(root, "api", fname)), fname
 
 
+def _repo_root():
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def test_vercel_rewrites_serve_all_landing_files():
+    """Regresión: vercel.json solo re-escribía /, /mv_icon.png y /video/* hacia
+    landing/ — todo lo demás que la página referencia con rutas relativas
+    (descargas.html, img/*.jpg, payments-config.js, guia/pago/reviews, el ZIP
+    de la demo) devolvía 404 en producción: botones de compra sin config,
+    capturas rotas y 'Descargar demo' muerto. Tiene que existir el rewrite
+    catch-all hacia /landing/."""
+    import json as _json
+    with open(os.path.join(_repo_root(), "vercel.json"), encoding="utf-8") as fh:
+        cfg = _json.load(fh)
+    sources = {r["source"]: r["destination"] for r in cfg.get("rewrites", [])}
+    assert sources.get("/") == "/landing/index.html"
+    assert sources.get("/:path*") == "/landing/:path*", (
+        "falta el rewrite catch-all /:path* -> /landing/:path* — sin él, "
+        "descargas.html, img/, payments-config.js y reviews-data.js dan 404")
+
+
+def test_checkout_has_no_serverside_only_botid():
+    """Regresión: checkout.js corría checkBotId (Vercel BotID) sin que la
+    landing integrara el cliente de BotID — TODOS los clics reales en
+    'Comprar'/'Suscribirme' recibían 403 {"error":"bot"}. La verificación
+    server-side sola no puede volver sin la instrumentación del navegador."""
+    root = _repo_root()
+    with open(os.path.join(root, "api", "checkout.js"), encoding="utf-8") as fh:
+        src = fh.read()
+    assert 'require("botid' not in src and "checkBotId(" not in src
+    import json as _json
+    with open(os.path.join(root, "package.json"), encoding="utf-8") as fh:
+        pkg = _json.load(fh)
+    assert "botid" not in pkg.get("dependencies", {}), (
+        "botid en dependencies reactivaría el checkBotId server-side")
+
+
+def test_landing_pages_declare_lang_and_notranslate():
+    """Regresión: sin <html lang> el traductor automático del navegador
+    'traducía' la página — la marca quedaba 'MV Gobernanza de Datos',
+    'US$ 390' quedaba '390 dólares estadounidenses' y tocaba Purview/
+    Collibra. La página ya es trilingüe nativa (ES/EN/PT): se declara el
+    idioma y se marca notranslate."""
+    root = _repo_root()
+    for page in ("index.html", "descargas.html", "guia.html", "pago.html", "reviews.html"):
+        with open(os.path.join(root, "landing", page), encoding="utf-8") as fh:
+            src = fh.read()
+        assert '<html lang="es" translate="no">' in src, page
+        assert '<meta name="google" content="notranslate">' in src, page
+        assert src.lstrip().startswith("<!doctype html>"), page
+
+
+def test_landing_prices_use_usd_not_us_dollar_sign():
+    """El usuario pidió USD en vez de 'US$' (que el traductor del navegador
+    convertía en 'dólares estadounidenses'). Ningún precio visible puede
+    volver a usar 'US$'."""
+    with open(os.path.join(_repo_root(), "landing", "index.html"), encoding="utf-8") as fh:
+        src = fh.read()
+    visible = [ln for ln in src.splitlines()
+               if "US$" in ln and not ln.strip().startswith(('"', "'", "<!--", "*"))
+               and 'US$ 390" en' not in ln]  # el comentario que documenta el bug
+    assert visible == [], f"precios con US$ visibles: {visible}"
+
+
+def test_landing_credit_buy_buttons_are_not_white_on_white():
+    """Regresión: los botones 'Comprar' de créditos usaban btn-o (texto
+    blanco, fondo transparente) sobre tarjetas blancas — invisibles. Tienen
+    que usar btn-od (fondo blanco, texto oscuro)."""
+    with open(os.path.join(_repo_root(), "landing", "index.html"), encoding="utf-8") as fh:
+        src = fh.read()
+    for key in ("cred100", "cred2500"):
+        line = next(ln for ln in src.splitlines() if f'data-mp="{key}"' in ln)
+        assert "btn-od" in line, f"{key}: {line.strip()}"
+        assert "btn-o " not in line and 'btn-o"' not in line
+
+
+def test_landing_contact_form_has_visible_mail_fallback():
+    """Regresión: el formulario de contacto usaba solo location.href=mailto:,
+    que falla EN SILENCIO sin app de correo configurada. Tiene que existir el
+    respaldo visible (dirección directa + aviso de copiado al portapapeles)."""
+    with open(os.path.join(_repo_root(), "landing", "index.html"), encoding="utf-8") as fh:
+        src = fh.read()
+    assert 'id="mailFallback"' in src
+    assert "navigator.clipboard" in src
+    assert 'href="mailto:vieraschiavi@gmail.com"' in src  # link directo siempre visible
+
+
 # ------------------------------------------------- migración a Purview/Collibra
 def _sample_gov_tables():
     from mvdg.exporters import governance_tables
