@@ -40,6 +40,17 @@ _T: dict[str, dict[str, str]] = {
         "en": "Demo with 100% synthetic data — no real customer information.",
         "pt": "Demo com dados 100% sintéticos — sem informações reais de clientes.",
     },
+    # -------------------------------------- alcance combinado (demo + Mis datos)
+    "scope_toggle": {
+        "es": "🧩 Incluir los casos de Mis datos en todo el programa",
+        "en": "🧩 Include the My data cases across the whole program",
+        "pt": "🧩 Incluir os casos de Meus dados em todo o programa",
+    },
+    "scope_hint": {
+        "es": "Con esto activado, los 4 casos reales de 🔎 Mis datos (Rotulado, Dirty Cafe, Bank Marketing, openFDA) fluyen por Panorama, Catálogo, Calidad, Linaje, Glosario, Políticas y BI & API — el recorrido end-to-end completo. Apagalo para ver solo la demo sintética.",
+        "en": "With this on, the 4 real cases from 🔎 My data (Food labels, Dirty Cafe, Bank Marketing, openFDA) flow through Overview, Catalog, Quality, Lineage, Glossary, Policies and BI & API — the full end-to-end journey. Turn it off to see only the synthetic demo.",
+        "pt": "Com isso ativado, os 4 casos reais de 🔎 Meus dados (Rotulagem, Dirty Cafe, Bank Marketing, openFDA) fluem por Panorama, Catálogo, Qualidade, Linhagem, Glossário, Políticas e BI & API — a jornada end-to-end completa. Desligue para ver só a demo sintética.",
+    },
     # ---------------------------------------------------- login (modo servidor)
     "auth_title": {"es": "Ingresá la contraseña", "en": "Enter the password", "pt": "Digite a senha"},
     "auth_intro": {

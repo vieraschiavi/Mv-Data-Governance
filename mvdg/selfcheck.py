@@ -403,6 +403,25 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return ("esquema SQLite real leído (solo metadata), fec_pag -> \"fecha pago\" — "
                 "borrador editable a mano y validable en Curaduría")
 
+    @check("Alcance combinado: los casos de Mis datos fluyen por todas las pestañas")
+    def _():
+        from . import samples, scope
+        from .exporters import governance_tables
+        from .policies import policies_df
+        cat = scope.combined_catalog("es")
+        assert len(cat) == 4 + len(samples.sample_keys())
+        res = scope.combined_results("es")
+        assert res["dataset"].nunique() == len(cat)
+        nodes, edges = scope.combined_lineage("es")
+        assert all((f"src_{k}", k) in edges and (k, "bi_dashboard") in edges
+                   for k in samples.sample_keys())
+        pdf = policies_df("es", res, catalog=cat,
+                          dictionary=scope.combined_dictionary("es"))
+        assert "8/8" in pdf.iloc[0]["evidence"]
+        assert len(governance_tables("es", include_samples=True)["catalog"]) == len(cat)
+        return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
+                "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os
