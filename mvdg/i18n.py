@@ -629,6 +629,41 @@ _T: dict[str, dict[str, str]] = {
     },
     "enf_engine": {"es": "Motor de base de datos", "en": "Database engine", "pt": "Motor de banco de dados"},
     "enf_roles": {"es": "Roles autorizados por clasificación (uno por línea: clasificación: rol)", "en": "Authorized roles per classification (one per line: classification: role)", "pt": "Papéis autorizados por classificação (um por linha: classificação: papel)"},
+    "enf_roles_explain": {
+        "es": "**Cómo se completa, línea por línea:** a la izquierda va la **clasificación** de tus datasets "
+              "(Confidencial / Interna / PII / Pública — vienen de tu 📚 Catálogo y ya están precargadas), y a la "
+              "derecha va el **nombre del rol de TU base de datos** que sí puede ver los datasets con esa "
+              "clasificación. Un *rol* es un grupo de usuarios que existe adentro de PostgreSQL o SQL Server "
+              "(los crea tu DBA — ej.: `analistas_ventas`, `rrhh`, `finanzas`).\n\n"
+              "- Ejemplo real: `PII: rrhh` significa \"solo el grupo rrhh puede consultar las tablas con datos personales\".\n"
+              "- ¿Querés que dos grupos vean lo Confidencial? Dos líneas: `Confidencial: finanzas` y `Confidencial: gerencia`.\n"
+              "- ¿No sabés qué roles existen en tu base? Preguntale a tu DBA, o consultá vos: "
+              "`SELECT rolname FROM pg_roles;` (PostgreSQL) / `SELECT name FROM sys.database_principals WHERE type='R';` (SQL Server).\n"
+              "- Si todavía no tenés roles, dejá los nombres precargados (`rol_confidencial`, etc.): el script sale "
+              "igual y tu DBA solo renombra al aplicarlo. Acordate: esto **no ejecuta nada** — genera el script para revisar.",
+        "en": "**How to fill it in, line by line:** the left side is the **classification** of your datasets "
+              "(Confidential / Internal / PII / Public — they come from your 📚 Catalog and are pre-filled), and the "
+              "right side is the **name of the role in YOUR database** that IS allowed to see datasets with that "
+              "classification. A *role* is a group of users that exists inside PostgreSQL or SQL Server "
+              "(your DBA creates them — e.g. `sales_analysts`, `hr`, `finance`).\n\n"
+              "- Real example: `PII: hr` means \"only the hr group can query tables holding personal data\".\n"
+              "- Want two groups to see Confidential data? Two lines: `Confidencial: finance` and `Confidencial: management`.\n"
+              "- Don't know which roles exist? Ask your DBA, or check yourself: "
+              "`SELECT rolname FROM pg_roles;` (PostgreSQL) / `SELECT name FROM sys.database_principals WHERE type='R';` (SQL Server).\n"
+              "- No roles yet? Keep the pre-filled names (`rol_confidencial`, etc.): the script still generates and "
+              "your DBA just renames when applying it. Remember: this **executes nothing** — it generates a script for review.",
+        "pt": "**Como preencher, linha por linha:** à esquerda vai a **classificação** dos seus datasets "
+              "(Confidencial / Interna / PII / Pública — vêm do seu 📚 Catálogo e já estão pré-preenchidas), e à "
+              "direita vai o **nome do papel (role) do SEU banco de dados** que pode ver os datasets com essa "
+              "classificação. Um *papel* é um grupo de usuários que existe dentro do PostgreSQL ou SQL Server "
+              "(seu DBA os cria — ex.: `analistas_vendas`, `rh`, `financeiro`).\n\n"
+              "- Exemplo real: `PII: rh` significa \"só o grupo rh pode consultar as tabelas com dados pessoais\".\n"
+              "- Quer dois grupos vendo o Confidencial? Duas linhas: `Confidencial: financeiro` e `Confidencial: gerencia`.\n"
+              "- Não sabe quais papéis existem? Pergunte ao seu DBA, ou consulte você mesmo: "
+              "`SELECT rolname FROM pg_roles;` (PostgreSQL) / `SELECT name FROM sys.database_principals WHERE type='R';` (SQL Server).\n"
+              "- Ainda não tem papéis? Deixe os nomes pré-preenchidos (`rol_confidencial`, etc.): o script sai igual e "
+              "seu DBA só renomeia ao aplicar. Lembre: isto **não executa nada** — gera um script para revisão.",
+    },
     "enf_roles_help": {
         "es": "Ej: PII: rol_rrhh — el rol que sí puede ver las tablas clasificadas PII. Podés agregar varios roles a la misma clasificación en líneas separadas.",
         "en": "E.g.: PII: rol_rrhh — the role allowed to see PII-classified tables. You can add several roles to the same classification on separate lines.",
@@ -804,6 +839,33 @@ _T: dict[str, dict[str, str]] = {
     "cl_pack_web": {"es": "Despliegue web (servidor)", "en": "Web deployment (server)", "pt": "Implantação web (servidor)"},
     "cl_maturity": {"es": "Madurez de gobierno (1–5)", "en": "Governance maturity (1–5)", "pt": "Maturidade de governança (1–5)"},
     "cl_status": {"es": "Estado", "en": "Status", "pt": "Status"},
+    # etiquetas del estado comercial de la ficha, con su significado entre
+    # paréntesis — el valor guardado sigue siendo la clave corta (lead, demo...)
+    "cl_st_lead": {
+        "es": "lead (interesado, todavía sin demo ni reunión)",
+        "en": "lead (interested, no demo or meeting yet)",
+        "pt": "lead (interessado, ainda sem demo nem reunião)",
+    },
+    "cl_st_demo": {
+        "es": "demo (ya vio una demostración del programa)",
+        "en": "demo (already saw a demo of the program)",
+        "pt": "demo (já viu uma demonstração do programa)",
+    },
+    "cl_st_piloto": {
+        "es": "piloto (lo está probando con sus datos, sin pagar aún)",
+        "en": "pilot (trying it with their data, not paying yet)",
+        "pt": "piloto (testando com seus dados, ainda sem pagar)",
+    },
+    "cl_st_activo": {
+        "es": "activo (cliente pagando / usándolo en serio)",
+        "en": "active (paying client / using it for real)",
+        "pt": "ativo (cliente pagando / usando de verdade)",
+    },
+    "cl_st_cerrado": {
+        "es": "cerrado (no avanzó o se dio de baja)",
+        "en": "closed (didn't move forward or churned)",
+        "pt": "fechado (não avançou ou cancelou)",
+    },
     "cl_notes": {"es": "Notas", "en": "Notes", "pt": "Notas"},
     "cl_save": {"es": "💾 Guardar ficha", "en": "💾 Save record", "pt": "💾 Salvar ficha"},
     "cl_saved": {"es": "Ficha guardada.", "en": "Record saved.", "pt": "Ficha salva."},

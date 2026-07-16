@@ -1315,6 +1315,8 @@ with tab_bi:
     enf_engine = e1.selectbox(t("enf_engine", lang), enforcement.SUPPORTED_MASKING_ENGINES,
                               format_func=lambda k: "PostgreSQL" if k == "postgresql" else "SQL Server")
     _CLASS_OPTS = sorted(_mig_cat["classification"].unique().tolist())
+    with st.expander(f"❓ {t('enf_roles', lang)}", expanded=False):
+        st.markdown(t("enf_roles_explain", lang))
     enf_roles_raw = st.text_area(
         t("enf_roles", lang),
         "\n".join(f"{c}: rol_{c.lower()}" for c in _CLASS_OPTS),
@@ -1543,9 +1545,12 @@ with tab_cl:
         maturity = c7.slider(t("cl_maturity", lang), 1, 5,
                              int((editing or {}).get("maturity", 2)))
         status_current = (editing or {}).get("status", "lead")
+        # cada estado se muestra con su significado entre paréntesis (el valor
+        # guardado sigue siendo la clave corta: lead, demo, piloto...)
         status = c8.selectbox(t("cl_status", lang), STATUSES,
                               index=STATUSES.index(status_current)
-                              if status_current in STATUSES else 0)
+                              if status_current in STATUSES else 0,
+                              format_func=lambda k: t(f"cl_st_{k}", lang))
         notes = st.text_area(t("cl_notes", lang),
                              (editing or {}).get("notes", ""))
         submitted = st.form_submit_button(t("cl_save", lang))
