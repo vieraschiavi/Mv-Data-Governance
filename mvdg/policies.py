@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .catalog import catalog_df, dictionary_df, pii_columns
+from .catalog import catalog_df, dictionary_df
 from .quality import overall_index, run_rules
 
 
@@ -64,11 +64,18 @@ _POLICIES = [
 
 
 def policies_df(lang: str = "es",
-                results: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Evalúa cada política y devuelve estado + evidencia en ``lang``."""
+                results: pd.DataFrame | None = None,
+                catalog: pd.DataFrame | None = None,
+                dictionary: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Evalúa cada política y devuelve estado + evidencia en ``lang``.
+
+    ``catalog``/``dictionary`` son opcionales: por defecto se evalúa el
+    universo de demo (como siempre), pero el dashboard puede pasar el
+    alcance combinado demo + casos de Mis datos (ver ``mvdg.scope``) para
+    que el cumplimiento se verifique sobre TODO lo gobernado."""
     results = results if results is not None else run_rules(lang=lang)
-    cat = catalog_df(lang)
-    dic = dictionary_df(lang)
+    cat = catalog_df(lang) if catalog is None else catalog
+    dic = dictionary_df(lang) if dictionary is None else dictionary
 
     rows = []
 
@@ -96,8 +103,9 @@ def policies_df(lang: str = "es",
         f"{len(dic) - len(undoc)}/{len(dic)} columns with a description.",
         f"{len(dic) - len(undoc)}/{len(dic)} colunas com descrição."))
 
-    # POL-03: PII marcada y dataset clasificado como PII
-    pii = pii_columns()
+    # POL-03: PII marcada y dataset clasificado como PII — derivado del
+    # diccionario recibido, para que valga igual con el alcance combinado
+    pii = list(dic[dic["pii"] == True][["dataset", "column"]].itertuples(index=False, name=None))  # noqa: E712
     pii_ds = {ds for ds, _ in pii}
     classified = set(cat[cat["classification"] == "PII"]["dataset"])
     ok = pii_ds <= classified

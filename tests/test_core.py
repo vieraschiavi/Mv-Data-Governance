@@ -3472,6 +3472,86 @@ def test_accesos_bat_ships_in_release_zips_with_crlf(tmp_path):
     assert zipfile.ZipFile(out).read("y.bat") == b"@echo off\r\n:fin\r\n"
 
 
+def test_scope_combined_covers_demo_plus_all_samples():
+    """El alcance combinado incluye los 4 datasets de demo + los 4 casos de
+    Mis datos, con el MISMO esquema de columnas que las tablas demo — así
+    cada pestaña los muestra sin ramas especiales."""
+    from mvdg import samples, scope
+    from mvdg.catalog import catalog_df, dictionary_df
+    from mvdg.glossary import glossary_df
+    cat = scope.combined_catalog("es")
+    assert list(cat.columns) == list(catalog_df("es").columns)
+    assert set(samples.sample_keys()) <= set(cat["dataset"])
+    assert len(cat) == 4 + len(samples.sample_keys())
+    dic = scope.combined_dictionary("es")
+    assert list(dic.columns) == list(dictionary_df("es").columns)
+    assert dic["dataset"].nunique() == len(cat)
+    glo = scope.combined_glossary("es")
+    assert list(glo.columns) == list(glossary_df("es").columns)
+    assert len(glo) > len(glossary_df("es"))
+
+
+def test_scope_combined_dictionary_filters_by_dataset():
+    from mvdg import scope
+    d = scope.combined_dictionary("es", "rotulado_alimentos")
+    assert len(d) > 0
+    assert (d["dataset"] == "rotulado_alimentos").all()
+
+
+def test_scope_combined_results_run_real_sample_rules():
+    """Las reglas de los casos corren DE VERDAD sobre sus archivos (no son
+    números fijos): cada caso aporta filas con scores calculados."""
+    from mvdg import samples, scope
+    res = scope.combined_results("es")
+    for key in samples.sample_keys():
+        sub = res[res["dataset"] == key]
+        assert len(sub) > 0, key
+        assert sub["score"].between(0, 100).all(), key
+    assert set(res.columns) >= {"rule_id", "dataset", "score", "status"}
+
+
+def test_scope_combined_lineage_links_each_sample_source_to_bi():
+    """Linaje honesto por caso: fuente externa -> dataset curado -> BI. Sin
+    capas raw/mart inventadas para un CSV."""
+    from mvdg import samples, scope
+    nodes, edges = scope.combined_lineage("es")
+    ids = {n["id"] for n in nodes}
+    for key in samples.sample_keys():
+        assert key in ids
+        assert f"src_{key}" in ids
+        assert (f"src_{key}", key) in edges
+        assert (key, "bi_dashboard") in edges
+    # el grafo demo sigue intacto adentro
+    assert "mart_sales" in ids and ("mart_sales", "bi_dashboard") in edges
+
+
+def test_policies_evaluate_combined_universe():
+    """Con el alcance combinado, el cumplimiento se verifica sobre TODO lo
+    gobernado — la evidencia de POL-01 cuenta 8 datasets, no 4."""
+    from mvdg import scope
+    from mvdg.policies import policies_df
+    res = scope.combined_results("es")
+    pdf = policies_df("es", res, catalog=scope.combined_catalog("es"),
+                      dictionary=scope.combined_dictionary("es"))
+    ev = pdf[pdf["policy_id"] == "POL-01"].iloc[0]["evidence"]
+    assert "8/8" in ev
+    # y sin los parámetros, sigue evaluando la demo (compatibilidad)
+    ev_demo = policies_df("es")[lambda d: d["policy_id"] == "POL-01"].iloc[0]["evidence"] \
+        if False else policies_df("es").iloc[0]["evidence"]
+    assert "4/4" in ev_demo
+
+
+def test_governance_tables_include_samples_flag():
+    from mvdg.exporters import governance_tables
+    g = governance_tables("es", include_samples=True)
+    assert len(g["catalog"]) == 8
+    assert g["quality_results"]["dataset"].nunique() == 8
+    assert (g["lineage"]["source_id"].str.startswith("src_")).any()
+    # el default NO cambia (API por dataset y tests existentes intactos)
+    g_default = governance_tables("es")
+    assert len(g_default["catalog"]) == 4
+
+
 def test_installer_iss_offers_optional_desktop_and_start_menu():
     """El instalador .exe (Inno Setup) crea el acceso del Menú Inicio y
     ofrece el del escritorio como casilla opcional — 'si lo desea el

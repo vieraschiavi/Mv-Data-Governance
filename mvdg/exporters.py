@@ -19,9 +19,30 @@ from .quality import (overall_index, quality_by_dataset,
                       quality_by_dimension, run_rules)
 
 
-def governance_tables(lang: str = "es") -> dict[str, pd.DataFrame]:
-    """Todas las tablas de gobierno, listas para exportar o servir por API."""
-    results = run_rules(lang=lang)
+def governance_tables(lang: str = "es",
+                      include_samples: bool = False) -> dict[str, pd.DataFrame]:
+    """Todas las tablas de gobierno, listas para exportar o servir por API.
+
+    Con ``include_samples=True`` el universo es el combinado demo + casos de
+    ejemplo de 🔎 Mis datos (ver ``mvdg.scope``) — mismo esquema de tablas,
+    más filas. El default sigue siendo solo la demo (compatibilidad con la
+    API y los tests existentes)."""
+    if include_samples:
+        from . import scope
+        results = scope.combined_results(lang)
+        catalog = scope.combined_catalog(lang)
+        dictionary = scope.combined_dictionary(lang)
+        lineage = scope.combined_lineage_df(lang)
+        glossary = scope.combined_glossary(lang)
+        policies = policies_df(lang, results, catalog=catalog,
+                               dictionary=dictionary)
+    else:
+        results = run_rules(lang=lang)
+        catalog = catalog_df(lang)
+        dictionary = dictionary_df(lang)
+        lineage = lineage_df()
+        glossary = glossary_df(lang)
+        policies = policies_df(lang, results)
     kpis = pd.DataFrame([{
         "kpi": "quality_index", "value": overall_index(results)},
         {"kpi": "rules_total", "value": len(results)},
@@ -30,14 +51,14 @@ def governance_tables(lang: str = "es") -> dict[str, pd.DataFrame]:
         {"kpi": "rules_fail", "value": int((results["status"] == "fail").sum())},
     ])
     return {
-        "catalog": catalog_df(lang),
-        "dictionary": dictionary_df(lang),
+        "catalog": catalog,
+        "dictionary": dictionary,
         "quality_results": results,
         "quality_by_dataset": quality_by_dataset(results),
         "quality_by_dimension": quality_by_dimension(results),
-        "lineage": lineage_df(),
-        "glossary": glossary_df(lang),
-        "policies": policies_df(lang, results),
+        "lineage": lineage,
+        "glossary": glossary,
+        "policies": policies,
         "kpis": kpis,
     }
 

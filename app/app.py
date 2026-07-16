@@ -48,6 +48,7 @@ from mvdg import purview_export
 from mvdg import purview_pull
 from mvdg import imported as ext_imported
 from mvdg import samples as ext_samples
+from mvdg import scope as gov_scope
 from mvdg import server as mvdg_server
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
@@ -117,6 +118,9 @@ with st.sidebar:
     )
     st.caption(t("sidebar_help", lang))
     st.divider()
+    incl_samples = st.toggle(t("scope_toggle", lang), value=True, key="scope_samples")
+    st.caption(t("scope_hint", lang))
+    st.divider()
     st.caption(f"v{__version__} · {t('demo_note', lang)}")
 
 if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
@@ -144,7 +148,13 @@ st.markdown(f"<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe
 st.title(APP_NAME)
 st.caption(t("app_tagline", lang))
 
-results = _results(lang)
+
+@st.cache_data(show_spinner=False)
+def _results_combined(lang: str):
+    return gov_scope.combined_results(lang, _results(lang))
+
+
+results = _results_combined(lang) if incl_samples else _results(lang)
 tables = _tables()
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_cu, tab_resp, tab_p,
@@ -212,8 +222,8 @@ def _render_fixes(results_df, lang):
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
-    cat = catalog_df(lang, tables)
-    dic = dictionary_df(lang)
+    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
+    dic = gov_scope.combined_dictionary(lang) if incl_samples else dictionary_df(lang)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("kpi_datasets", lang), len(cat))
     c2.metric(t("kpi_columns", lang), len(dic))
@@ -596,7 +606,7 @@ with tab_dk:
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
     st.info(t("cat_intro", lang), icon="📚")
-    cat = catalog_df(lang, tables)
+    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
     f1, f2 = st.columns([2, 1])
     query = f1.text_input(t("cat_search", lang), "")
     domains = [t("cat_all", lang)] + sorted(cat["domain"].unique().tolist())
@@ -618,8 +628,9 @@ with tab_cat:
     }), width="stretch", hide_index=True)
 
     st.subheader(t("cat_detail", lang))
-    ds = st.selectbox(t("cat_pick", lang), dataset_names())
-    dic = dictionary_df(lang, ds)
+    _cat_ds_opts = dataset_names() + (ext_samples.sample_keys() if incl_samples else [])
+    ds = st.selectbox(t("cat_pick", lang), _cat_ds_opts)
+    dic = gov_scope.combined_dictionary(lang, ds) if incl_samples else dictionary_df(lang, ds)
     st.dataframe(dic.rename(columns={
         "column": t("col_column", lang), "type": t("col_type", lang),
         "pii": t("col_pii", lang), "business_term": t("col_term", lang),
@@ -725,7 +736,11 @@ with tab_q:
 # ----------------------------------------------------------------- Linaje
 with tab_lin:
     st.info(t("lin_intro", lang), icon="🧬")
-    labels = {n["id"]: n["label"] for n in NODES}
+    if incl_samples:
+        _lin_nodes, _lin_edges = gov_scope.combined_lineage(lang)
+    else:
+        _lin_nodes, _lin_edges = NODES, None
+    labels = {n["id"]: n["label"] for n in _lin_nodes}
     focus = st.selectbox(t("lin_focus", lang),
                          ["—"] + list(labels.keys()),
                          format_func=lambda k: labels.get(k, k))
@@ -734,15 +749,18 @@ with tab_lin:
         "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
         "bi": t("lin_layer_bi", lang),
     }
-    fig = lineage_figure(None if focus == "—" else focus, layer_titles)
+    fig = lineage_figure(None if focus == "—" else focus, layer_titles,
+                         nodes=_lin_nodes if incl_samples else None,
+                         edges=_lin_edges)
     st.plotly_chart(fig, width="stretch")
     with st.expander(t("tbl_lineage", lang)):
-        st.dataframe(lineage_df(), width="stretch", hide_index=True)
+        st.dataframe(gov_scope.combined_lineage_df(lang) if incl_samples else lineage_df(),
+                     width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Glosario
 with tab_g:
     st.info(t("g_intro", lang), icon="📖")
-    gdf = glossary_df(lang)
+    gdf = gov_scope.combined_glossary(lang) if incl_samples else glossary_df(lang)
     gq = st.text_input(t("g_search", lang), "")
     if gq:
         mask = gdf.apply(lambda r: gq.lower() in " ".join(map(str, r)).lower(), axis=1)
@@ -998,7 +1016,12 @@ with tab_resp:
 # --------------------------------------------------------------- Políticas
 with tab_p:
     st.info(t("p_intro", lang), icon="🛡️")
-    pdf = policies_df(lang, results)
+    if incl_samples:
+        pdf = policies_df(lang, results,
+                          catalog=gov_scope.combined_catalog(lang, tables),
+                          dictionary=gov_scope.combined_dictionary(lang))
+    else:
+        pdf = policies_df(lang, results)
     status_label = {"compliant": t("p_compliant", lang),
                     "partial": t("p_partial", lang),
                     "noncompliant": t("p_noncompliant", lang)}
@@ -1259,7 +1282,7 @@ with tab_pr:
 # ---------------------------------------------------------------- BI & API
 with tab_bi:
     st.info(t("bi_intro", lang), icon="📤")
-    gov = governance_tables(lang)
+    gov = governance_tables(lang, include_samples=incl_samples)
 
     st.subheader(t("bi_files", lang))
     table_labels = {
