@@ -71,11 +71,23 @@ que nadie cargue una conexión a mano. Eso es, literalmente, ser
 infraestructura cloud — no algo que un programa Python de escritorio deba
 intentar ser.
 
-**Lo que sí se construyó:** `scan_all_connections()` escanea de un clic
-TODAS las conexiones que ya cargaste en el programa (hoy: 9 motores SQL/
-cloud), en vez de elegir una por vez. Si una conexión está caída, no frena
-el resto — el error queda registrado en su fila. Sigue siendo un batch
-sobre lo que vos conectaste, no descubrimiento autónomo de fuentes nuevas.
+**Lo que sí se construyó (dos niveles):**
+
+- `scan_all_connections()` escanea de un clic TODAS las conexiones que ya
+  cargaste en el programa (hoy: 9 motores SQL/cloud), en vez de elegir una
+  por vez. Si una conexión está caída, no frena el resto — el error queda
+  registrado en su fila. Sigue siendo un batch sobre lo que vos
+  conectaste, no descubrimiento autónomo.
+- `mvdg/azure_discovery.py` (☁️ en 📤 BI & API) da un paso más real hacia
+  el descubrimiento: con tu service principal (rol **Reader**, de solo
+  lectura), **una sola consulta** a la **Azure Resource Graph API** trae
+  todos los recursos de datos — SQL Database, Storage Account, Synapse,
+  Cosmos DB, Data Factory, Azure MySQL/PostgreSQL, Databricks — de **toda
+  tu suscripción**, sin desplegar ningún agente ni cargar nada a mano. No
+  es "convertirse en Purview" (sigue siendo una consulta bajo demanda, no
+  un agente persistente que vigila el tenant en continuo, y no cruza
+  management groups por defecto), pero es un salto real: de "lo que vos
+  cargaste" a "lo que existe en tu suscripción de Azure".
 
 ### 3. Etiquetas de sensibilidad → conector real a Microsoft Graph (🏷️ en 📤 BI & API)
 
@@ -213,6 +225,30 @@ instancia** — no hay forma de adivinar los IDs desde afuera.
 5. A diferencia de Purview, Collibra **no** ofrece un entorno de prueba de
    autoservicio gratuito — la práctica real depende de que un cliente o
    empleador te dé acceso a una instancia.
+
+### Collibra en las dos direcciones: push y pull
+
+La migración con Collibra no es de una sola vía. Además de empujar (arriba),
+la pestaña **⬇️ Traer de Collibra** (en 📤 BI & API, `mvdg/collibra_pull.py`)
+hace el camino inverso: lee tu instancia y trae **Business Terms ya
+aprobados** (con su Definición) y **assets de tipo Tabla** (con la suya),
+para no volver a tipear a mano lo que la empresa ya documentó en Collibra.
+Mismas variables de entorno que el push.
+
+**Límite explícito, y por qué es así:** el conector de traída NO trae las
+asignaciones de Owner/Steward de Collibra (el recurso "Responsibility" de
+su API). Esa API existe, pero no encontré su forma exacta de request/
+response documentada públicamente con el detalle suficiente como para
+implementarla con la misma confianza que el resto de este proyecto —
+cada endpoint usado en `purview_export.py`, `collibra_export.py`,
+`mip_labels.py` y `azure_discovery.py` está sacado de una página de
+Microsoft Learn o del Collibra Developer Portal con ejemplos de request/
+response reales. Para "Responsibility" no encontré esa misma calidad de
+fuente pública, y adivinar un endpoint es exactamente lo que este
+proyecto se propuso no hacer nunca. La Swagger UI de tu propia instancia
+(`https://tu-instancia.collibra.com/rest/2.0/ui`) tiene la especificación
+exacta de tu versión — es la vía correcta para completar esto con
+confianza, no adivinando desde afuera.
 
 ### Honestidad sobre lo que está verificado
 

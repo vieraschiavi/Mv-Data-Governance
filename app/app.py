@@ -30,10 +30,12 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
                              load_connections, load_table, run_query,
                              save_connection, scan_all_connections,
                              stored_password, test_connection)
-from mvdg.help_center import automation_rows, speeches
+from mvdg.help_center import automation_rows, purview_collibra_faq, speeches
 from mvdg.lab_case import lab_measure, lab_steps
+from mvdg import azure_discovery
 from mvdg import cobit_iso
 from mvdg import collibra_export
+from mvdg import collibra_pull
 from mvdg import curation
 from mvdg import enforcement
 from mvdg import insights
@@ -1375,6 +1377,56 @@ with tab_bi:
             st.caption(t("scanall_none", lang))
     st.caption(t("scanall_local_note", lang))
 
+    st.divider()
+    st.subheader(t("azd_title", lang))
+    st.info(t("azd_intro", lang), icon="☁️")
+    _azd_ready = azure_discovery.configured()
+    st.caption(t("azd_env", lang) if not _azd_ready else t("mig_configured", lang))
+    if _azd_ready and st.button(t("azd_run", lang), type="primary"):
+        with st.spinner("…"):
+            try:
+                st.session_state["azd_result"] = azure_discovery.discover_data_resources()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+    _azd_res = st.session_state.get("azd_result")
+    if _azd_res is not None:
+        if len(_azd_res):
+            st.metric(t("azd_found", lang), len(_azd_res))
+            st.dataframe(_azd_res, width="stretch", hide_index=True)
+        else:
+            st.caption(t("azd_none", lang))
+    st.caption(t("azd_local_note", lang))
+
+    st.divider()
+    st.subheader(t("cbp_title", lang))
+    st.info(t("cbp_intro", lang), icon="⬇️")
+    _cbp_ready = collibra_export.configured()
+    st.caption(t("cbp_env", lang) if not _cbp_ready else t("mig_configured", lang))
+    if _cbp_ready and st.button(t("cbp_run", lang), type="primary"):
+        with st.spinner("…"):
+            try:
+                st.session_state["cbp_result"] = collibra_pull.pull_all()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+    _cbp_res = st.session_state.get("cbp_result")
+    if _cbp_res is not None:
+        h1, h2 = st.columns(2)
+        h1.metric(t("cbp_terms", lang), _cbp_res["glossary"]["term_count"])
+        h2.metric(t("cbp_tables", lang), _cbp_res["catalog"]["table_count"])
+        if _cbp_res["glossary"]["terms"]:
+            _cbp_terms_df = pd.DataFrame(_cbp_res["glossary"]["terms"])
+            st.dataframe(_cbp_terms_df, width="stretch", hide_index=True)
+            st.download_button(t("cbp_download_terms", lang), to_csv_bytes(_cbp_terms_df),
+                               "collibra_terminos.csv", "text/csv")
+        if _cbp_res["catalog"].get("skipped_reason"):
+            st.caption(f"📚 {t('cbp_catalog_skipped', lang)}: {_cbp_res['catalog']['skipped_reason']}")
+        elif _cbp_res["catalog"]["tables"]:
+            _cbp_tables_df = pd.DataFrame(_cbp_res["catalog"]["tables"])
+            st.dataframe(_cbp_tables_df, width="stretch", hide_index=True)
+            st.download_button(t("cbp_download_tables", lang), to_csv_bytes(_cbp_tables_df),
+                               "collibra_tablas.csv", "text/csv")
+    st.caption(t("cbp_local_note", lang))
+
 # ---------------------------------------------------------------- Empresas
 with tab_cl:
     st.info(t("cl_intro", lang), icon="🏢")
@@ -1644,6 +1696,12 @@ with tab_h:
 
     st.subheader(t("h_packs", lang))
     st.markdown(t("h_packs_note", lang))
+
+    st.subheader(t("h_pvfaq", lang))
+    st.markdown(t("h_pvfaq_note", lang))
+    for item in purview_collibra_faq(lang):
+        with st.expander(f"❓ {item['q']}"):
+            st.markdown(item["a"])
 
 # --------------------------------------------------------------- Power BI
 with tab_pbi:

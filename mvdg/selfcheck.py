@@ -283,6 +283,44 @@ def run_checks() -> list[tuple[str, bool, str]]:
                     os.environ["MVDG_DATA_DIR"] = prev
         return "una conexión caída no frena el escaneo de las demás, verificado"
 
+    @check("Descubrimiento en Azure Resource Graph (apagado por defecto, con mock)")
+    def _():
+        from . import azure_discovery as az
+        assert az.configured() is False
+        q = az.build_query()
+        assert all(f"'{t}'" in q for t in az.DATA_RESOURCE_TYPES)
+
+        prev_token, prev_http = az._get_token, az._http_json
+        try:
+            az._get_token = lambda: "tok"
+            az._http_json = lambda url, headers, body: {"data": [
+                {"name": "srv1/db1", "type": "microsoft.sql/servers/databases",
+                 "resourceGroup": "rg1", "location": "eastus",
+                 "subscriptionId": "sub1", "id": "/x/1"}]}
+            import os
+            os.environ.update({"AZURE_TENANT_ID": "t", "AZURE_CLIENT_ID": "c",
+                               "AZURE_CLIENT_SECRET": "s", "AZURE_SUBSCRIPTION_ID": "sub1"})
+            df = az.discover_data_resources()
+            assert len(df) == 1 and df.iloc[0]["category"] == "Azure SQL Database"
+        finally:
+            az._get_token, az._http_json = prev_token, prev_http
+            for v in ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
+                     "AZURE_SUBSCRIPTION_ID"):
+                os.environ.pop(v, None)
+        return ("inventario de 9 tipos de recurso de datos (SQL/Storage/Synapse/Cosmos/"
+                "Databricks...) en una sola consulta a la suscripción, con mock del transporte")
+
+    @check("Conector inverso Collibra (pull, apagado por defecto)")
+    def _():
+        from . import collibra_pull as cbp
+        assert cbp.table_pull_configured() is False
+        try:
+            cbp.pull_glossary()
+            raise AssertionError("debería haber levantado RuntimeError sin credenciales")
+        except RuntimeError:
+            pass
+        return "sin credenciales -> RuntimeError; no reimplementa Responsibility (owner/steward) sin verificar la API primero"
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os

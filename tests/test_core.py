@@ -2325,3 +2325,196 @@ def test_connectors_scan_all_partial_failure_does_not_stop_the_rest(tmp_path, mo
     broken_rows = df[df["name"] == "Rota"]
     assert broken_rows["table"].isna().all()
     assert broken_rows["error"].notna().all()
+
+
+# ------------------------------------------- Azure Resource Graph (discovery)
+def test_azure_discovery_off_by_default(monkeypatch):
+    for var in ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
+               "AZURE_SUBSCRIPTION_ID"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import azure_discovery as az
+    assert az.configured() is False
+    with pytest.raises(RuntimeError):
+        az.discover_data_resources()
+
+
+def test_azure_discovery_query_covers_all_data_types():
+    from mvdg import azure_discovery as az
+    q = az.build_query()
+    assert q.startswith("Resources | where type in~ (")
+    for t in az.DATA_RESOURCE_TYPES:
+        assert f"'{t}'" in q
+
+
+def test_azure_discovery_suggest_connection_profile_maps_known_types():
+    from mvdg import azure_discovery as az
+    sql = az.suggest_connection_profile({"type": "microsoft.sql/servers/databases", "name": "srv1/db1"})
+    assert sql["engine"] == "sqlserver" and "database.windows.net" in sql["host"]
+    pg = az.suggest_connection_profile({"type": "microsoft.dbforpostgresql/flexibleservers", "name": "pg1"})
+    assert pg["engine"] == "postgresql"
+    # un tipo no relacionado con conexión (ej. Storage) no sugiere perfil -- no inventa un motor que no existe
+    assert az.suggest_connection_profile({"type": "microsoft.storage/storageaccounts", "name": "s1"}) is None
+
+
+def test_azure_discovery_mocked_end_to_end(monkeypatch):
+    monkeypatch.setenv("AZURE_TENANT_ID", "tid")
+    monkeypatch.setenv("AZURE_CLIENT_ID", "cid")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-1")
+    from mvdg import azure_discovery as az
+
+    calls = {"query": 0}
+
+    def fake_http_json(url, headers, body):
+        assert headers["Authorization"] == "Bearer tok-123"
+        assert body["subscriptions"] == ["sub-1"]
+        calls["query"] += 1
+        return {"data": [
+            {"name": "srv1/db1", "type": "microsoft.sql/servers/databases",
+             "resourceGroup": "rg1", "location": "eastus", "subscriptionId": "sub-1", "id": "/x/1"},
+            {"name": "stg1", "type": "microsoft.storage/storageaccounts",
+             "resourceGroup": "rg1", "location": "eastus", "subscriptionId": "sub-1", "id": "/x/2"},
+        ]}  # sin $skipToken -> una sola página
+
+    monkeypatch.setattr(az, "_get_token", lambda: "tok-123")
+    monkeypatch.setattr(az, "_http_json", fake_http_json)
+
+    df = az.discover_data_resources()
+    assert calls["query"] == 1
+    assert len(df) == 2
+    assert set(df["category"]) == {"Azure SQL Database", "Storage Account"}
+    assert "resourceGroup" in df.columns and "location" in df.columns
+
+
+def test_azure_discovery_paginates_with_skiptoken(monkeypatch):
+    monkeypatch.setenv("AZURE_TENANT_ID", "tid")
+    monkeypatch.setenv("AZURE_CLIENT_ID", "cid")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-1")
+    from mvdg import azure_discovery as az
+
+    pages = [
+        {"data": [{"name": f"db{i}", "type": "microsoft.sql/servers/databases",
+                  "resourceGroup": "rg", "location": "eastus", "subscriptionId": "sub-1", "id": f"/x/{i}"}
+                 for i in range(3)], "$skipToken": "page2"},
+        {"data": [{"name": "db3", "type": "microsoft.sql/servers/databases",
+                  "resourceGroup": "rg", "location": "eastus", "subscriptionId": "sub-1", "id": "/x/3"}]},
+    ]
+    calls = {"n": 0}
+
+    def fake_http_json(url, headers, body):
+        page = pages[calls["n"]]
+        calls["n"] += 1
+        return page
+
+    monkeypatch.setattr(az, "_get_token", lambda: "tok-123")
+    monkeypatch.setattr(az, "_http_json", fake_http_json)
+    df = az.discover_data_resources()
+    assert calls["n"] == 2
+    assert len(df) == 4
+
+
+# --------------------------------------------- Collibra pull (conector inverso)
+def test_collibra_pull_off_by_default(monkeypatch):
+    for var in ("COLLIBRA_BASE_URL", "COLLIBRA_USERNAME", "COLLIBRA_PASSWORD",
+               "COLLIBRA_DOMAIN_ID"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import collibra_pull as cbp
+    with pytest.raises(RuntimeError):
+        cbp.pull_glossary()
+    with pytest.raises(RuntimeError):
+        cbp.pull_catalog()
+
+
+def test_collibra_pull_catalog_requires_table_type_id(monkeypatch):
+    monkeypatch.setenv("COLLIBRA_BASE_URL", "https://acme.collibra.com")
+    monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+    monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    monkeypatch.delenv("COLLIBRA_TABLE_TYPE_ID", raising=False)
+    from mvdg import collibra_pull as cbp
+    assert cbp.table_pull_configured() is False
+    with pytest.raises(RuntimeError):
+        cbp.pull_catalog()
+    # pull_all no debe explotar -- reporta el catálogo salteado explícitamente
+    import mvdg.collibra_export as cb
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/sessions"):
+            return {}, ["JSESSIONID=sess1; Path=/"]
+        if url.endswith("/auth/sessions/current"):
+            return {}, []
+        if "/assets" in url:
+            return {"total": 0, "offset": 0, "limit": 200, "results": []}, []
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cb, "_http_json", fake_http_json)
+    r = cbp.pull_all()
+    assert r["catalog"]["table_count"] == 0
+    assert "skipped_reason" in r["catalog"]
+
+
+def test_collibra_pull_integration_real_http_roundtrip(monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    calls = {"login": 0, "logout": 0, "assets": 0, "attributes": 0}
+    term_asset = {"id": "asset-term-1", "name": "Cliente"}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, payload, cookie=None):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            if self.path.endswith("/auth/sessions"):
+                calls["login"] += 1
+                self._send(200, {"userId": "u-1"}, cookie="JSESSIONID=pull-sess; Path=/; HttpOnly")
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_GET(self):
+            assert self.headers.get("Cookie") == "JSESSIONID=pull-sess"
+            if self.path.startswith("/rest/2.0/assets"):
+                calls["assets"] += 1
+                self._send(200, {"total": 1, "offset": 0, "limit": 200, "results": [term_asset]})
+            elif self.path.startswith("/rest/2.0/attributes"):
+                calls["attributes"] += 1
+                assert f"assetId={term_asset['id']}" in self.path
+                self._send(200, {"total": 1, "offset": 0, "limit": 200,
+                                 "results": [{"value": "Definición real traída de Collibra."}]})
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_DELETE(self):
+            calls["logout"] += 1
+            self._send(200, {})
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("COLLIBRA_BASE_URL", f"http://127.0.0.1:{port}")
+        monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+        monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+        monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+        from mvdg import collibra_pull as cbp
+        result = cbp.pull_glossary()
+    finally:
+        server.shutdown()
+
+    assert calls == {"login": 1, "logout": 1, "assets": 1, "attributes": 1}
+    assert result["term_count"] == 1
+    assert result["terms"][0]["name"] == "Cliente"
+    assert result["terms"][0]["definition"] == "Definición real traída de Collibra."

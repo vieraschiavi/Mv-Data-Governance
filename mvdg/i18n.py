@@ -689,6 +689,49 @@ _T: dict[str, dict[str, str]] = {
         "en": "A connection that's down doesn't stop the scan of the rest — the error is recorded in its row.",
         "pt": "Uma conexão fora do ar não interrompe o escaneamento das demais — o erro fica registrado na sua linha.",
     },
+    # ------------------------------------------------------- Azure discovery (azd)
+    "azd_title": {"es": "☁️ Descubrimiento en Azure (Resource Graph)", "en": "☁️ Azure discovery (Resource Graph)", "pt": "☁️ Descoberta no Azure (Resource Graph)"},
+    "azd_intro": {
+        "es": "Esto NO es \"convertirse en Purview\" — Purview escanea desplegando agentes dentro de tu infraestructura de Azure. Esto es más chico pero real: con tu service principal (rol Reader, de solo lectura), UNA consulta a la Azure Resource Graph API trae todos los recursos de datos (SQL, Storage, Synapse, Cosmos DB, Databricks...) de toda tu suscripción, sin cargar conexiones una por una. Trae inventario (nombre, tipo, resource group) — no perfila columnas ni corre reglas; para gobernar cada uno de verdad, igual hay que cargarlo como conexión en 🔎 Mis datos.",
+        "en": "This is NOT \"becoming Purview\" — Purview scans by deploying agents inside your Azure infrastructure. This is smaller but real: with your service principal (Reader role, read-only), ONE query to the Azure Resource Graph API brings back all data resources (SQL, Storage, Synapse, Cosmos DB, Databricks...) across your whole subscription, without loading connections one by one. It brings inventory (name, type, resource group) — it doesn't profile columns or run rules; to actually govern each one, you still need to load it as a connection in 🔎 My data.",
+        "pt": "Isso NÃO é \"virar o Purview\" — o Purview varre implantando agentes dentro da sua infraestrutura Azure. Isso é menor mas real: com seu service principal (papel Reader, somente leitura), UMA consulta à Azure Resource Graph API traz todos os recursos de dados (SQL, Storage, Synapse, Cosmos DB, Databricks...) de toda a sua assinatura, sem carregar conexões uma por uma. Traz inventário (nome, tipo, resource group) — não perfila colunas nem roda regras; para governar cada um de verdade, ainda é preciso carregá-lo como conexão em 🔎 Meus dados.",
+    },
+    "azd_env": {
+        "es": "Sin configurar — cargá `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID` (service principal con rol Reader sobre la suscripción).",
+        "en": "Not configured — set `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID` (service principal with Reader role on the subscription).",
+        "pt": "Não configurado — configure `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID` (service principal com papel Reader na assinatura).",
+    },
+    "azd_run": {"es": "☁️ Descubrir recursos de datos", "en": "☁️ Discover data resources", "pt": "☁️ Descobrir recursos de dados"},
+    "azd_found": {"es": "Recursos encontrados", "en": "Resources found", "pt": "Recursos encontrados"},
+    "azd_none": {"es": "No se encontraron recursos de datos en esta suscripción.", "en": "No data resources found in this subscription.", "pt": "Nenhum recurso de dados encontrado nesta assinatura."},
+    "azd_local_note": {
+        "es": "Apagado por defecto. Implementado contra Microsoft Learn (Azure Resource Graph REST API); no probado contra una suscripción real. Solo lectura (rol Reader) — nunca modifica nada en tu Azure.",
+        "en": "Off by default. Implemented against Microsoft Learn (Azure Resource Graph REST API); not tested against a live subscription. Read-only (Reader role) — never modifies anything in your Azure.",
+        "pt": "Desligado por padrão. Implementado contra o Microsoft Learn (Azure Resource Graph REST API); não testado contra uma assinatura real. Somente leitura (papel Reader) — nunca modifica nada no seu Azure.",
+    },
+    # ---------------------------------------------------------- Collibra pull (cbp)
+    "cbp_title": {"es": "⬇️ Traer de Collibra (conector inverso)", "en": "⬇️ Pull from Collibra (reverse connector)", "pt": "⬇️ Trazer do Collibra (conector inverso)"},
+    "cbp_intro": {
+        "es": "Complemento de 🔀 Migración: en vez de empujar hacia Collibra, esto TRAE lo que Collibra ya tiene — Business Terms aprobados y assets de tipo Tabla, con su definición — para no tipear de nuevo lo que la empresa ya documentó ahí. No trae asignaciones de Owner/Steward (esa API de Collibra no está documentada con suficiente detalle como para implementarla sin adivinar).",
+        "en": "Complement of 🔀 Migration: instead of pushing to Collibra, this PULLS what Collibra already has — approved Business Terms and Table-type assets, with their definition — so you don't retype what the company already documented there. Doesn't pull Owner/Steward assignments (that Collibra API isn't documented in enough detail to implement without guessing).",
+        "pt": "Complemento de 🔀 Migração: em vez de empurrar para o Collibra, isso TRAZ o que o Collibra já tem — Business Terms aprovados e assets do tipo Tabela, com sua definição — para não digitar de novo o que a empresa já documentou lá. Não traz atribuições de Owner/Steward (essa API do Collibra não está documentada com detalhe suficiente para implementar sem adivinhar).",
+    },
+    "cbp_env": {
+        "es": "Sin configurar — mismas variables que 🔀 Migración (`COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`; `COLLIBRA_TABLE_TYPE_ID` además para traer catálogo).",
+        "en": "Not configured — same variables as 🔀 Migration (`COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`; `COLLIBRA_TABLE_TYPE_ID` too, to pull catalog).",
+        "pt": "Não configurado — mesmas variáveis que 🔀 Migração (`COLLIBRA_BASE_URL`, `COLLIBRA_USERNAME`, `COLLIBRA_PASSWORD`, `COLLIBRA_DOMAIN_ID`; `COLLIBRA_TABLE_TYPE_ID` também, para trazer catálogo).",
+    },
+    "cbp_run": {"es": "⬇️ Traer de Collibra ahora", "en": "⬇️ Pull from Collibra now", "pt": "⬇️ Trazer do Collibra agora"},
+    "cbp_terms": {"es": "Términos traídos", "en": "Terms pulled", "pt": "Termos trazidos"},
+    "cbp_tables": {"es": "Tablas traídas", "en": "Tables pulled", "pt": "Tabelas trazidas"},
+    "cbp_catalog_skipped": {"es": "Catálogo salteado", "en": "Catalog skipped", "pt": "Catálogo pulado"},
+    "cbp_download_terms": {"es": "⬇️ Descargar términos (.csv)", "en": "⬇️ Download terms (.csv)", "pt": "⬇️ Baixar termos (.csv)"},
+    "cbp_download_tables": {"es": "⬇️ Descargar tablas (.csv)", "en": "⬇️ Download tables (.csv)", "pt": "⬇️ Baixar tabelas (.csv)"},
+    "cbp_local_note": {
+        "es": "Apagado por defecto. Esto solo LEE de tu instancia de Collibra — no modifica ni borra nada ahí. Lo que se trae queda en esta pantalla; guardarlo en el glosario/catálogo del programa es un paso manual, a propósito.",
+        "en": "Off by default. This only READS from your Collibra instance — it never modifies or deletes anything there. What's pulled stays on this screen; saving it into the program's glossary/catalog is a manual step, on purpose.",
+        "pt": "Desligado por padrão. Isso apenas LÊ da sua instância Collibra — nunca modifica ou apaga nada lá. O que é trazido fica nesta tela; salvá-lo no glossário/catálogo do programa é um passo manual, de propósito.",
+    },
     # -------------------------------------------------------------- clients
     "cl_intro": {
         "es": "Fichas de empresas clientes: contacto, BI que usan, restricciones "
@@ -868,6 +911,12 @@ _T: dict[str, dict[str, str]] = {
               "autoinstalável com Streamlit (não instala nada no sistema; para "
               "empresas que bloqueiam .exe mas permitem Python). Mesmas "
               "funcionalidades em ambas. Detalhes na pasta distribucion/.",
+    },
+    "h_pvfaq": {"es": "Purview y Collibra: preguntas frecuentes", "en": "Purview and Collibra: frequently asked questions", "pt": "Purview e Collibra: perguntas frequentes"},
+    "h_pvfaq_note": {
+        "es": "Las mismas preguntas que hace un cliente o un entrevistador, respondidas sin humo. Detalle técnico completo capacidad por capacidad en `docs/PURVIEW_COLLIBRA.md`.",
+        "en": "The same questions a client or interviewer asks, answered plainly. Full capability-by-capability technical detail in `docs/PURVIEW_COLLIBRA.md`.",
+        "pt": "As mesmas perguntas que um cliente ou entrevistador faz, respondidas sem rodeios. Detalhe técnico completo capacidade por capacidade em `docs/PURVIEW_COLLIBRA.md`.",
     },
     "h_dmbok_covered": {"es": "✅ Cubierta", "en": "✅ Covered", "pt": "✅ Coberta"},
     "h_dmbok_partial": {"es": "🟡 Parcial", "en": "🟡 Partial", "pt": "🟡 Parcial"},

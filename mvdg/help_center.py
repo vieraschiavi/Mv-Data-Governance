@@ -236,3 +236,170 @@ def speeches(lang: str = "es") -> list[dict]:
         "audience": s["audience"].get(lang, s["audience"]["es"]),
         "text": s["text"].get(lang, s["text"]["es"]),
     } for s in SPEECHES]
+
+
+# ---------------------------------------------------------------------------
+# FAQ: Purview / Collibra — mismas preguntas que un cliente/entrevistador
+# hace en la práctica, respondidas sin humo (ver docs/PURVIEW_COLLIBRA.md
+# para el detalle técnico completo, capacidad por capacidad).
+# ---------------------------------------------------------------------------
+def _d(es: str, en: str, pt: str) -> dict:
+    return {"es": es, "en": en, "pt": pt}
+
+
+PURVIEW_COLLIBRA_FAQ: list[dict] = [
+    {
+        "q": _d("¿Purview automatiza algo parecido a este programa?",
+               "Does Purview automate something like this program?",
+               "O Purview automatiza algo parecido a este programa?"),
+        "a": _d(
+            "Solo una parte, y no la más difícil. Purview automatiza el **descubrimiento a "
+            "escala**: despliega agentes de escaneo dentro de tu infraestructura de Azure que "
+            "encuentran automáticamente qué bases/archivos/reportes existen, sin que nadie los "
+            "cargue a mano. Pero Purview **no trae motor de reglas de calidad, no tiene "
+            "deduplicación/MDM nativo, y no calcula nada por su cuenta** — solo cataloga lo que "
+            "encuentra y lo etiqueta con lo que vos (o alguien) le dice.",
+            "Only part of it, and not the hardest part. Purview automates **discovery at "
+            "scale**: it deploys scanning agents inside your Azure infrastructure that "
+            "automatically find what databases/files/reports exist, without anyone loading "
+            "them by hand. But Purview **doesn't ship a quality-rule engine, has no native "
+            "deduplication/MDM, and computes nothing on its own** — it only catalogs what it "
+            "finds and tags it with whatever you (or someone) tells it.",
+            "Só uma parte, e não a mais difícil. O Purview automatiza a **descoberta em "
+            "escala**: implanta agentes de varredura dentro da sua infraestrutura Azure que "
+            "encontram automaticamente quais bancos/arquivos/relatórios existem, sem que "
+            "ninguém os carregue manualmente. Mas o Purview **não traz motor de regras de "
+            "qualidade, não tem deduplicação/MDM nativo, e não calcula nada por conta própria** "
+            "— só cataloga o que encontra e o rotula com o que você (ou alguém) disser."),
+    },
+    {
+        "q": _d("¿Lo útil es mi programa, y después espejarlo a Purview para que quede registrado ahí?",
+               "Is the useful part my program, then mirroring it to Purview so it's registered there?",
+               "O útil é meu programa, e depois espelhá-lo no Purview para ficar registrado lá?"),
+        "a": _d(
+            "Exactamente ese es el patrón que implementa el conector de migración (pestaña 🔀). "
+            "Tu programa hace el trabajo pesado — perfilar, correr reglas de calidad, generar y "
+            "curar el glosario con un responsable real, detectar PII — y al final **empuja el "
+            "resultado a Purview por API**, que queda como el catálogo que audita y busca **toda "
+            "la empresa**, no solo vos. Ninguno reemplaza al otro: Purview sin ese trabajo previo "
+            "es un inventario vacío de insights; tu programa sin Purview es insight sin un lugar "
+            "central donde el resto de la empresa lo vea después de que el consultor se va.",
+            "That's exactly the pattern the migration connector implements (🔀 tab). Your "
+            "program does the heavy lifting — profiling, running quality rules, generating and "
+            "curating the glossary with a real responsible person, detecting PII — and at the "
+            "end **pushes the result to Purview via API**, which becomes the catalog **the whole "
+            "company** audits and searches, not just you. Neither replaces the other: Purview "
+            "without that prior work is an empty inventory of insights; your program without "
+            "Purview is insight with no central place for the rest of the company to see it "
+            "after the consultant leaves.",
+            "É exatamente esse o padrão que o conector de migração implementa (aba 🔀). Seu "
+            "programa faz o trabalho pesado — perfilamento, execução de regras de qualidade, "
+            "geração e curadoria do glossário com um responsável real, detecção de PII — e no "
+            "final **empurra o resultado para o Purview via API**, que fica como o catálogo que "
+            "**toda a empresa** audita e busca, não só você. Nenhum substitui o outro: o Purview "
+            "sem esse trabalho prévio é um inventário vazio de insights; seu programa sem o "
+            "Purview é insight sem um lugar central onde o resto da empresa o veja depois que o "
+            "consultor sai."),
+    },
+    {
+        "q": _d("¿Para qué sirve Collibra, y en qué se parece/diferencia de Purview?",
+               "What is Collibra for, and how is it similar to / different from Purview?",
+               "Para que serve o Collibra, e no que se parece/diferencia do Purview?"),
+        "a": _d(
+            "Collibra es el mismo tipo de plataforma que Purview — catálogo + glosario + calidad "
+            "+ stewardship a escala enterprise — pero **no depende de Azure**: funciona "
+            "multi-nube y on-premise. Su diferencial fuerte es el **motor de workflows de "
+            "aprobación** (un término de glosario pasa por un flujo formal de revisión con "
+            "varios roles firmando antes de quedar oficial). Empresas grandes que no quieren "
+            "atarse al ecosistema Microsoft suelen elegir Collibra por eso. Similitudes con "
+            "Purview: catálogo de datasets/columnas, glosario de negocio, clasificación de "
+            "sensibles, linaje — las mismas preguntas de fondo (¿qué datos hay, qué significan, "
+            "son sensibles, de dónde vienen?).",
+            "Collibra is the same type of platform as Purview — catalog + glossary + quality + "
+            "stewardship at enterprise scale — but it **doesn't depend on Azure**: it works "
+            "multi-cloud and on-premise. Its strong differentiator is the **approval workflow "
+            "engine** (a glossary term goes through a formal review flow with several roles "
+            "signing off before it becomes official). Large companies that don't want to be "
+            "locked into the Microsoft ecosystem often choose Collibra for that. Similarities "
+            "with Purview: dataset/column catalog, business glossary, sensitive-data "
+            "classification, lineage — the same underlying questions (what data exists, what "
+            "does it mean, is it sensitive, where did it come from?).",
+            "O Collibra é o mesmo tipo de plataforma que o Purview — catálogo + glossário + "
+            "qualidade + stewardship em escala enterprise — mas **não depende do Azure**: "
+            "funciona multi-nuvem e on-premise. Seu diferencial forte é o **motor de workflows "
+            "de aprovação** (um termo de glossário passa por um fluxo formal de revisão com "
+            "vários papéis assinando antes de ficar oficial). Empresas grandes que não querem se "
+            "prender ao ecossistema Microsoft costumam escolher o Collibra por isso. "
+            "Semelhanças com o Purview: catálogo de datasets/colunas, glossário de negócio, "
+            "classificação de sensíveis, linhagem — as mesmas perguntas de fundo (que dados "
+            "existem, o que significam, são sensíveis, de onde vêm?)."),
+    },
+    {
+        "q": _d("¿Mi programa migra a Collibra por API también?",
+               "Does my program also migrate to Collibra via API?",
+               "Meu programa também migra para o Collibra via API?"),
+        "a": _d(
+            "Sí, en las dos direcciones. **Empuja** (tu programa → Collibra): catálogo, "
+            "diccionario y glosario, mismo patrón acelerador que Purview — pestaña 🔀 Migración. "
+            "**Trae** (Collibra → tu programa): assets de tipo Tabla y Business Terms ya "
+            "aprobados, con su definición — para no volver a tipear a mano lo que la empresa ya "
+            "documentó ahí. Lo que el conector de traída NO trae, a propósito: las asignaciones "
+            "de Owner/Steward de Collibra — esa API existe pero no encontré su forma exacta "
+            "documentada con suficiente detalle como para implementarla sin adivinar, y adivinar "
+            "un endpoint es justo lo que este programa se propuso no hacer nunca.",
+            "Yes, in both directions. **Push** (your program → Collibra): catalog, dictionary "
+            "and glossary, same accelerator pattern as Purview — 🔀 Migration tab. **Pull** "
+            "(Collibra → your program): Table-type assets and already-approved Business Terms, "
+            "with their definition — so you don't retype by hand what the company already "
+            "documented there. What the pull connector deliberately does NOT bring in: "
+            "Collibra's Owner/Steward assignments — that API exists but I couldn't find its "
+            "exact shape documented in enough detail to implement it without guessing, and "
+            "guessing an endpoint is exactly what this program set out to never do.",
+            "Sim, nas duas direções. **Empurra** (seu programa → Collibra): catálogo, "
+            "dicionário e glossário, mesmo padrão acelerador do Purview — aba 🔀 Migração. "
+            "**Traz** (Collibra → seu programa): assets do tipo Tabela e Business Terms já "
+            "aprovados, com sua definição — para não digitar de novo o que a empresa já "
+            "documentou lá. O que o conector de trazer NÃO traz, de propósito: as atribuições de "
+            "Owner/Steward do Collibra — essa API existe mas não encontrei sua forma exata "
+            "documentada com detalhe suficiente para implementá-la sem adivinhar, e adivinhar um "
+            "endpoint é justamente o que este programa se propôs a nunca fazer."),
+    },
+    {
+        "q": _d("¿Cuál es mejor, Purview, Collibra o este programa?",
+               "Which is better — Purview, Collibra, or this program?",
+               "Qual é melhor — Purview, Collibra ou este programa?"),
+        "a": _d(
+            "Ninguno es \"mejor\" en abstracto — resuelven problemas distintos. Para una empresa "
+            "grande ya en Azure con cientos de fuentes, el descubrimiento a escala de Purview "
+            "vale la pena igual. Pero ese escaneo solo te dice qué existe — no te dice si tus "
+            "datos son buenos (duplicados, huecos de PII, definiciones de negocio inconsistentes) "
+            "a menos que algo como este programa haga ese trabajo, ya sea de forma independiente "
+            "o como acelerador que alimenta a Purview/Collibra (que es exactamente lo que hace "
+            "el conector de migración). El techo de cada capacidad de este programa vs. Purview/"
+            "Collibra está documentado sin vueltas en docs/PURVIEW_COLLIBRA.md — pestaña 📘 "
+            "Estándares y este mismo menú.",
+            "Neither is \"better\" in the abstract — they solve different problems. For a large "
+            "company already on Azure with hundreds of sources, Purview's discovery at scale is "
+            "worth it regardless. But that scan alone only tells you what exists — it won't tell "
+            "you whether your data is good (duplicates, PII gaps, inconsistent business "
+            "definitions) unless something like this program does that work, either "
+            "independently or as an accelerator feeding Purview/Collibra (exactly what the "
+            "migration connector does). Every capability's ceiling vs. Purview/Collibra is "
+            "documented plainly in docs/PURVIEW_COLLIBRA.md — 📘 Standards tab and this same menu.",
+            "Nenhum é \"melhor\" em abstrato — resolvem problemas diferentes. Para uma empresa "
+            "grande já no Azure com centenas de fontes, a descoberta em escala do Purview vale a "
+            "pena de qualquer forma. Mas essa varredura só diz o que existe — não diz se seus "
+            "dados são bons (duplicados, lacunas de PII, definições de negócio inconsistentes) a "
+            "menos que algo como este programa faça esse trabalho, seja de forma independente ou "
+            "como acelerador que alimenta o Purview/Collibra (exatamente o que o conector de "
+            "migração faz). O teto de cada capacidade deste programa vs. Purview/Collibra está "
+            "documentado sem rodeios em docs/PURVIEW_COLLIBRA.md — aba 📘 Padrões e este mesmo "
+            "menu."),
+    },
+]
+
+
+def purview_collibra_faq(lang: str = "es") -> list[dict]:
+    """FAQ resuelto al idioma pedido."""
+    return [{"q": item["q"].get(lang, item["q"]["es"]),
+            "a": item["a"].get(lang, item["a"]["es"])} for item in PURVIEW_COLLIBRA_FAQ]
