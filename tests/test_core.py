@@ -3317,3 +3317,168 @@ def test_collibra_status_ids_are_documented_and_overridable(monkeypatch):
     _cat, _dic, glo = _sample_gov_tables()
     terms = cb.build_term_payloads(glo, "term-type", "dom-1")
     assert terms[0]["asset"]["statusId"] == "custom-candidate"
+
+
+# ------------------------------------ glosario automático desde la base de datos
+def test_glossary_auto_expands_common_abbreviations():
+    from mvdg.glossary_auto import expand_identifier
+    assert expand_identifier("fec_pag", "es") == ("fecha pago", True)
+    assert expand_identifier("cli_id", "es") == ("cliente identificador", True)
+    assert expand_identifier("imp_tot", "es") == ("importe total", True)
+    assert expand_identifier("cust_addr", "en") == ("customer address", True)
+    # camelCase también se parte y expande
+    assert expand_identifier("fecPago", "es")[0].startswith("fecha")
+
+
+def test_glossary_auto_never_invents_unknown_tokens():
+    """Un token que no está en el diccionario queda tal cual (en minúsculas)
+    — la corrección es del humano en la tabla editable, no una invención."""
+    from mvdg.glossary_auto import expand_identifier
+    phrase, expanded = expand_identifier("xyzzy_frobnicate", "es")
+    assert phrase == "xyzzy frobnicate"
+    assert expanded is False
+
+
+def test_glossary_auto_terms_have_stable_upsert_ids():
+    from mvdg.glossary_auto import build_terms_from_schema
+    schema = {"cli_fac": ["fec_pag", "imp_tot"]}
+    terms = build_terms_from_schema(schema, "es", conn_id="abc123")
+    ids = {t["database_id"] for t in terms}
+    assert ids == {"abc123:cli_fac.fec_pag", "abc123:cli_fac.imp_tot"}
+    # re-generar produce los mismos ids -> save_terms hace upsert, no duplica
+    again = {t["database_id"] for t in build_terms_from_schema(schema, "es", conn_id="abc123")}
+    assert again == ids
+
+
+def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
+    """Flujo completo contra una base REAL (SQLite): esquema con nombres
+    abreviados -> borrador con palabras completas -> guardado local ->
+    aparece en 🖊️ Curaduría con su origen, editable/validable a mano."""
+    import sqlite3
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    db = tmp_path / "ventas.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL, tel_cli TEXT)")
+    con.commit(); con.close()
+
+    from mvdg import curation, glossary_auto, imported
+    profile = {"conn_id": "sqlt1", "engine": "sqlite", "database": str(db)}
+    draft = glossary_auto.build_from_connection(profile, "es")
+    by_col = {t["column"]: t for t in draft}
+    assert by_col["fec_pag"]["name"] == "fecha pago"
+    assert by_col["imp_tot"]["name"] == "importe total"
+    assert by_col["tel_cli"]["name"] == "teléfono cliente"
+    assert all(t["definition"] for t in draft)
+
+    # el usuario corrige uno a mano antes de guardar (editable de verdad)
+    by_col["tel_cli"]["name"] = "teléfono del cliente"
+    n = imported.save_terms("database", draft)
+    assert n == 3
+    df = curation.list_items("es")
+    row = df[df["item_id"] == "glossary:imported:database:sqlt1:cli_fac.tel_cli"]
+    assert len(row) == 1
+    assert row.iloc[0]["label"] == "teléfono del cliente"
+    assert row.iloc[0]["dataset"] == "🗄️ base de datos"
+    assert row.iloc[0]["status"] == "sugerido_ia"
+    # y se valida/modifica como cualquier otra definición del programa
+    curation.save_validation("glossary:imported:database:sqlt1:cli_fac.tel_cli",
+                             "es", "modificado", "Teléfono de contacto del cliente.",
+                             "M. Viera", "Data Steward")
+    df2 = curation.list_items("es")
+    row2 = df2[df2["item_id"] == "glossary:imported:database:sqlt1:cli_fac.tel_cli"]
+    assert row2.iloc[0]["status"] == "modificado"
+    assert row2.iloc[0]["text"] == "Teléfono de contacto del cliente."
+
+
+def test_glossary_auto_broken_table_does_not_stop_the_rest(tmp_path, monkeypatch):
+    from mvdg import connectors, glossary_auto
+    import sqlite3
+    db = tmp_path / "x.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE ok_tbl (cod_prod TEXT)")
+    con.commit(); con.close()
+    profile = {"conn_id": "c1", "engine": "sqlite", "database": str(db)}
+
+    real_list_columns = connectors.list_columns
+
+    def flaky(prof, table, password=None):
+        if table == "ok_tbl":
+            return real_list_columns(prof, table, password=password)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(connectors, "list_tables", lambda p, password=None: ["rota", "ok_tbl"])
+    monkeypatch.setattr(connectors, "list_columns", flaky)
+    terms = glossary_auto.build_from_connection(profile, "es")
+    assert [t["column"] for t in terms] == ["cod_prod"]
+    assert terms[0]["name"] == "código producto"
+
+
+# ------------------------- accesos directos opcionales (escritorio / menú inicio)
+def _read_accesos_bat():
+    with open(os.path.join(_repo_root(), "MV_Instalar_Accesos.bat"),
+              encoding="ascii") as fh:  # ascii a propósito: cmd.exe usa cp437/cp1252
+        return fh.read()
+
+
+def test_accesos_bat_creates_optional_desktop_and_start_menu_shortcuts():
+    """El cliente elige (S/N) escritorio y/o menú inicio; los .lnk se crean
+    por usuario (sin admin) vía WScript.Shell, con el icono del programa."""
+    src = _read_accesos_bat()
+    assert "choice /C SN" in src                      # es opcional de verdad
+    assert src.count("CreateShortcut") == 2           # escritorio + menú inicio
+    assert "GetFolderPath('Desktop')" in src
+    assert "GetFolderPath('Programs')" in src         # menú inicio por usuario
+    assert "MV_DataGovernance.bat" in src             # apunta al portable
+    assert "assets\\brand\\mv.ico" in src             # con su icono
+    assert "IconLocation" in src and "WorkingDirectory" in src
+
+
+def test_accesos_bat_has_removal_mode_and_honest_taskbar_note():
+    src = _read_accesos_bat()
+    # modo quitar (reversible), y en los 3 alias
+    assert '"%~1"=="quitar"' in src and "Remove-Item" in src
+    # honestidad sobre la barra de tareas: Windows no deja auto-anclarse —
+    # se explica el paso manual en vez de fingir que se puede
+    assert "Anclar a la barra de tareas" in src
+    assert "Pin to taskbar" in src
+
+
+def test_accesos_bat_ships_in_release_zips_with_crlf(tmp_path):
+    """El instalador de accesos viaja en los ZIP de entrega, y todo .bat
+    dentro de un ZIP va con CRLF aunque el working tree esté en LF (un .bat
+    con LF puede fallar en cmd.exe — la razón ya documentada en
+    .gitattributes)."""
+    import importlib.util
+    import zipfile
+    spec = importlib.util.spec_from_file_location(
+        "mvdg_build_release", os.path.join(_repo_root(), "packaging", "build_release.py"))
+    br = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(br)
+    assert "MV_Instalar_Accesos.bat" in br._INCLUDE_FILES
+    assert "MV_Instalar_Accesos.bat" in br._DEMO_FILES
+    # _zip_write convierte LF -> CRLF para .bat/.iss
+    lf_bat = tmp_path / "x.bat"
+    lf_bat.write_bytes(b"@echo off\ngoto end\n:end\n")
+    out = tmp_path / "t.zip"
+    with zipfile.ZipFile(out, "w") as z:
+        br._zip_write(z, str(lf_bat), "x.bat")
+    data = zipfile.ZipFile(out).read("x.bat")
+    assert data == b"@echo off\r\ngoto end\r\n:end\r\n"
+    # y un .bat que YA está en CRLF no se duplica el \r
+    crlf_bat = tmp_path / "y.bat"
+    crlf_bat.write_bytes(b"@echo off\r\n:fin\r\n")
+    with zipfile.ZipFile(out, "w") as z:
+        br._zip_write(z, str(crlf_bat), "y.bat")
+    assert zipfile.ZipFile(out).read("y.bat") == b"@echo off\r\n:fin\r\n"
+
+
+def test_installer_iss_offers_optional_desktop_and_start_menu():
+    """El instalador .exe (Inno Setup) crea el acceso del Menú Inicio y
+    ofrece el del escritorio como casilla opcional — 'si lo desea el
+    cliente', literal."""
+    with open(os.path.join(_repo_root(), "packaging", "instalador.iss"),
+              encoding="utf-8") as fh:
+        iss = fh.read()
+    assert 'Name: "desktopicon"' in iss               # casilla opcional
+    assert "{autodesktop}" in iss and "Tasks: desktopicon" in iss
+    assert "{group}" in iss                           # menú inicio siempre

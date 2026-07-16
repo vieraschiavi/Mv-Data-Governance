@@ -43,6 +43,7 @@ from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
+from mvdg import glossary_auto
 from mvdg import purview_export
 from mvdg import purview_pull
 from mvdg import imported as ext_imported
@@ -750,6 +751,53 @@ with tab_g:
         "term": t("g_term", lang), "definition": t("g_definition", lang),
         "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
     }).drop(columns=["term_id"]), width="stretch", hide_index=True)
+
+    st.divider()
+    st.subheader(t("ga_title", lang))
+    st.info(t("ga_intro", lang), icon="🗄️")
+    _ga_conns = load_connections()
+    if not _ga_conns:
+        st.caption(t("ga_no_conn", lang))
+    else:
+        _ga_opts = [f"{c.get('name') or c.get('host')} ({ENGINES.get(c.get('engine'), {}).get('label', c.get('engine'))})"
+                    for c in _ga_conns]
+        _ga_pick = st.selectbox(t("ga_pick_conn", lang), _ga_opts)
+        _ga_conn = _ga_conns[_ga_opts.index(_ga_pick)]
+        if st.button(t("ga_generate", lang), type="primary", key="ga_generate_btn"):
+            with st.spinner("…"):
+                try:
+                    _draft = glossary_auto.build_from_connection(
+                        _ga_conn, lang, password=stored_password(_ga_conn) or None)
+                    st.session_state["ga_draft"] = pd.DataFrame(_draft)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"⚠️ {exc}")
+        _ga_draft = st.session_state.get("ga_draft")
+        if _ga_draft is not None and len(_ga_draft):
+            n_exp = int(_ga_draft["expanded"].sum())
+            st.success(t("ga_generated", lang).format(n=len(_ga_draft), exp=n_exp))
+            st.caption(t("ga_edit_hint", lang))
+            _ga_edited = st.data_editor(
+                _ga_draft[["name", "definition", "table", "column"]],
+                column_config={
+                    "name": st.column_config.TextColumn(t("g_term", lang)),
+                    "definition": st.column_config.TextColumn(t("g_definition", lang), width="large"),
+                    "table": st.column_config.TextColumn(t("ga_col_table", lang), disabled=True),
+                    "column": st.column_config.TextColumn(t("ga_col_column", lang), disabled=True),
+                },
+                width="stretch", hide_index=True, key="ga_editor")
+            if st.button(t("ga_save", lang), key="ga_save_btn"):
+                _records = []
+                for i, row in _ga_edited.iterrows():
+                    _records.append({
+                        "database_id": _ga_draft.iloc[i]["database_id"],
+                        "name": str(row["name"]).strip(),
+                        "definition": str(row["definition"]).strip(),
+                    })
+                n = ext_imported.save_terms("database", _records)
+                st.success(t("ga_saved_ok", lang).format(n=n))
+                st.caption(t("ga_curation_note", lang))
+        elif _ga_draft is not None:
+            st.caption(t("ga_empty", lang))
 
 # --------------------------------------------------------------- Curaduría
 with tab_cu:

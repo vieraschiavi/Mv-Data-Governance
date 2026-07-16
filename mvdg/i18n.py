@@ -209,6 +209,46 @@ _T: dict[str, dict[str, str]] = {
     "g_term": {"es": "Término", "en": "Term", "pt": "Termo"},
     "g_definition": {"es": "Definición", "en": "Definition", "pt": "Definição"},
     "g_linked": {"es": "Datasets vinculados", "en": "Linked datasets", "pt": "Datasets vinculados"},
+    # ------------------------------------------- glosario automático desde la base (ga)
+    "ga_title": {"es": "🗄️ Glosario automático desde tu base de datos",
+                 "en": "🗄️ Automatic glossary from your database",
+                 "pt": "🗄️ Glossário automático do seu banco de dados"},
+    "ga_intro": {
+        "es": "Lee SOLO el esquema (nombres de tablas y columnas — ni una fila de datos) de una conexión guardada en 🔎 Mis datos y arma un borrador de término por columna. Las abreviaturas típicas se expanden a la palabra completa (`fec_pag` → \"fecha pago\", `cli_id` → \"cliente identificador\") con un diccionario local — sin red, sin inventar: lo que no reconoce queda tal cual. Todo es editable a mano acá abajo antes de guardar, y lo guardado entra a 🖊️ Curaduría como cualquier otra definición.",
+        "en": "Reads ONLY the schema (table and column names — not a single row of data) from a connection saved in 🔎 My data and builds a draft term per column. Typical abbreviations get expanded to the full word (`fec_pag` → \"payment date\", `cli_id` → \"customer identifier\") using a local dictionary — no network, no making things up: whatever it doesn't recognize stays as-is. Everything is hand-editable below before saving, and what you save enters 🖊️ Curation like any other definition.",
+        "pt": "Lê APENAS o esquema (nomes de tabelas e colunas — nenhuma linha de dados) de uma conexão salva em 🔎 Meus dados e monta um rascunho de termo por coluna. As abreviações típicas são expandidas para a palavra completa (`fec_pag` → \"data pagamento\", `cli_id` → \"cliente identificador\") com um dicionário local — sem rede, sem inventar: o que não reconhece fica como está. Tudo é editável à mão abaixo antes de salvar, e o que você salva entra em 🖊️ Curadoria como qualquer outra definição.",
+    },
+    "ga_no_conn": {
+        "es": "Todavía no hay conexiones guardadas — creá una en 🔎 Mis datos → Base de datos y volvé acá.",
+        "en": "No saved connections yet — create one in 🔎 My data → Database and come back here.",
+        "pt": "Ainda não há conexões salvas — crie uma em 🔎 Meus dados → Banco de dados e volte aqui.",
+    },
+    "ga_pick_conn": {"es": "Conexión", "en": "Connection", "pt": "Conexão"},
+    "ga_generate": {"es": "⚙️ Generar borrador desde el esquema", "en": "⚙️ Generate draft from the schema", "pt": "⚙️ Gerar rascunho do esquema"},
+    "ga_generated": {
+        "es": "{n} términos generados ({exp} con abreviaturas expandidas a la palabra completa).",
+        "en": "{n} terms generated ({exp} with abbreviations expanded to the full word).",
+        "pt": "{n} termos gerados ({exp} com abreviações expandidas para a palavra completa).",
+    },
+    "ga_edit_hint": {
+        "es": "✏️ Editá cualquier celda de Término o Definición directamente en la tabla (doble clic) antes de guardar.",
+        "en": "✏️ Edit any Term or Definition cell directly in the table (double-click) before saving.",
+        "pt": "✏️ Edite qualquer célula de Termo ou Definição diretamente na tabela (duplo clique) antes de salvar.",
+    },
+    "ga_col_table": {"es": "Tabla (origen)", "en": "Table (source)", "pt": "Tabela (origem)"},
+    "ga_col_column": {"es": "Columna (origen)", "en": "Column (source)", "pt": "Coluna (origem)"},
+    "ga_save": {"es": "💾 Guardar en el glosario", "en": "💾 Save to the glossary", "pt": "💾 Salvar no glossário"},
+    "ga_saved_ok": {"es": "Guardado: {n} término(s).", "en": "Saved: {n} term(s).", "pt": "Salvo: {n} termo(s)."},
+    "ga_curation_note": {
+        "es": "Los términos guardados aparecen en 🖊️ Curaduría (origen: 🗄️ base de datos) para que un Data Owner/Steward los valide o los reescriba — y en 📥 Importado, en 📤 BI & API.",
+        "en": "Saved terms show up in 🖊️ Curation (origin: 🗄️ database) for a Data Owner/Steward to validate or rewrite — and under 📥 Imported, in 📤 BI & API.",
+        "pt": "Os termos salvos aparecem em 🖊️ Curadoria (origem: 🗄️ banco de dados) para um Data Owner/Steward validar ou reescrever — e em 📥 Importado, em 📤 BI & API.",
+    },
+    "ga_empty": {
+        "es": "La conexión no devolvió tablas con columnas legibles.",
+        "en": "The connection returned no tables with readable columns.",
+        "pt": "A conexão não retornou tabelas com colunas legíveis.",
+    },
     # ------------------------------------------------------------- curation
     "cu_intro": {
         "es": "Ninguna definición arranca en blanco y ninguna queda sin responsable: "
