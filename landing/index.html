@@ -273,6 +273,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <a href="#video" data-i="nav_video">Video</a>
     <a href="#tableros" data-i="nav_shots">Tableros</a>
     <a href="#plataforma" data-i="nav_platform">Plataforma</a>
+    <a href="#enterprise" data-i="nav_enterprise">Enterprise</a>
     <a href="#bi" data-i="nav_bi">BI</a>
     <a href="#implementacion" data-i="nav_impl">Implementación</a>
     <a href="#descargas" data-i="nav_downloads">Descargas</a>
@@ -384,6 +385,32 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <div class="feat"><div class="ic">👥</div><h3 data-i="f9t">Organigrama → responsables</h3>
       <p data-i="f9p">Subí el organigrama (Excel, SQL o foto) y el programa asigna Data Owner y Steward por dataset automáticamente — editable siempre.</p></div>
   </div>
+</div></section>
+
+<!-- ENTERPRISE (integración con Purview/Collibra/Azure) -->
+<section class="panel" id="enterprise"><div class="wrap">
+  <div class="eyebrow" data-i="ent_eye">Migración e integración enterprise</div>
+  <h2 class="h2" data-i="ent_h2">Se conecta con Purview y Collibra — nunca te encierra</h2>
+  <p class="lead-d" data-i="ent_lead">Herramientas que hasta ahora solo traían las suites de decenas de miles
+    de dólares al año, ahora adentro de MV Data Governance: migración real por API, descubrimiento a escala
+    de nube y enforcement técnico. Todo apagado por defecto — se activa solo con tus propias credenciales,
+    que nunca vemos ni guardamos.</p>
+  <div class="fgrid">
+    <div class="feat"><div class="ic">🔀</div><h3 data-i="ent1t">Migración a Microsoft Purview</h3>
+      <p data-i="ent1p">Empujá tu catálogo, glosario y clasificaciones PII directo a Purview por su API real (Atlas). Vos hacés el trabajo pesado acá; Purview queda como fuente de verdad corporativa — acelerador, no caja negra.</p></div>
+    <div class="feat"><div class="ic">↔️</div><h3 data-i="ent2t">Collibra en las dos direcciones</h3>
+      <p data-i="ent2p">Empuja tablas y términos de negocio a Collibra, y también los trae de vuelta: términos aprobados y definiciones de tablas, listos para usar en el programa.</p></div>
+    <div class="feat"><div class="ic">☁️</div><h3 data-i="ent3t">Descubrimiento en Azure Resource Graph</h3>
+      <p data-i="ent3p">Con un service principal de solo lectura, una consulta trae todos los recursos de datos de tu suscripción: SQL, Storage, Synapse, Cosmos DB, Data Factory, Databricks y más.</p></div>
+    <div class="feat"><div class="ic">🔒</div><h3 data-i="ent4t">Enforcement de acceso</h3>
+      <p data-i="ent4p">Generá los GRANT/REVOKE y el enmascaramiento de columnas (SQL Server y PostgreSQL) según la clasificación del dato. Vos revisás y ejecutás el script — el programa nunca toca tu base.</p></div>
+    <div class="feat"><div class="ic">🏷️</div><h3 data-i="ent5t">Etiquetas de sensibilidad MIP</h3>
+      <p data-i="ent5p">Asigná etiquetas de Microsoft Purview Information Protection a tus archivos reales por Microsoft Graph — la misma etiqueta viaja con el archivo en todo el ecosistema Microsoft.</p></div>
+    <div class="feat"><div class="ic">🔎</div><h3 data-i="ent6t">Escaneo batch de conexiones</h3>
+      <p data-i="ent6p">Un clic escanea todas tus conexiones a bases de datos guardadas, no una por una — con el error de cada fuente aislado, sin frenar el resto del escaneo.</p></div>
+  </div>
+  <p class="lead-d" style="margin-top:18px;margin-bottom:0" data-i="ent_guide">
+    Cómo se verificó cada integración, endpoint por endpoint, en <b>docs/PURVIEW_COLLIBRA.md</b>.</p>
 </div></section>
 
 <!-- RESULTADOS (franja oscura) -->
@@ -509,6 +536,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <tr><td data-i="cmp_r5">Resultados el día 1</td><td class="yes">✓</td><td class="no">✗ (meses)</td><td class="no">✗</td><td>Parcial</td></tr>
       <tr><td data-i="cmp_r6">Servicio de steward incluido</td><td class="yes">✓</td><td>Extra caro</td><td class="no">✗</td><td class="no">✗</td></tr>
       <tr><td data-i="cmp_r7">Sin APK · web + PC</td><td class="yes">✓</td><td>Solo web</td><td>Solo web</td><td>Solo web</td></tr>
+      <tr><td data-i="cmp_r8">Migra hacia y desde Purview / Collibra</td><td class="yes" data-i="cmp_r8a">✓ (API real)</td><td data-i="cmp_r8b">No aplica (son el destino)</td><td data-i="cmp_r8c">Parcial</td><td data-i="cmp_r8d">No aplica (son el destino)</td></tr>
     </tbody>
   </table>
   </div>
@@ -660,6 +688,7 @@ en:{
   cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
   cmp_r1:"Entry price",cmp_r1a:"Free · License US$149 · US$390/mo",cmp_r1b:"US$60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"US$40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
+  cmp_r8:"Migrates to and from Purview / Collibra",cmp_r8a:"✓ (real API)",cmp_r8b:"Not applicable (they're the destination)",cmp_r8c:"Partial",cmp_r8d:"Not applicable (they're the destination)",
   nav_guide:"What is it?",
   nav_reviews:"Reviews",rv_eye:"Reviews",rv_h2:"What people who use it say",
   rv_all:"See all / leave a review →",rv_note:"Illustrative demo reviews — replaced by real ones as they arrive.",
@@ -672,7 +701,7 @@ en:{
   df4t:"Works with any BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — by file or REST API.",
   df5t:"Web + PC, no APK",df5p:"Three ways to deploy (.exe, .bat, web) depending on each company's IT policy.",
   df6t:"Closes the human loop",df6p:"Client records and AI speeches for what no software automates: owners, definitions, adoption.",
-nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platform:"Platform",nav_bi:"BI",
+nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platform:"Platform",nav_enterprise:"Enterprise",nav_bi:"BI",
   nav_impl:"Rollout",nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
   kick:"100% Web + Desktop app · ES / EN / PT",
   h1_a:"Your data, governed.\nYour decisions, trustworthy.",
@@ -732,6 +761,15 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   f7t:"MDM & golden record",f7p:"Finds rows that likely represent the same entity and builds the golden record that unifies them — no false positives from common names.",
   f8t:"Curation with an owner",f8p:"Every definition ships pre-established by AI; the Data Owner or Steward validates or corrects it — with name, role and date, same pattern as Purview or Collibra.",
   f9t:"Org chart → responsibles",f9p:"Upload the org chart (Excel, SQL or a photo) and the program assigns Data Owner and Steward per dataset automatically — always editable.",
+  ent_eye:"Enterprise migration & integration",ent_h2:"Connects to Purview and Collibra — never locks you in",
+  ent_lead:"Capabilities that until now only came with suites costing tens of thousands of dollars a year, now inside MV Data Governance: real API migration, cloud-scale discovery and technical enforcement. Everything off by default — it only turns on with your own credentials, which we never see or store.",
+  ent1t:"Migration to Microsoft Purview",ent1p:"Push your catalog, glossary and PII classifications straight to Purview via its real API (Atlas). You do the heavy lifting here; Purview stays the corporate source of truth — an accelerator, not a black box.",
+  ent2t:"Collibra in both directions",ent2p:"Pushes tables and business terms to Collibra, and also pulls them back: approved terms and table definitions, ready to use in the program.",
+  ent3t:"Azure Resource Graph discovery",ent3p:"With a read-only service principal, one query brings back every data resource in your subscription: SQL, Storage, Synapse, Cosmos DB, Data Factory, Databricks and more.",
+  ent4t:"Access enforcement",ent4p:"Generates the GRANT/REVOKE statements and column masking (SQL Server and PostgreSQL) based on data classification. You review and run the script — the program never touches your database.",
+  ent5t:"MIP sensitivity labels",ent5p:"Assign Microsoft Purview Information Protection labels to your real files via Microsoft Graph — the same label travels with the file across the whole Microsoft ecosystem.",
+  ent6t:"Batch connection scan",ent6p:"One click scans every saved database connection, not one at a time — each source's error is isolated, without stopping the rest of the scan.",
+  ent_guide:"How each integration was verified, endpoint by endpoint, in docs/PURVIEW_COLLIBRA.md.",
   bi_eye:"Works with your BI",bi_h2:"Connect any BI tool",
   bi_lead:"Every governance table (catalog, quality, lineage, glossary, policies and KPIs) exports as CSV, Excel, JSON or Parquet, and is also served over a REST API — your tool picks the format, not us.",
   bi_guide:"Step-by-step guide per tool in docs/BI_INTEGRATION.md.",
@@ -771,6 +809,7 @@ pt:{
   cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
   cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença US$149 · US$390/mês",cmp_r1b:"US$60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"US$40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
+  cmp_r8:"Migra para e desde Purview / Collibra",cmp_r8a:"✓ (API real)",cmp_r8b:"Não se aplica (são o destino)",cmp_r8c:"Parcial",cmp_r8d:"Não se aplica (são o destino)",
   nav_guide:"O que é?",
   nav_reviews:"Avaliações",rv_eye:"Avaliações",rv_h2:"O que dizem quem usa",
   rv_all:"Ver todas / avaliar →",rv_note:"Avaliações ilustrativas da demo — substituídas por reais conforme chegam.",
@@ -783,7 +822,7 @@ pt:{
   df4t:"Compatível com qualquer BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — por arquivo ou API REST.",
   df5t:"Web + PC, sem APK",df5p:"Três formas de implantar (.exe, .bat, web) conforme a política de TI de cada empresa.",
   df6t:"Fecha o ciclo humano",df6p:"Fichas de clientes e speeches IA para o que nenhum software automatiza: donos, definições, adoção.",
-nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_platform:"Plataforma",nav_bi:"BI",
+nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_platform:"Plataforma",nav_enterprise:"Enterprise",nav_bi:"BI",
   nav_impl:"Implantação",nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
   kick:"100% Web + Programa PC · ES / EN / PT",
   h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
@@ -843,6 +882,15 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   f7t:"MDM e golden record",f7p:"Encontra linhas que provavelmente são a mesma entidade e monta o registro dourado que as unifica — sem falsos positivos por nomes comuns.",
   f8t:"Curadoria com dono",f8p:"Toda definição sai pré-estabelecida por IA; o Data Owner ou Steward valida ou corrige — com nome, cargo e data, mesmo padrão do Purview ou Collibra.",
   f9t:"Organograma → responsáveis",f9p:"Envie o organograma (Excel, SQL ou foto) e o programa atribui Data Owner e Steward por dataset automaticamente — sempre editável.",
+  ent_eye:"Migração e integração enterprise",ent_h2:"Conecta com Purview e Collibra — nunca te prende",
+  ent_lead:"Capacidades que até agora só vinham em suítes de dezenas de milhares de dólares por ano, agora dentro do MV Data Governance: migração real por API, descoberta em escala de nuvem e enforcement técnico. Tudo desligado por padrão — só liga com suas próprias credenciais, que nunca vemos nem guardamos.",
+  ent1t:"Migração para o Microsoft Purview",ent1p:"Envie seu catálogo, glossário e classificações de PII direto para o Purview pela API real (Atlas). Você faz o trabalho pesado aqui; o Purview fica como fonte de verdade corporativa — acelerador, não caixa-preta.",
+  ent2t:"Collibra nas duas direções",ent2p:"Envia tabelas e termos de negócio para o Collibra, e também os traz de volta: termos aprovados e definições de tabelas, prontos para usar no programa.",
+  ent3t:"Descoberta no Azure Resource Graph",ent3p:"Com um service principal somente leitura, uma consulta traz todos os recursos de dados da sua assinatura: SQL, Storage, Synapse, Cosmos DB, Data Factory, Databricks e mais.",
+  ent4t:"Enforcement de acesso",ent4p:"Gera os comandos GRANT/REVOKE e o mascaramento de colunas (SQL Server e PostgreSQL) conforme a classificação do dado. Você revisa e executa o script — o programa nunca toca no seu banco.",
+  ent5t:"Etiquetas de sensibilidade MIP",ent5p:"Atribua etiquetas do Microsoft Purview Information Protection aos seus arquivos reais via Microsoft Graph — a mesma etiqueta viaja com o arquivo em todo o ecossistema Microsoft.",
+  ent6t:"Escaneamento em lote de conexões",ent6p:"Um clique escaneia todas as suas conexões de banco de dados salvas, não uma por vez — com o erro de cada fonte isolado, sem parar o restante do escaneamento.",
+  ent_guide:"Como cada integração foi verificada, endpoint por endpoint, em docs/PURVIEW_COLLIBRA.md.",
   bi_eye:"Compatível com seu BI",bi_h2:"Conecte qualquer ferramenta de BI",
   bi_lead:"Todas as tabelas de governança (catálogo, qualidade, linhagem, glossário, políticas e KPIs) são exportadas como CSV, Excel, JSON ou Parquet, e também servidas por API REST — o formato quem escolhe é a sua ferramenta.",
   bi_guide:"Guia passo a passo por ferramenta em docs/BI_INTEGRATION.md.",

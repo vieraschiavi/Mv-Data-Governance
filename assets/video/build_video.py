@@ -282,6 +282,39 @@ def scene_bi(p: float) -> Image.Image:
     return img
 
 
+def scene_enterprise(p: float) -> Image.Image:
+    img = base_frame()
+    d = ImageDraw.Draw(img)
+    center_text(d, 46, "Integración enterprise · Enterprise integration", font(32), INK)
+    center_text(d, 94, "Purview · Collibra · Azure · MIP — apagado por defecto",
+                font(18, False), MUTED)
+    tools = [
+        "Migración a Purview", "Collibra: push + pull", "Descubrimiento Azure",
+        "Enforcement de acceso", "Etiquetas MIP", "Escaneo batch",
+    ]
+    y0 = 190
+    for i, name in enumerate(tools):
+        pa = ease(p * 3.2 - i * 0.22)
+        if pa <= 0:
+            continue
+        col_i, row_i = i % 3, i // 3
+        x = 130 + col_i * 350
+        y = y0 + row_i * 170
+        d.rounded_rectangle([x, y, x + 310, y + 130], radius=16,
+                            fill=(15, 33, 53), outline=AMBER, width=2)
+        d.line([x + 24, y + 26, x + 60, y + 26], fill=AMBER, width=4)
+        f = font(21)
+        words = name.split(" ")
+        lines = [" ".join(words[:2]), " ".join(words[2:])] if len(words) > 2 else [name]
+        ty = y + 52
+        for line in lines:
+            if not line:
+                continue
+            d.text((x + 24, ty), line, font=f, fill=INK)
+            ty += 30
+    return img
+
+
 def scene_outro(p: float) -> Image.Image:
     img = base_frame()
     d = ImageDraw.Draw(img)
@@ -350,6 +383,23 @@ SCENES = [
         "pt": "E tudo se conecta com a ferramenta que você já usa: Power BI, "
               "Tableau, Looker, MicroStrategy, Qlik ou Excel. Por arquivo ou por "
               "API — o formato você escolhe.",
+    }),
+    (scene_enterprise, 9.0, {
+        "es": "Y para los que ya usan Purview o Collibra: el programa migra el catálogo y "
+              "el glosario por su API real, en las dos direcciones con Collibra. Además "
+              "descubre tus recursos de datos en Azure, genera el enforcement de acceso, "
+              "asigna etiquetas de sensibilidad y escanea todas tus conexiones de un saque. "
+              "Todo apagado por defecto, activado solo con tus propias credenciales.",
+        "en": "And for teams already using Purview or Collibra: the program migrates the "
+              "catalog and glossary through their real API, both ways with Collibra. It "
+              "also discovers your data resources in Azure, generates access enforcement, "
+              "assigns sensitivity labels and scans every connection in one shot. All off "
+              "by default, turned on only with your own credentials.",
+        "pt": "E para quem já usa Purview ou Collibra: o programa migra o catálogo e o "
+              "glossário pela API real, nas duas direções com o Collibra. Também descobre "
+              "seus recursos de dados no Azure, gera o enforcement de acesso, atribui "
+              "etiquetas de sensibilidade e escaneia todas as conexões de uma vez. Tudo "
+              "desligado por padrão, ativado só com suas próprias credenciais.",
     }),
     (scene_outro, 5.0, {
         "es": "MV Data Governance. Tus datos gobernados, tus decisiones confiables. "
