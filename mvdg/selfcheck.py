@@ -384,6 +384,25 @@ def run_checks() -> list[tuple[str, bool, str]]:
                 os.environ["MVDG_SERVER_PASSWORD"] = prev_pwd
         return "sin MVDG_SERVER_PASSWORD no pide login (como antes); con ella, gate real antes del dashboard"
 
+    @check("Glosario automático desde la base (abreviaturas -> palabra completa, editable)")
+    def _():
+        import os
+        import sqlite3
+        import tempfile
+
+        from . import glossary_auto
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "sc.db")
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL)")
+            con.commit(); con.close()
+            terms = glossary_auto.build_from_connection(
+                {"conn_id": "sc", "engine": "sqlite", "database": db}, "es")
+            names = {t["column"]: t["name"] for t in terms}
+            assert names == {"fec_pag": "fecha pago", "imp_tot": "importe total"}
+        return ("esquema SQLite real leído (solo metadata), fec_pag -> \"fecha pago\" — "
+                "borrador editable a mano y validable en Curaduría")
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os

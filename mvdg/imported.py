@@ -31,7 +31,10 @@ import pandas as pd
 
 from .clients import data_dir
 
-SOURCES = ("purview", "collibra")
+SOURCES = ("purview", "collibra", "database")
+# cómo se muestra el origen en 🖊️ Curaduría y en los listados
+SOURCE_LABELS = {"purview": "⬇️ purview", "collibra": "⬇️ collibra",
+                 "database": "🗄️ base de datos"}
 
 
 def _file() -> str:
@@ -158,7 +161,7 @@ def curation_items(lang: str = "es") -> list[dict]:
         items.append({
             "item_id": f"glossary:imported:{key}",
             "kind": "glossary",
-            "dataset": f"⬇️ {term['source']}",
+            "dataset": SOURCE_LABELS.get(term["source"], f"⬇️ {term['source']}"),
             "label": term["name"],
             "proposed": term.get("definition", ""),
             "default_owner": "",
@@ -167,7 +170,7 @@ def curation_items(lang: str = "es") -> list[dict]:
         items.append({
             "item_id": f"catalog:imported:{key}",
             "kind": "catalog",
-            "dataset": f"⬇️ {tbl['source']}",
+            "dataset": SOURCE_LABELS.get(tbl["source"], f"⬇️ {tbl['source']}"),
             "label": tbl["name"],
             "proposed": tbl.get("description", ""),
             "default_owner": "",

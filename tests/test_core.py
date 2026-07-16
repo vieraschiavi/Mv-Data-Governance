@@ -3317,3 +3317,97 @@ def test_collibra_status_ids_are_documented_and_overridable(monkeypatch):
     _cat, _dic, glo = _sample_gov_tables()
     terms = cb.build_term_payloads(glo, "term-type", "dom-1")
     assert terms[0]["asset"]["statusId"] == "custom-candidate"
+
+
+# ------------------------------------ glosario automático desde la base de datos
+def test_glossary_auto_expands_common_abbreviations():
+    from mvdg.glossary_auto import expand_identifier
+    assert expand_identifier("fec_pag", "es") == ("fecha pago", True)
+    assert expand_identifier("cli_id", "es") == ("cliente identificador", True)
+    assert expand_identifier("imp_tot", "es") == ("importe total", True)
+    assert expand_identifier("cust_addr", "en") == ("customer address", True)
+    # camelCase también se parte y expande
+    assert expand_identifier("fecPago", "es")[0].startswith("fecha")
+
+
+def test_glossary_auto_never_invents_unknown_tokens():
+    """Un token que no está en el diccionario queda tal cual (en minúsculas)
+    — la corrección es del humano en la tabla editable, no una invención."""
+    from mvdg.glossary_auto import expand_identifier
+    phrase, expanded = expand_identifier("xyzzy_frobnicate", "es")
+    assert phrase == "xyzzy frobnicate"
+    assert expanded is False
+
+
+def test_glossary_auto_terms_have_stable_upsert_ids():
+    from mvdg.glossary_auto import build_terms_from_schema
+    schema = {"cli_fac": ["fec_pag", "imp_tot"]}
+    terms = build_terms_from_schema(schema, "es", conn_id="abc123")
+    ids = {t["database_id"] for t in terms}
+    assert ids == {"abc123:cli_fac.fec_pag", "abc123:cli_fac.imp_tot"}
+    # re-generar produce los mismos ids -> save_terms hace upsert, no duplica
+    again = {t["database_id"] for t in build_terms_from_schema(schema, "es", conn_id="abc123")}
+    assert again == ids
+
+
+def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
+    """Flujo completo contra una base REAL (SQLite): esquema con nombres
+    abreviados -> borrador con palabras completas -> guardado local ->
+    aparece en 🖊️ Curaduría con su origen, editable/validable a mano."""
+    import sqlite3
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    db = tmp_path / "ventas.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL, tel_cli TEXT)")
+    con.commit(); con.close()
+
+    from mvdg import curation, glossary_auto, imported
+    profile = {"conn_id": "sqlt1", "engine": "sqlite", "database": str(db)}
+    draft = glossary_auto.build_from_connection(profile, "es")
+    by_col = {t["column"]: t for t in draft}
+    assert by_col["fec_pag"]["name"] == "fecha pago"
+    assert by_col["imp_tot"]["name"] == "importe total"
+    assert by_col["tel_cli"]["name"] == "teléfono cliente"
+    assert all(t["definition"] for t in draft)
+
+    # el usuario corrige uno a mano antes de guardar (editable de verdad)
+    by_col["tel_cli"]["name"] = "teléfono del cliente"
+    n = imported.save_terms("database", draft)
+    assert n == 3
+    df = curation.list_items("es")
+    row = df[df["item_id"] == "glossary:imported:database:sqlt1:cli_fac.tel_cli"]
+    assert len(row) == 1
+    assert row.iloc[0]["label"] == "teléfono del cliente"
+    assert row.iloc[0]["dataset"] == "🗄️ base de datos"
+    assert row.iloc[0]["status"] == "sugerido_ia"
+    # y se valida/modifica como cualquier otra definición del programa
+    curation.save_validation("glossary:imported:database:sqlt1:cli_fac.tel_cli",
+                             "es", "modificado", "Teléfono de contacto del cliente.",
+                             "M. Viera", "Data Steward")
+    df2 = curation.list_items("es")
+    row2 = df2[df2["item_id"] == "glossary:imported:database:sqlt1:cli_fac.tel_cli"]
+    assert row2.iloc[0]["status"] == "modificado"
+    assert row2.iloc[0]["text"] == "Teléfono de contacto del cliente."
+
+
+def test_glossary_auto_broken_table_does_not_stop_the_rest(tmp_path, monkeypatch):
+    from mvdg import connectors, glossary_auto
+    import sqlite3
+    db = tmp_path / "x.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE ok_tbl (cod_prod TEXT)")
+    con.commit(); con.close()
+    profile = {"conn_id": "c1", "engine": "sqlite", "database": str(db)}
+
+    real_list_columns = connectors.list_columns
+
+    def flaky(prof, table, password=None):
+        if table == "ok_tbl":
+            return real_list_columns(prof, table, password=password)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(connectors, "list_tables", lambda p, password=None: ["rota", "ok_tbl"])
+    monkeypatch.setattr(connectors, "list_columns", flaky)
+    terms = glossary_auto.build_from_connection(profile, "es")
+    assert [t["column"] for t in terms] == ["cod_prod"]
+    assert terms[0]["name"] == "código producto"

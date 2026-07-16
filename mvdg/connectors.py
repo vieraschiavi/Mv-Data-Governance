@@ -375,6 +375,20 @@ def list_tables(profile: dict, password: str | None = None) -> list[str]:
     return tables
 
 
+def list_columns(profile: dict, table: str, password: str | None = None) -> list[str]:
+    """Nombres de columnas de una tabla, SOLO metadata (no trae ni una fila
+    de datos) — para armar glosario/diccionario desde el esquema sin tocar
+    el contenido. Acepta "tabla" o "schema.tabla" (como ``list_tables``)."""
+    from sqlalchemy import inspect
+    insp = inspect(_engine(profile, password))
+    if "." in table:
+        schema, name = table.split(".", 1)
+        cols = insp.get_columns(name, schema=schema)
+    else:
+        cols = insp.get_columns(table)
+    return [c["name"] for c in cols]
+
+
 def load_table(profile: dict, table: str, limit: int = 10_000,
                password: str | None = None) -> pd.DataFrame:
     """Trae una tabla a un DataFrame (con tope de filas)."""
