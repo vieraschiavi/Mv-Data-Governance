@@ -1912,3 +1912,196 @@ def test_collibra_logout_failure_does_not_break_push(monkeypatch):
     monkeypatch.setattr(cb, "_http_json", fake_http_json)
     r = cb.push_glossary(glo, dry_run=False)  # no debe levantar
     assert r["term_count"] == len(glo)
+
+
+# ------------------- integración real (sockets HTTP de verdad, sin mockear
+# _http_json): levanta un servidor local que imita Purview/Collibra y corre
+# el conector real contra él, para probar el protocolo/JSON/auth de punta a
+# punta y no solo que se llamó a la función esperada con los args esperados.
+def _free_port():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def test_purview_integration_real_http_roundtrip(tmp_path, monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    calls = {"token": 0, "bulk": 0, "glossary_post": 0, "term": 0, "classification": 0}
+    received = {"entities": None, "terms": []}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _body(self):
+            length = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(length)) if length else None
+
+        def _send(self, code, payload):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            body = self._body()
+            if "/oauth2/token" in self.path:
+                calls["token"] += 1
+                self._send(200, {"access_token": "sim-token"})
+            elif self.path.endswith("/entity/bulk"):
+                calls["bulk"] += 1
+                received["entities"] = body["entities"]
+                mutated = [{"guid": f"guid-{i}", "attributes": {"qualifiedName": e["attributes"]["qualifiedName"]}}
+                          for i, e in enumerate(body["entities"])]
+                self._send(200, {"mutatedEntities": {"CREATE": mutated, "UPDATE": []}})
+            elif self.path.endswith("/glossary"):
+                calls["glossary_post"] += 1
+                self._send(200, {"guid": "gloss-1", "name": body["name"]})
+            elif self.path.endswith("/glossary/term"):
+                calls["term"] += 1
+                received["terms"].append(body)
+                self._send(200, {"guid": f"term-{calls['term']}"})
+            elif self.path.endswith("/entity/bulk/classification"):
+                calls["classification"] += 1
+                self._send(200, {})
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_GET(self):
+            if self.path.endswith("/glossary"):
+                self._send(200, [])
+            else:
+                self._send(404, {"error": self.path})
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+        monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+        monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+        monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+        monkeypatch.setenv("PURVIEW_API_BASE", f"http://127.0.0.1:{port}")
+        from mvdg import curation, purview_export as pv
+
+        def fake_get_token():
+            import urllib.request
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/oauth2/token",
+                                         data=b"{}", method="POST")
+            with urllib.request.urlopen(req) as resp:
+                return json.loads(resp.read())["access_token"]
+
+        monkeypatch.setattr(pv, "_get_token", fake_get_token)
+
+        cat, dic, glo = _sample_gov_tables()
+        first_term_id = glo.iloc[0]["term_id"]
+        curation.save_validation(f"glossary:demo:{first_term_id}", "es", "modificado",
+                                 "Definición oficial revisada por el Data Owner.",
+                                 "María Viera", "Data Owner Comercial")
+
+        def lookup(term_id):
+            rec = curation.get_record(f"glossary:demo:{term_id}", "es")
+            return (rec["status"], rec.get("text") or "") if rec else ("sugerido_ia", "")
+
+        result = pv.push_all(cat, dic, glo, curation_lookup=lookup, dry_run=False)
+    finally:
+        server.shutdown()
+
+    # tráfico HTTP real recibido por un servidor de verdad, no una función mockeada
+    assert calls == {"token": 1, "bulk": 1, "glossary_post": 1, "term": len(glo), "classification": 2}
+    assert len(received["entities"]) == len(cat) + len(dic)
+    statuses = {t["name"]: t["status"] for t in received["terms"]}
+    approved_name = glo.iloc[0]["term"]
+    assert statuses[approved_name] == "Approved"
+    assert sum(1 for s in statuses.values() if s == "Draft") == len(glo) - 1
+    curated_term = next(t for t in received["terms"] if t["name"] == approved_name)
+    assert "Definición oficial revisada" in curated_term["longDescription"]
+    n_pii_cols = int((dic["pii"] == True).sum())  # noqa: E712
+    assert result["pii"]["classification_count"] == n_pii_cols
+
+
+def test_collibra_integration_real_http_roundtrip(tmp_path, monkeypatch):
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    calls = {"login": 0, "logout": 0, "assets": 0, "attributes": 0}
+    received = {"assets": []}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _body(self):
+            length = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(length)) if length else None
+
+        def _send(self, code, payload, cookie=None):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            body = self._body()
+            if self.path.endswith("/auth/sessions"):
+                calls["login"] += 1
+                self._send(200, {"userId": "u-1"},
+                          cookie="JSESSIONID=sim-session; Path=/; HttpOnly")
+            elif self.path.endswith("/assets"):
+                calls["assets"] += 1
+                assert self.headers.get("Cookie") == "JSESSIONID=sim-session"
+                received["assets"].append(body)
+                self._send(200, {"id": f"asset-{calls['assets']}", "name": body["name"]})
+            elif self.path.endswith("/attributes"):
+                calls["attributes"] += 1
+                assert self.headers.get("Cookie") == "JSESSIONID=sim-session"
+                self._send(200, {"id": f"attr-{calls['attributes']}"})
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_DELETE(self):
+            if self.path.endswith("/auth/sessions/current"):
+                calls["logout"] += 1
+                self._send(200, {})
+            else:
+                self._send(404, {"error": self.path})
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("COLLIBRA_BASE_URL", f"http://127.0.0.1:{port}")
+        monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+        monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+        monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+        monkeypatch.setenv("COLLIBRA_TABLE_TYPE_ID", "table-type")
+        monkeypatch.setenv("COLLIBRA_COLUMN_TYPE_ID", "column-type")
+        from mvdg import collibra_export as cb
+        cat, dic, glo = _sample_gov_tables()
+        result = cb.push_all(cat, dic, glo, dry_run=False)
+    finally:
+        server.shutdown()
+
+    assert calls["login"] == 1 and calls["logout"] == 1  # sesión única reusada
+    assert calls["assets"] == len(cat) + len(dic) + len(glo)
+    assert calls["attributes"] == calls["assets"]  # todas tienen descripción
+    table_types = {a["typeId"] for a in received["assets"][:len(cat)]}
+    assert table_types == {"table-type"}
+    assert result["catalog"]["asset_count"] == len(cat) + len(dic)
