@@ -283,3 +283,35 @@ def run_query(profile: dict, sql: str, limit: int = 10_000,
         raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
     limit = max(1, min(int(limit), MAX_ROWS))
     return pd.read_sql(sql, _engine(profile, password)).head(limit)
+
+
+def scan_all_connections() -> pd.DataFrame:
+    """Escanea TODAS las conexiones guardadas de una sola vez (en vez de
+    elegir una por vez y listar sus tablas a mano) — un dataframe con
+    conexión, motor y cada tabla encontrada, o el error si esa conexión en
+    particular falló (una conexión caída no frena el resto).
+
+    Esto es honesto sobre su alcance: cubre los motores que el usuario ya
+    configuró en el programa (hoy: 9 — PostgreSQL/MySQL/SQL Server/Oracle/
+    SQLite/Synapse/Snowflake/BigQuery/Databricks), no "cientos de
+    conectores gestionados" de un catálogo cloud como Purview, que
+    despliega agentes de escaneo dentro de la infraestructura del cliente
+    y agrega automáticamente cualquier recurso nuevo del tenant sin que
+    nadie cargue una conexión a mano. Acá el universo lo define lo que el
+    usuario conectó — es un batch sobre eso, no un descubrimiento
+    autónomo de fuentes nuevas."""
+    rows = []
+    for conn in load_connections():
+        engine_label = ENGINES.get(conn.get("engine"), {}).get("label", conn.get("engine"))
+        try:
+            tables = list_tables(conn, password=stored_password(conn))
+            for t in tables:
+                rows.append({"conn_id": conn.get("conn_id"), "name": conn.get("name"),
+                            "engine": engine_label, "table": t, "error": None})
+            if not tables:
+                rows.append({"conn_id": conn.get("conn_id"), "name": conn.get("name"),
+                            "engine": engine_label, "table": None, "error": None})
+        except Exception as exc:  # noqa: BLE001 - una conexión caída no frena el resto
+            rows.append({"conn_id": conn.get("conn_id"), "name": conn.get("name"),
+                        "engine": engine_label, "table": None, "error": str(exc)})
+    return pd.DataFrame(rows, columns=["conn_id", "name", "engine", "table", "error"])

@@ -223,6 +223,66 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"dry-run sin credenciales: {pr['catalog']['entity_count']} entidades "
                 f"Purview + {cr['catalog']['asset_count']} assets Collibra previsualizados")
 
+    @check("Enforcement de acceso: DDL generado (GRANT/REVOKE + masking), nunca ejecutado")
+    def _():
+        from . import enforcement as en
+        from .exporters import governance_tables
+        gov = governance_tables("es")
+        cat, dic = gov["catalog"], gov["dictionary"]
+        plan = en.enforcement_plan(cat, dic, {"PII": ["rol_rrhh"], "Confidencial": ["rol_fin"]},
+                                   engine="postgresql")
+        assert plan["grant_statements"] > 0 and plan["masking_statements"] > 0
+        assert "NO ejecutado" in plan["script"]
+        src = open(en.__file__, encoding="utf-8").read()
+        assert "sqlalchemy" not in src and ".execute(" not in src  # texto puro, no conecta a nada
+        en.build_row_level_security_ddl("dim_customers", "steward", "rol_x", engine="sqlserver")
+        return (f"{plan['grant_statements']} GRANT/REVOKE + {plan['masking_statements']} "
+                "de enmascaramiento generados (PostgreSQL/SQL Server) — texto DDL, no ejecuta nada")
+
+    @check("Etiquetas MIP (Graph API real, apagado por defecto)")
+    def _():
+        from . import mip_labels as mip
+        from .exporters import governance_tables
+        assert mip.configured() is False
+        assert mip.list_labels() == []
+        cat = governance_tables("es")["catalog"]
+        file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
+        r = mip.push_labels(cat, file_map, dry_run=True)
+        assert len(r["skipped_no_file"]) == len(cat) - 1
+        return ("apagado por defecto; solo aplica a datasets con archivo mapeado en "
+                "OneDrive/SharePoint — el resto queda listado, no se saltea en silencio")
+
+    @check("Escaneo batch de todas las conexiones guardadas")
+    def _():
+        import os
+        import sqlite3
+        import tempfile
+
+        import pandas as pd
+        from . import connectors as C
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                db = os.path.join(tmp, "ok.db")
+                con = sqlite3.connect(db)
+                pd.DataFrame({"id": [1]}).to_sql("t1", con, index=False)
+                con.close()
+                C.save_connection({"name": "OK", "engine": "sqlite", "database": db,
+                                   "user": "", "password": ""}, save_password=False)
+                C.save_connection({"name": "Rota", "engine": "sqlite",
+                                   "database": "/no/existe.db", "user": "", "password": ""},
+                                  save_password=False)
+                df = C.scan_all_connections()
+                assert set(df["name"]) == {"OK", "Rota"}
+                assert df[df["name"] == "Rota"]["error"].notna().all()
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return "una conexión caída no frena el escaneo de las demás, verificado"
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os

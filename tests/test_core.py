@@ -2105,3 +2105,223 @@ def test_collibra_integration_real_http_roundtrip(tmp_path, monkeypatch):
     table_types = {a["typeId"] for a in received["assets"][:len(cat)]}
     assert table_types == {"table-type"}
     assert result["catalog"]["asset_count"] == len(cat) + len(dic)
+
+
+# ------------------------------------------------ enforcement (DDL, no ejecuta)
+def test_enforcement_grant_revoke_by_classification():
+    from mvdg import enforcement as en
+    cat, dic, glo = _sample_gov_tables()
+    roles = {"PII": ["rol_rrhh"], "Confidencial": ["rol_finanzas"], "Interna": ["rol_ops"]}
+    ddl = en.build_grant_revoke_ddl(cat, roles, engine="postgresql")
+    text = "\n".join(ddl)
+    assert "REVOKE ALL ON \"dim_customers\" FROM PUBLIC;" in text
+    assert "GRANT SELECT ON \"dim_customers\" TO \"rol_rrhh\";" in text  # dim_customers es PII
+    # cada dataset tiene su REVOKE + (0 o más) GRANT -> al menos 1 REVOKE por dataset
+    assert text.count("REVOKE ALL ON") == len(cat)
+
+
+def test_enforcement_masking_postgresql_uses_view_not_native():
+    """PostgreSQL no tiene masking nativo de columna -> el DDL usa una
+    vista con las columnas PII ofuscadas, no ALTER COLUMN (que no existe
+    para esto en PG)."""
+    from mvdg import enforcement as en
+    cat, dic, glo = _sample_gov_tables()
+    ddl = en.build_column_masking_ddl(dic, engine="postgresql")
+    text = "\n".join(ddl)
+    assert "CREATE OR REPLACE VIEW \"dim_customers_masked\"" in text
+    assert "'***' AS \"email\"" in text
+    assert "customer_id" in text  # columnas no-PII se ven igual, sin ofuscar
+
+
+def test_enforcement_masking_sqlserver_uses_native_masked_with():
+    from mvdg import enforcement as en
+    cat, dic, glo = _sample_gov_tables()
+    ddl = en.build_column_masking_ddl(dic, engine="sqlserver")
+    text = "\n".join(ddl)
+    assert "ADD MASKED WITH (FUNCTION = 'email()')" in text  # detecta email por nombre
+    assert "ADD MASKED WITH (FUNCTION = 'default()')" in text  # resto de PII, genérico
+
+
+def test_enforcement_unsupported_engine_raises_not_silently_wrong():
+    from mvdg import enforcement as en
+    cat, dic, glo = _sample_gov_tables()
+    with pytest.raises(ValueError):
+        en.build_column_masking_ddl(dic, engine="oracle")
+    with pytest.raises(ValueError):
+        en.build_row_level_security_ddl("dim_customers", "steward", "rol_x", engine="mysql")
+
+
+def test_enforcement_plan_never_executes_anything():
+    """El módulo entero es generación de texto -- no hay ningún camino que
+    abra una conexión de base de datos."""
+    import mvdg.enforcement as en_mod
+    src = open(en_mod.__file__, encoding="utf-8").read()
+    for forbidden in ("sqlalchemy", "psycopg2", "pyodbc", "create_engine", ".execute(", "urllib"):
+        assert forbidden not in src, f"enforcement.py no debería importar/usar '{forbidden}'"
+
+    from mvdg import enforcement as en
+    cat, dic, glo = _sample_gov_tables()
+    plan = en.enforcement_plan(cat, dic, {"PII": ["rol_rrhh"]}, engine="postgresql")
+    assert plan["grant_statements"] > 0 and plan["masking_statements"] > 0
+    assert "NO ejecutado" in plan["script"]
+
+
+def test_enforcement_row_level_security_both_engines():
+    from mvdg import enforcement as en
+    pg = en.build_row_level_security_ddl("dim_customers", "steward", "rol_comercial", "postgresql")
+    assert any("ENABLE ROW LEVEL SECURITY" in s for s in pg)
+    assert any("CREATE POLICY" in s for s in pg)
+    ss = en.build_row_level_security_ddl("dim_customers", "steward", "rol_comercial", "sqlserver")
+    assert any("CREATE SECURITY POLICY" in s for s in ss)
+
+
+# --------------------------------------------- etiquetas MIP (Graph API real)
+def test_mip_off_by_default(monkeypatch):
+    for var in ("MIP_TENANT_ID", "MIP_CLIENT_ID", "MIP_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import mip_labels as mip
+    assert mip.configured() is False
+    assert mip.list_labels() == []  # sin credenciales, no intenta pegarle a la red
+    with pytest.raises(RuntimeError):
+        mip.assign_label("d1", "i1", "lbl-1", dry_run=False)
+
+
+def test_mip_share_url_encoding_matches_documented_algorithm():
+    """Base64 -> base64url sin padding, '/'->'_', '+'->'-', prefijo 'u!'
+    (documentado por Microsoft Learn, "Access shared items")."""
+    from mvdg import mip_labels as mip
+    import base64
+    url = "https://contoso.sharepoint.com/:x:/s/team/EXAMPLE?e=abc"
+    encoded = mip.encode_share_url(url)
+    assert encoded.startswith("u!")
+    # decodificable de vuelta
+    b64 = encoded[2:].replace("_", "/").replace("-", "+")
+    b64 += "=" * (-len(b64) % 4)
+    assert base64.b64decode(b64).decode("utf-8") == url
+
+
+def test_mip_dry_run_never_touches_network(monkeypatch):
+    for var in ("MIP_TENANT_ID", "MIP_CLIENT_ID", "MIP_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import mip_labels as mip
+    r = mip.assign_label("d1", "i1", "lbl-1", dry_run=True)
+    assert r["dry_run"] is True and "assignSensitivityLabel" in r["url"]
+
+
+def test_mip_suggest_label_never_invents_an_id():
+    """La sugerencia SIEMPRE sale de la lista real de etiquetas del tenant
+    -- nunca de un id inventado por el programa."""
+    from mvdg import mip_labels as mip
+    labels = [{"id": "real-id-1", "name": "Confidencial - Solo interno"},
+             {"id": "real-id-2", "name": "Publico"}]
+    picked = mip.suggest_label("PII", labels)
+    assert picked["id"] == "real-id-1"  # matchea por nombre, id real de la lista
+    assert mip.suggest_label("PII", []) is None  # sin etiquetas en el tenant, no inventa nada
+
+
+def test_mip_plan_skips_datasets_without_mapped_file():
+    """Un dataset gobernado que no tiene archivo mapeado en OneDrive/
+    SharePoint no puede tener etiqueta MIP (la etiqueta vive en el
+    archivo) -- se lista aparte, explícitamente, no se saltea en
+    silencio."""
+    from mvdg import mip_labels as mip
+    cat, dic, glo = _sample_gov_tables()
+    file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
+    labels = [{"id": "l1", "name": "Confidencial"}]
+    r = mip.push_labels(cat, file_map, dry_run=True)
+    assert len(r["plan"]) == 1 and r["plan"][0]["dataset"] == "dim_customers"
+    assert set(r["skipped_no_file"]) == set(cat["dataset"]) - {"dim_customers"}
+
+
+def test_mip_integration_real_http_roundtrip(monkeypatch):
+    """Mismo patrón que la simulación de Purview/Collibra: servidor HTTP
+    local real (sin mockear _http_json) para probar el protocolo/JSON/auth
+    de punta a punta contra la Graph API tal como la documenta Microsoft."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    calls = {"token": 0, "labels": 0, "assign": 0}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _body(self):
+            length = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(length)) if length else None
+
+        def do_GET(self):
+            if "sensitivityLabels" in self.path:
+                calls["labels"] += 1
+                payload = json.dumps({"value": [{"id": "lbl-conf", "name": "Confidencial"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            body = self._body()
+            if "assignSensitivityLabel" in self.path:
+                calls["assign"] += 1
+                assert body["sensitivityLabelId"] == "lbl-conf"
+                self.send_response(202)
+                self.send_header("Location", "http://example/monitor/1")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("MIP_TENANT_ID", "tid")
+        monkeypatch.setenv("MIP_CLIENT_ID", "cid")
+        monkeypatch.setenv("MIP_CLIENT_SECRET", "sec")
+        from mvdg import mip_labels as mip
+        monkeypatch.setattr(mip, "_GRAPH_V1", f"http://127.0.0.1:{port}")
+        monkeypatch.setattr(mip, "_GRAPH_BETA", f"http://127.0.0.1:{port}")
+        monkeypatch.setattr(mip, "_get_token", lambda: "fake-graph-token")
+
+        cat, dic, glo = _sample_gov_tables()
+        file_map = {"dim_customers": {"driveId": "drv-1", "itemId": "itm-1"}}
+        result = mip.push_labels(cat, file_map, dry_run=False)
+    finally:
+        server.shutdown()
+
+    assert calls == {"token": 0, "labels": 1, "assign": 1}  # token mockeado aparte, no cuenta
+    assert result["assigned"][0]["dataset"] == "dim_customers"
+    assert result["assigned"][0]["result"]["status"] == 202
+
+
+# --------------------------------------------------- escaneo de todas las conexiones
+def test_connectors_scan_all_partial_failure_does_not_stop_the_rest(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    import sqlite3
+    from mvdg import connectors as C
+
+    good_db = str(tmp_path / "ok.db")
+    con = sqlite3.connect(good_db)
+    pd.DataFrame({"id": [1, 2]}).to_sql("clientes", con, index=False)
+    con.close()
+
+    C.save_connection({"name": "OK", "engine": "sqlite", "database": good_db,
+                       "user": "", "password": ""}, save_password=False)
+    C.save_connection({"name": "Rota", "engine": "sqlite", "database": "/no/existe.db",
+                       "user": "", "password": ""}, save_password=False)
+
+    df = C.scan_all_connections()
+    assert set(df["name"]) == {"OK", "Rota"}
+    ok_rows = df[df["name"] == "OK"]
+    assert "clientes" in ok_rows["table"].tolist()
+    assert ok_rows["error"].isna().all()
+    broken_rows = df[df["name"] == "Rota"]
+    assert broken_rows["table"].isna().all()
+    assert broken_rows["error"].notna().all()
