@@ -7,13 +7,23 @@
    **"Add Python to PATH"**.
 2. Doble clic en **`MV_DataGovernance.bat`**. La primera vez crea el entorno
    e instala dependencias (2–5 min); después abre al instante en tu navegador.
+3. *(Opcional)* ¿Querés que el programa aparezca en el **Escritorio** o en el
+   **Menú Inicio** de Windows como una app instalada? Doble clic en
+   **`MV_Instalar_Accesos.bat`**: pregunta cuál de los dos querés (S/N) y crea
+   los accesos con el icono del programa, sin permisos de administrador.
+   Para la **barra de tareas**: clic derecho sobre el acceso creado →
+   *"Anclar a la barra de tareas"* (Windows no permite que un programa se
+   ancle solo — es una restricción de Microsoft, no de este programa).
+   Para quitarlos: `MV_Instalar_Accesos.bat quitar`.
 
 ### Opción 2 · Ejecutable Windows (.exe)
 1. En una PC con Python: doble clic en **`packaging\build_exe.bat`**.
 2. Obtenés `dist\MVDataGovernance\MVDataGovernance.exe` (portable, no
    requiere Python en la máquina destino) y, si tenés
    [Inno Setup](https://jrsoftware.org/isdl.php), también el instalador
-   `dist\MVDataGovernance_Setup_v1.0.0.exe` con accesos directos.
+   `dist\MVDataGovernance_Setup_v1.0.0.exe`, que durante la instalación
+   crea el acceso del **Menú Inicio** y ofrece con una casilla el del
+   **Escritorio** — el cliente elige.
 
 ### Opción 3 · Web (servidor de la empresa)
 Corré el programa como servidor web para que varios usuarios lo abran desde

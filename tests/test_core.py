@@ -3411,3 +3411,74 @@ def test_glossary_auto_broken_table_does_not_stop_the_rest(tmp_path, monkeypatch
     terms = glossary_auto.build_from_connection(profile, "es")
     assert [t["column"] for t in terms] == ["cod_prod"]
     assert terms[0]["name"] == "código producto"
+
+
+# ------------------------- accesos directos opcionales (escritorio / menú inicio)
+def _read_accesos_bat():
+    with open(os.path.join(_repo_root(), "MV_Instalar_Accesos.bat"),
+              encoding="ascii") as fh:  # ascii a propósito: cmd.exe usa cp437/cp1252
+        return fh.read()
+
+
+def test_accesos_bat_creates_optional_desktop_and_start_menu_shortcuts():
+    """El cliente elige (S/N) escritorio y/o menú inicio; los .lnk se crean
+    por usuario (sin admin) vía WScript.Shell, con el icono del programa."""
+    src = _read_accesos_bat()
+    assert "choice /C SN" in src                      # es opcional de verdad
+    assert src.count("CreateShortcut") == 2           # escritorio + menú inicio
+    assert "GetFolderPath('Desktop')" in src
+    assert "GetFolderPath('Programs')" in src         # menú inicio por usuario
+    assert "MV_DataGovernance.bat" in src             # apunta al portable
+    assert "assets\\brand\\mv.ico" in src             # con su icono
+    assert "IconLocation" in src and "WorkingDirectory" in src
+
+
+def test_accesos_bat_has_removal_mode_and_honest_taskbar_note():
+    src = _read_accesos_bat()
+    # modo quitar (reversible), y en los 3 alias
+    assert '"%~1"=="quitar"' in src and "Remove-Item" in src
+    # honestidad sobre la barra de tareas: Windows no deja auto-anclarse —
+    # se explica el paso manual en vez de fingir que se puede
+    assert "Anclar a la barra de tareas" in src
+    assert "Pin to taskbar" in src
+
+
+def test_accesos_bat_ships_in_release_zips_with_crlf(tmp_path):
+    """El instalador de accesos viaja en los ZIP de entrega, y todo .bat
+    dentro de un ZIP va con CRLF aunque el working tree esté en LF (un .bat
+    con LF puede fallar en cmd.exe — la razón ya documentada en
+    .gitattributes)."""
+    import importlib.util
+    import zipfile
+    spec = importlib.util.spec_from_file_location(
+        "mvdg_build_release", os.path.join(_repo_root(), "packaging", "build_release.py"))
+    br = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(br)
+    assert "MV_Instalar_Accesos.bat" in br._INCLUDE_FILES
+    assert "MV_Instalar_Accesos.bat" in br._DEMO_FILES
+    # _zip_write convierte LF -> CRLF para .bat/.iss
+    lf_bat = tmp_path / "x.bat"
+    lf_bat.write_bytes(b"@echo off\ngoto end\n:end\n")
+    out = tmp_path / "t.zip"
+    with zipfile.ZipFile(out, "w") as z:
+        br._zip_write(z, str(lf_bat), "x.bat")
+    data = zipfile.ZipFile(out).read("x.bat")
+    assert data == b"@echo off\r\ngoto end\r\n:end\r\n"
+    # y un .bat que YA está en CRLF no se duplica el \r
+    crlf_bat = tmp_path / "y.bat"
+    crlf_bat.write_bytes(b"@echo off\r\n:fin\r\n")
+    with zipfile.ZipFile(out, "w") as z:
+        br._zip_write(z, str(crlf_bat), "y.bat")
+    assert zipfile.ZipFile(out).read("y.bat") == b"@echo off\r\n:fin\r\n"
+
+
+def test_installer_iss_offers_optional_desktop_and_start_menu():
+    """El instalador .exe (Inno Setup) crea el acceso del Menú Inicio y
+    ofrece el del escritorio como casilla opcional — 'si lo desea el
+    cliente', literal."""
+    with open(os.path.join(_repo_root(), "packaging", "instalador.iss"),
+              encoding="utf-8") as fh:
+        iss = fh.read()
+    assert 'Name: "desktopicon"' in iss               # casilla opcional
+    assert "{autodesktop}" in iss and "Tasks: desktopicon" in iss
+    assert "{group}" in iss                           # menú inicio siempre

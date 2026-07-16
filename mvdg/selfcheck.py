@@ -717,12 +717,14 @@ def run_checks() -> list[tuple[str, bool, str]]:
         import os
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         launchers = ["MV_DataGovernance.bat", "MV_DataGovernance_Server.bat",
+                     "MV_Instalar_Accesos.bat",
                      "run.sh", "run_server.sh",
                      os.path.join("packaging", "mvdg_launcher.py"),
                      os.path.join("packaging", "mvdg.spec")]
         missing = [f for f in launchers if not os.path.exists(os.path.join(root, f))]
         assert not missing, f"faltan lanzadores: {missing}"
-        return ".exe (PyInstaller) · .bat portable · web servidor — presentes"
+        return (".exe (PyInstaller) · .bat portable · web servidor · accesos "
+                "directos opcionales (escritorio/menú inicio) — presentes")
 
     @check("Dashboard importable (sin errores)")
     def _():

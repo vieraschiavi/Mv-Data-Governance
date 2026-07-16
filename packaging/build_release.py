@@ -44,7 +44,8 @@ DESCARGAS = os.path.join(ROOT, "landing", "descargas")
 _INCLUDE_DIRS = ["app", "mvdg", "bi_api", "assets", "docs", "packaging",
                  "distribucion", "landing", "tests"]
 _INCLUDE_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
-                  "MV_DataGovernance_Server.bat", "run.sh", "run_server.sh",
+                  "MV_DataGovernance_Server.bat", "MV_Instalar_Accesos.bat",
+                  "run.sh", "run_server.sh",
                   "server_authorized.txt", "requirements.txt", "README.md",
                   ".gitattributes"]
 _EXCLUDE_PARTS = {"__pycache__", ".venv", ".git", ".pytest_cache", "dist", "build"}
@@ -54,12 +55,25 @@ _EXCLUDE_PARTS = {"__pycache__", ".venv", ".git", ".pytest_cache", "dist", "buil
 # web de venta ni el video de demo (que pesan y no hacen falta para operar).
 _DEMO_DIRS = ["app", "mvdg", "bi_api", "docs", "packaging", "distribucion"]
 _DEMO_FILES = ["MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
-               "MV_DataGovernance_Server.bat", "run.sh", "run_server.sh",
+               "MV_DataGovernance_Server.bat", "MV_Instalar_Accesos.bat",
+               "run.sh", "run_server.sh",
                "server_authorized.txt", "requirements.txt", "README.md",
                ".gitattributes"]
 # solo los iconos de marca (no el video) + el dataset de ejemplo real
 _DEMO_BRAND = os.path.join("assets", "brand")
 _DEMO_SAMPLES = os.path.join("assets", "samples")
+
+
+def _zip_write(z, path, arc):
+    """Escribe un archivo al ZIP; los .bat/.iss viajan SIEMPRE con CRLF
+    (el working tree en Linux los tiene con LF y cmd.exe puede fallar con
+    labels/goto en archivos LF — la misma razon del .gitattributes)."""
+    if path.endswith((".bat", ".iss")):
+        with open(path, "rb") as fh:
+            data = fh.read().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        z.writestr(arc, data)
+    else:
+        z.write(path, arc)
 
 
 def _iter_files(dirs, files, extra_dirs=()):
@@ -82,7 +96,7 @@ def build_option_b() -> str:
         for path in _iter_files(_INCLUDE_DIRS, _INCLUDE_FILES):
             arc = os.path.join("MVDataGovernance",
                                os.path.relpath(path, ROOT))
-            z.write(path, arc)
+            _zip_write(z, path, arc)
     return out
 
 
@@ -95,7 +109,7 @@ def build_web_demo() -> str:
                                 extra_dirs=[_DEMO_BRAND, _DEMO_SAMPLES]):
             arc = os.path.join("MVDataGovernance",
                                os.path.relpath(path, ROOT))
-            z.write(path, arc)
+            _zip_write(z, path, arc)
     return out
 
 
@@ -127,7 +141,7 @@ def build_owner() -> tuple[str, bool]:
         for path in _iter_files(_INCLUDE_DIRS, _INCLUDE_FILES):
             arc = os.path.join("MVDataGovernance",
                                os.path.relpath(path, ROOT))
-            z.write(path, arc)
+            _zip_write(z, path, arc)
     return out, has_exe
 
 

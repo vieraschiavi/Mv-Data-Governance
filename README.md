@@ -43,6 +43,7 @@ cd landing && python -m http.server 8080   # → http://localhost:8080
 | **`packaging\build_exe.bat`** | Construye `MVDataGovernance.exe` (PyInstaller) y el instalador `MVDataGovernance_Setup_v1.0.0.exe` (Inno Setup, trilingüe) |
 | **`MV_DataGovernance_API.bat`** | Levanta la API REST para BI en `http://127.0.0.1:8600` |
 | **`MV_DataGovernance_Server.bat`** / **`./run_server.sh`** | Modo servidor web para la empresa: varios usuarios desde el navegador, **solo en servidores autorizados** (`server_authorized.txt` / `MVDG_AUTHORIZED_HOSTS`) y, si configurás `MVDG_SERVER_PASSWORD`, con **login compartido real** antes del dashboard |
+| **`MV_Instalar_Accesos.bat`** | Accesos directos opcionales para la versión portable: pregunta si querés el programa en el **Escritorio** y/o el **Menú Inicio** de Windows (con su icono) y los crea sin permisos de administrador. Para la barra de tareas: clic derecho sobre el acceso creado → "Anclar" (Windows no permite que un programa se ancle solo). Quitar: `MV_Instalar_Accesos.bat quitar`. El instalador `.exe` (Opción A) ya ofrece lo mismo con casillas durante la instalación |
 | **`./run.sh`** | Linux / macOS (escritorio, abre el navegador local) |
 
 Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
