@@ -44,7 +44,10 @@ from mvdg import orgchart
 from mvdg import dmbok
 from mvdg import mdm
 from mvdg import purview_export
+from mvdg import purview_pull
+from mvdg import imported as ext_imported
 from mvdg import samples as ext_samples
+from mvdg import server as mvdg_server
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
@@ -114,6 +117,27 @@ with st.sidebar:
     st.caption(t("sidebar_help", lang))
     st.divider()
     st.caption(f"v{__version__} · {t('demo_note', lang)}")
+
+if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
+    # Calienta el cache de datos ANTES del gate (no expone nada: son los
+    # datasets sintéticos de demo, sin PII). Si no se calienta acá, la
+    # primera vez que se calculan (justo en el rerun forzado por
+    # st.rerun() al validar la contraseña) coincide con la reconstrucción
+    # completa del script — con pyarrow en este entorno, esa combinación
+    # puntual disparaba un segfault nativo reproducible en las pruebas.
+    _tables()
+    _results(lang)
+    st.markdown(f"<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
+    st.title(f"🔒 {t('auth_title', lang)}")
+    st.caption(t("auth_intro", lang))
+    _auth_pwd = st.text_input(t("auth_prompt", lang), type="password", key="auth_pwd_input")
+    if st.button(t("auth_button", lang), type="primary"):
+        if mvdg_server.check_password(_auth_pwd):
+            st.session_state["_mvdg_authed"] = True
+            st.rerun()
+        else:
+            st.error(t("auth_wrong", lang))
+    st.stop()
 
 st.markdown(f"<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
 st.title(APP_NAME)
@@ -1425,7 +1449,54 @@ with tab_bi:
             st.dataframe(_cbp_tables_df, width="stretch", hide_index=True)
             st.download_button(t("cbp_download_tables", lang), to_csv_bytes(_cbp_tables_df),
                                "collibra_tablas.csv", "text/csv")
+        if st.button(t("imp_save", lang), key="imp_save_cb"):
+            n1 = ext_imported.save_terms("collibra", _cbp_res["glossary"]["terms"])
+            n2 = ext_imported.save_tables("collibra", _cbp_res["catalog"]["tables"])
+            st.success(t("imp_saved_ok", lang).format(n=n1 + n2))
     st.caption(t("cbp_local_note", lang))
+
+    st.divider()
+    st.subheader(t("pvp_title", lang))
+    st.info(t("pvp_intro", lang), icon="⬇️")
+    _pvp_ready = purview_pull.configured()
+    st.caption(t("pvp_env", lang) if not _pvp_ready else t("mig_configured", lang))
+    if _pvp_ready and st.button(t("pvp_run", lang), type="primary"):
+        with st.spinner("…"):
+            try:
+                st.session_state["pvp_result"] = purview_pull.pull_all()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"⚠️ {exc}")
+    _pvp_res = st.session_state.get("pvp_result")
+    if _pvp_res is not None:
+        pv1, pv2 = st.columns(2)
+        pv1.metric(t("pvp_terms", lang), _pvp_res["glossary"]["term_count"])
+        pv2.metric(t("cbp_tables", lang), _pvp_res["catalog"]["table_count"])
+        if _pvp_res["glossary"]["terms"]:
+            _pvp_terms_df = pd.DataFrame(_pvp_res["glossary"]["terms"])
+            st.dataframe(_pvp_terms_df, width="stretch", hide_index=True)
+            st.download_button(t("pvp_download_terms", lang), to_csv_bytes(_pvp_terms_df),
+                               "purview_terminos.csv", "text/csv")
+        if _pvp_res["catalog"]["tables"]:
+            _pvp_tables_df = pd.DataFrame(_pvp_res["catalog"]["tables"])
+            st.dataframe(_pvp_tables_df, width="stretch", hide_index=True)
+            st.download_button(t("cbp_download_tables", lang), to_csv_bytes(_pvp_tables_df),
+                               "purview_tablas.csv", "text/csv")
+        if st.button(t("imp_save", lang), key="imp_save_pv"):
+            n1 = ext_imported.save_terms("purview", _pvp_res["glossary"]["terms"])
+            n2 = ext_imported.save_tables("purview", _pvp_res["catalog"]["tables"])
+            st.success(t("imp_saved_ok", lang).format(n=n1 + n2))
+    st.caption(t("pvp_local_note", lang))
+
+    _imp_terms, _imp_tables = ext_imported.list_terms(), ext_imported.list_tables()
+    if len(_imp_terms) or len(_imp_tables):
+        st.divider()
+        st.subheader(t("imp_title", lang))
+        st.caption(t("imp_intro", lang))
+        if len(_imp_terms):
+            st.dataframe(_imp_terms, width="stretch", hide_index=True)
+        if len(_imp_tables):
+            st.dataframe(_imp_tables, width="stretch", hide_index=True)
+        st.caption(t("imp_curation_note", lang))
 
 # ---------------------------------------------------------------- Empresas
 with tab_cl:

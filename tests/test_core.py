@@ -2518,3 +2518,715 @@ def test_collibra_pull_integration_real_http_roundtrip(monkeypatch):
     assert result["term_count"] == 1
     assert result["terms"][0]["name"] == "Cliente"
     assert result["terms"][0]["definition"] == "Definición real traída de Collibra."
+
+
+# ================================================== fixes 2026-07-16 (round 2)
+# Purview pull (conector inverso), persistencia de lo importado, qualifiedNames
+# reales, keyring, login del modo servidor, robustez de red y simetría de
+# estados Collibra — ver docs/PURVIEW_COLLIBRA.md para el detalle de cada uno.
+
+def test_purview_pull_off_by_default(monkeypatch):
+    for var in ("PURVIEW_TENANT_ID", "PURVIEW_CLIENT_ID", "PURVIEW_CLIENT_SECRET",
+               "PURVIEW_ACCOUNT_NAME"):
+        monkeypatch.delenv(var, raising=False)
+    from mvdg import purview_pull as pvp
+    assert pvp.configured() is False
+    with pytest.raises(RuntimeError):
+        pvp.pull_glossary()
+    with pytest.raises(RuntimeError):
+        pvp.pull_catalog()
+
+
+def test_purview_pull_mocked_glossary_and_catalog(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    from mvdg import purview_pull as pvp
+
+    calls = {"token": 0, "glossary_list": 0, "terms_list": 0, "search": 0}
+
+    def fake_http_form(url, form):
+        calls["token"] += 1
+        return {"access_token": "ptok"}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        assert headers["Authorization"] == "Bearer ptok"
+        if url.endswith("/glossary") and method == "GET":
+            calls["glossary_list"] += 1
+            return [{"guid": "gloss-1", "name": "MV Data Governance"}]
+        if url.endswith("/glossary/gloss-1/terms"):
+            calls["terms_list"] += 1
+            return [{"guid": "term-1", "name": "Cliente", "longDescription": "Definición larga."},
+                    {"guid": "term-2", "name": "Venta", "shortDescription": "Corta."},
+                    {"name": "sin guid, se descarta"}]
+        if "/datamap/api/search/query" in url:
+            calls["search"] += 1
+            return {"value": [{"id": "tbl-1", "name": "dim_customers", "description": "Tabla real."}],
+                    "continuationToken": None}
+        raise AssertionError(f"unexpected URL: {method} {url}")
+
+    monkeypatch.setattr(pv, "_http_form", fake_http_form)
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+
+    r = pvp.pull_all()
+    assert calls["token"] == 2  # un token por función (glosario y catálogo piden el suyo)
+    assert r["glossary"]["term_count"] == 2
+    names = {t["name"] for t in r["glossary"]["terms"]}
+    assert names == {"Cliente", "Venta"}
+    assert r["catalog"]["table_count"] == 1
+    assert r["catalog"]["tables"][0]["name"] == "dim_customers"
+
+
+def test_purview_pull_glossary_missing_returns_empty(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    from mvdg import purview_pull as pvp
+    monkeypatch.setattr(pv, "_http_form", lambda url, form: {"access_token": "t"})
+    monkeypatch.setattr(pv, "_http_json", lambda url, headers, method="GET", body=None: [])
+    r = pvp.pull_glossary()
+    assert r["term_count"] == 0 and r["terms"] == []
+
+
+def test_purview_pull_catalog_paginates_with_continuation_token(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    from mvdg import purview_pull as pvp
+
+    pages = [
+        {"value": [{"id": "t1", "name": "a"}], "continuationToken": "cont-2"},
+        {"value": [{"id": "t2", "name": "b"}], "continuationToken": None},
+    ]
+    calls = {"n": 0}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        page = pages[calls["n"]]
+        calls["n"] += 1
+        return page
+
+    monkeypatch.setattr(pv, "_http_form", lambda url, form: {"access_token": "t"})
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+    r = pvp.pull_catalog()
+    assert calls["n"] == 2
+    assert r["table_count"] == 2
+    assert {t["name"] for t in r["tables"]} == {"a", "b"}
+
+
+def test_purview_pull_integration_real_http_roundtrip(monkeypatch):
+    """Servidor HTTP local real: prueba el protocolo de punta a punta (auth
+    header, JSON, paginación por continuationToken) sin mockear _http_json."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    calls = {"token": 0, "glossary": 0, "terms": 0, "search": 0}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, payload):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            if "/oauth2/token" in self.path:
+                calls["token"] += 1
+                self._send(200, {"access_token": "sim-token"})
+            elif "/datamap/api/search/query" in self.path:
+                calls["search"] += 1
+                self._send(200, {"value": [{"id": "tbl-1", "name": "dim_customers",
+                                            "description": "real"}], "continuationToken": None})
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_GET(self):
+            assert self.headers.get("Authorization") == "Bearer sim-token"
+            if self.path.endswith("/glossary"):
+                calls["glossary"] += 1
+                self._send(200, [{"guid": "gloss-1", "name": "MV Data Governance"}])
+            elif self.path.endswith("/glossary/gloss-1/terms"):
+                calls["terms"] += 1
+                self._send(200, [{"guid": "term-1", "name": "Cliente",
+                                  "longDescription": "Definición real."}])
+            else:
+                self._send(404, {"error": self.path})
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+        monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+        monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+        monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+        monkeypatch.setenv("PURVIEW_API_BASE", f"http://127.0.0.1:{port}")
+        from mvdg import purview_export as pv
+        from mvdg import purview_pull as pvp
+
+        def fake_get_token():
+            import urllib.request
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/oauth2/token",
+                                         data=b"{}", method="POST")
+            with urllib.request.urlopen(req) as resp:
+                return json.loads(resp.read())["access_token"]
+
+        monkeypatch.setattr(pv, "_get_token", fake_get_token)
+        result = pvp.pull_all()
+    finally:
+        server.shutdown()
+
+    assert calls["token"] == 2 and calls["glossary"] == 1 and calls["terms"] == 1
+    assert calls["search"] == 1
+    assert result["glossary"]["terms"][0]["name"] == "Cliente"
+    assert result["catalog"]["tables"][0]["name"] == "dim_customers"
+
+
+# --------------------------------------------------- persistencia de lo importado
+def test_imported_save_list_delete_terms_and_tables(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import imported
+    n = imported.save_terms("collibra", [{"collibra_id": "a1", "name": "Cliente",
+                                          "definition": "Def traída."}])
+    assert n == 1
+    n2 = imported.save_tables("purview", [{"purview_id": "t1", "name": "dim_x",
+                                           "description": "Tabla traída."}])
+    assert n2 == 1
+    terms = imported.list_terms()
+    tables = imported.list_tables()
+    assert len(terms) == 1 and terms.iloc[0]["name"] == "Cliente"
+    assert len(tables) == 1 and tables.iloc[0]["source"] == "purview"
+    assert imported.delete_term("collibra", "a1") is True
+    assert imported.delete_term("collibra", "a1") is False  # ya no está
+    assert imported.delete_table("purview", "t1") is True
+    assert imported.list_terms().empty and imported.list_tables().empty
+
+
+def test_imported_save_rejects_unknown_source(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import imported
+    with pytest.raises(ValueError):
+        imported.save_terms("atlan", [{"collibra_id": "a1", "name": "X"}])
+
+
+def test_imported_save_skips_items_without_id_or_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import imported
+    n = imported.save_terms("collibra", [{"collibra_id": "", "name": "Sin id"},
+                                         {"collibra_id": "ok1", "name": ""}])
+    assert n == 0
+    assert imported.list_terms().empty
+
+
+def test_imported_items_enter_curation_flow(tmp_path, monkeypatch):
+    """Lo importado no queda aislado: entra al mismo inventario de
+    curaduría que el catálogo/glosario de demo y los samples."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, imported
+    imported.save_terms("collibra", [{"collibra_id": "a1", "name": "Cliente Importado",
+                                      "definition": "Definición traída de Collibra."}])
+    df = curation.list_items("es")
+    row = df[df["item_id"] == "glossary:imported:collibra:a1"]
+    assert len(row) == 1
+    assert row.iloc[0]["status"] == "sugerido_ia"
+    assert row.iloc[0]["text"] == "Definición traída de Collibra."
+    # y se puede validar como cualquier otra definición
+    curation.save_validation("glossary:imported:collibra:a1", "es", "validado",
+                             "", "M. Viera", "Data Owner")
+    df2 = curation.list_items("es")
+    row2 = df2[df2["item_id"] == "glossary:imported:collibra:a1"]
+    assert row2.iloc[0]["status"] == "validado"
+
+
+# ------------------------------------------------------- keyring / connectors
+def test_connectors_keyring_probe_never_raises(monkeypatch):
+    """Sea cual sea el estado del keyring del SO en esta máquina, la sonda
+    nunca puede tirar una excepción — ni siquiera un PanicException de
+    pyo3 (que no hereda de Exception) si el backend está roto."""
+    from mvdg import connectors as c
+    c._keyring_ok_cache = None  # forzar una sonda real, no la cacheada
+    result = c._keyring_usable()
+    assert isinstance(result, bool)
+
+
+def test_connectors_password_falls_back_to_obfuscation_without_keyring(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import connectors as c
+    monkeypatch.setattr(c, "_keyring_usable", lambda: False)
+    prof = c.save_connection({"name": "t", "engine": "postgresql", "host": "h",
+                              "port": 5432, "database": "d", "user": "u",
+                              "password": "s3cr3t"}, save_password=True)
+    assert prof["secret_backend"] == "obfuscated"
+    assert prof["password_enc"]  # algo quedó guardado, ofuscado
+    assert c.stored_password(prof) == "s3cr3t"
+    assert c.secret_backend_label(prof) == "obfuscated"
+
+
+def test_connectors_password_uses_keyring_when_available(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import connectors as c
+    store: dict[tuple, str] = {}
+    monkeypatch.setattr(c, "_keyring_usable", lambda: True)
+
+    def fake_set(conn_id, secret):
+        store[conn_id] = secret
+        return True
+
+    def fake_get(conn_id):
+        return store.get(conn_id, "")
+
+    def fake_delete(conn_id):
+        store.pop(conn_id, None)
+
+    monkeypatch.setattr(c, "_keyring_set", fake_set)
+    monkeypatch.setattr(c, "_keyring_get", fake_get)
+    monkeypatch.setattr(c, "_keyring_delete", fake_delete)
+
+    prof = c.save_connection({"name": "t", "engine": "postgresql", "host": "h",
+                              "port": 5432, "database": "d", "user": "u",
+                              "password": "s3cr3t"}, save_password=True)
+    assert prof["secret_backend"] == "keyring"
+    assert prof["password_enc"] == ""  # nada en el JSON, quedó en el keyring
+    assert c.stored_password(prof) == "s3cr3t"
+    c.delete_connection(prof["conn_id"])
+    assert prof["conn_id"] not in store  # se limpió del keyring también
+
+
+def test_connectors_no_password_clears_keyring_entry(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import connectors as c
+    deleted = []
+    monkeypatch.setattr(c, "_keyring_delete", lambda cid: deleted.append(cid))
+    prof = c.save_connection({"name": "t", "engine": "postgresql", "host": "h",
+                              "port": 5432, "database": "d", "user": "u",
+                              "password": "x"}, save_password=False)
+    assert prof["secret_backend"] == ""
+    assert c.secret_backend_label(prof) == "none"
+    assert deleted == [prof["conn_id"]]
+
+
+def test_connectors_purview_qualified_name_azure_sql_confirmed_format():
+    from mvdg.connectors import purview_qualified_name
+    profile = {"engine": "sqlserver", "host": "myserver.database.windows.net",
+              "database": "SalesDB"}
+    assert (purview_qualified_name(profile, "dbo.dim_customers")
+           == "mssql://myserver.database.windows.net/SalesDB/dbo/dim_customers")
+    # sin schema explícito, se asume dbo (default de Azure SQL/SQL Server)
+    assert (purview_qualified_name(profile, "dim_customers")
+           == "mssql://myserver.database.windows.net/SalesDB/dbo/dim_customers")
+
+
+def test_connectors_purview_qualified_name_none_when_not_azure_sql():
+    """Para lo que Microsoft NO documenta el formato exacto (on-prem, otros
+    motores/hosts) se devuelve None a propósito — no se inventa un
+    qualifiedName que después no matchea con lo que Purview escaneó de
+    verdad. Lo que decide es el HOST (el único patrón confirmado es
+    *.database.windows.net), no una lista de motores permitidos."""
+    from mvdg.connectors import purview_qualified_name
+    on_prem = {"engine": "sqlserver", "host": "srv-datos.miempresa.local", "database": "d"}
+    assert purview_qualified_name(on_prem, "t") is None
+    postgres_local = {"engine": "postgresql", "host": "pg.miempresa.local", "database": "d"}
+    assert purview_qualified_name(postgres_local, "t") is None
+    assert purview_qualified_name({"engine": "postgresql", "host": "", "database": "d"}, "t") is None
+    assert purview_qualified_name({"engine": "sqlserver",
+                                   "host": "x.database.windows.net", "database": ""}, "t") is None
+
+
+# --------------------------------------------------------- login modo servidor
+def test_server_auth_not_required_in_desktop_mode(monkeypatch):
+    from mvdg import server
+    monkeypatch.delenv("MVDG_SERVER_MODE", raising=False)
+    monkeypatch.setenv("MVDG_SERVER_PASSWORD", "secreto")
+    assert server.server_mode_active() is False
+    assert server.auth_required() is False  # modo escritorio: no se pide login
+
+
+def test_server_auth_required_only_with_password_set(monkeypatch):
+    from mvdg import server
+    monkeypatch.setenv("MVDG_SERVER_MODE", "1")
+    monkeypatch.delenv("MVDG_SERVER_PASSWORD", raising=False)
+    assert server.auth_required() is False  # servidor pero sin contraseña configurada
+    monkeypatch.setenv("MVDG_SERVER_PASSWORD", "secreto")
+    assert server.auth_required() is True
+
+
+def test_server_check_password_correct_and_constant_time(monkeypatch):
+    from mvdg import server
+    monkeypatch.setenv("MVDG_SERVER_PASSWORD", "correcta123")
+    assert server.check_password("correcta123") is True
+    assert server.check_password("incorrecta") is False
+    assert server.check_password("") is False
+    monkeypatch.delenv("MVDG_SERVER_PASSWORD", raising=False)
+    assert server.check_password("cualquiera") is False  # sin var seteada, nunca entra
+
+
+def test_server_run_server_sets_server_mode_flag(monkeypatch, tmp_path):
+    """run_server() marca MVDG_SERVER_MODE escribiendo os.environ
+    directamente (a propósito: tiene que sobrevivir mientras el proceso de
+    Streamlit está arriba) — por eso este test la limpia a mano en un
+    finally en vez de confiar en monkeypatch, que solo deshace lo que él
+    mismo seteó."""
+    from mvdg import server
+    monkeypatch.delenv("MVDG_SERVER_MODE", raising=False)
+    monkeypatch.setenv("MVDG_AUTHORIZED_HOSTS", "*")
+    try:
+        argv_out = []
+        server.run_server(argv_out=argv_out)
+        assert os.environ.get("MVDG_SERVER_MODE") == "1"
+        assert argv_out  # se armaron los argumentos de streamlit
+    finally:
+        os.environ.pop("MVDG_SERVER_MODE", None)
+
+
+# --------------------------------------------------- Purview: relación, qualifiedName real
+def test_purview_classification_phone_is_phone_not_ip():
+    """Regresión: 'telefono' mapeaba por error a MICROSOFT.PERSONAL.IPADDRESS."""
+    from mvdg.purview_export import _pii_classification
+    assert _pii_classification("telefono") == "MICROSOFT.PERSONAL.US.PHONE_NUMBER"
+    assert _pii_classification("phone_number") == "MICROSOFT.PERSONAL.US.PHONE_NUMBER"
+    assert _pii_classification("ip_address") == "MICROSOFT.PERSONAL.IPADDRESS"
+    assert _pii_classification("full_name") == "MICROSOFT.PERSONAL.NAME"
+
+
+def test_purview_columns_link_to_their_table():
+    """Cada rdbms_column debe referenciar a su rdbms_table por qualifiedName
+    (relationshipAttributes.table) — sin esto, la pestaña Schema de la
+    tabla queda vacía en Purview."""
+    from mvdg.purview_export import build_entity_payload
+    cat, dic, _ = _sample_gov_tables()
+    entities = build_entity_payload(cat, dic)
+    columns = [e for e in entities if e["typeName"] == "rdbms_column"]
+    assert columns
+    for c in columns:
+        rel = c["relationshipAttributes"]["table"]
+        assert rel["typeName"] == "rdbms_table"
+        table_qn = c["attributes"]["qualifiedName"].rsplit("#", 1)[0]
+        assert rel["uniqueAttributes"]["qualifiedName"] == table_qn
+
+
+def test_purview_qualified_name_map_used_when_provided():
+    """Con un qualifiedName real (de una conexión SQL), la entidad se
+    fusiona con lo que Purview ya escaneó en vez de usar mvdg://."""
+    from mvdg.purview_export import build_entity_payload
+    cat, dic, _ = _sample_gov_tables()
+    ds = cat.iloc[0]["dataset"]
+    qn_map = {ds: f"mssql://srv.database.windows.net/db/dbo/{ds}"}
+    entities = build_entity_payload(cat, dic, qualified_name_map=qn_map)
+    table_entity = next(e for e in entities if e["typeName"] == "rdbms_table"
+                        and e["attributes"]["name"] == ds)
+    assert table_entity["attributes"]["qualifiedName"] == qn_map[ds]
+    col_entity = next(e for e in entities if e["typeName"] == "rdbms_column"
+                      and e["attributes"]["qualifiedName"].startswith(qn_map[ds]))
+    assert col_entity["relationshipAttributes"]["table"]["uniqueAttributes"]["qualifiedName"] == qn_map[ds]
+    # el resto de los datasets, sin entrada en el mapa, siguen usando mvdg://
+    other_ds = cat.iloc[1]["dataset"]
+    other_entity = next(e for e in entities if e["typeName"] == "rdbms_table"
+                        and e["attributes"]["name"] == other_ds)
+    assert other_entity["attributes"]["qualifiedName"] == f"mvdg://{other_ds}"
+
+
+def test_purview_glossary_repush_updates_existing_terms_not_recreates(monkeypatch):
+    """Un segundo push del glosario NO debe fallar con 409: los términos que
+    ya existen (por nombre) se actualizan con PUT; los nuevos se crean."""
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    _cat, _dic, glo = _sample_gov_tables()
+    existing_name = glo.iloc[0]["term"]
+
+    calls = {"term_post": 0, "term_put": 0, "terms_list": 0}
+
+    def fake_http_form(url, form):
+        return {"access_token": "ptok"}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/glossary") and method == "GET":
+            return [{"guid": "gloss-1", "name": "MV Data Governance"}]
+        if url.endswith("/glossary/gloss-1/terms") and method == "GET":
+            calls["terms_list"] += 1
+            return [{"guid": "term-old-1", "name": existing_name}]
+        if url.endswith("/glossary/term") and method == "POST":
+            calls["term_post"] += 1
+            return {"guid": f"term-new-{calls['term_post']}"}
+        if "/glossary/term/term-old-1" in url and method == "PUT":
+            calls["term_put"] += 1
+            assert body["guid"] == "term-old-1"
+            assert body["anchor"]["glossaryGuid"] == "gloss-1"
+            return {"guid": "term-old-1"}
+        raise AssertionError(f"unexpected URL: {method} {url}")
+
+    monkeypatch.setattr(pv, "_http_form", fake_http_form)
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+
+    r = pv.push_glossary(glo, dry_run=False)
+    assert calls["terms_list"] == 1
+    assert calls["term_put"] == 1                  # el que ya existía
+    assert calls["term_post"] == len(glo) - 1       # el resto se crea
+    assert r["term_count"] == len(glo)
+    assert r["failed"] == []
+
+
+def test_purview_glossary_failed_term_does_not_abort_the_rest(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    import urllib.error
+    from mvdg import purview_export as pv
+    _cat, _dic, glo = _sample_gov_tables()
+    bad_name = glo.iloc[0]["term"]
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/glossary") and method == "GET":
+            return [{"guid": "gloss-1", "name": "MV Data Governance"}]
+        if url.endswith("/glossary/gloss-1/terms") and method == "GET":
+            return []  # ningún término existente: todo se crea por POST
+        if url.endswith("/glossary/term") and method == "POST":
+            if body["name"] == bad_name:
+                raise urllib.error.HTTPError(url, 500, "boom", None, None)
+            return {"guid": "term-ok"}
+        raise AssertionError(f"unexpected URL: {method} {url}")
+
+    monkeypatch.setattr(pv, "_http_form", lambda url, form: {"access_token": "t"})
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+    r = pv.push_glossary(glo, dry_run=False)
+    assert len(r["failed"]) == 1 and r["failed"][0]["name"] == bad_name
+    assert r["term_count"] == len(glo) - 1  # el resto se creó igual
+
+
+def test_purview_push_catalog_batches_large_entity_lists(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    from mvdg import purview_export as pv
+    monkeypatch.setattr(pv, "_BULK_BATCH_SIZE", 2)  # fuerza varios lotes con pocos datos
+    cat, dic, _glo = _sample_gov_tables()
+
+    calls = {"bulk": 0}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/entity/bulk"):
+            calls["bulk"] += 1
+            assert len(body["entities"]) <= 2
+            mutated = [{"guid": f"g-{calls['bulk']}-{i}",
+                       "attributes": {"qualifiedName": e["attributes"]["qualifiedName"]}}
+                      for i, e in enumerate(body["entities"])]
+            return {"mutatedEntities": {"CREATE": mutated, "UPDATE": []}}
+        raise AssertionError(f"unexpected URL: {method} {url}")
+
+    monkeypatch.setattr(pv, "_http_form", lambda url, form: {"access_token": "t"})
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+    r = pv.push_catalog(cat, dic, dry_run=False)
+    total_entities = len(cat) + len(dic)
+    import math
+    assert calls["bulk"] == math.ceil(total_entities / 2)
+    assert r["entity_count"] == total_entities
+    assert len(r["guid_by_qualified_name"]) == total_entities
+    assert r["failed_batches"] == []
+
+
+def test_purview_push_catalog_partial_batch_failure_does_not_abort_others(monkeypatch):
+    monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+    monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+    monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+    monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "acct")
+    import urllib.error
+    from mvdg import purview_export as pv
+    monkeypatch.setattr(pv, "_BULK_BATCH_SIZE", 2)
+    cat, dic, _glo = _sample_gov_tables()
+
+    calls = {"bulk": 0}
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        calls["bulk"] += 1
+        if calls["bulk"] == 1:
+            raise urllib.error.HTTPError(url, 500, "boom", None, None)
+        mutated = [{"guid": f"g-{i}", "attributes": {"qualifiedName": e["attributes"]["qualifiedName"]}}
+                  for i, e in enumerate(body["entities"])]
+        return {"mutatedEntities": {"CREATE": mutated, "UPDATE": []}}
+
+    monkeypatch.setattr(pv, "_http_form", lambda url, form: {"access_token": "t"})
+    monkeypatch.setattr(pv, "_http_json", fake_http_json)
+    r = pv.push_catalog(cat, dic, dry_run=False)
+    assert len(r["failed_batches"]) == 1
+    assert calls["bulk"] > 1  # los lotes siguientes se mandaron igual
+    assert len(r["guid_by_qualified_name"]) < r["entity_count"]  # el lote fallido no aportó guids
+
+
+def test_purview_retries_429_with_backoff_then_succeeds(monkeypatch):
+    from mvdg import purview_export as pv
+    import urllib.error
+
+    sleeps = []
+    monkeypatch.setattr(pv.time, "sleep", lambda s: sleeps.append(s))
+
+    attempts = {"n": 0}
+    real_urlopen = pv.urllib.request.urlopen
+
+    class FakeResp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            import json as _json
+            return _json.dumps(self._payload).encode()
+
+    def fake_urlopen(req, timeout=None):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise urllib.error.HTTPError(req.full_url, 429, "slow down",
+                                         {"Retry-After": "0"}, None)
+        return FakeResp({"ok": True})
+
+    monkeypatch.setattr(pv.urllib.request, "urlopen", fake_urlopen)
+    result = pv._http_json("http://x/y", {})
+    assert result == {"ok": True}
+    assert attempts["n"] == 2
+    assert sleeps == [0.0]
+
+
+def test_purview_429_gives_up_after_max_retries(monkeypatch):
+    from mvdg import purview_export as pv
+    import urllib.error
+    monkeypatch.setattr(pv.time, "sleep", lambda s: None)
+    attempts = {"n": 0}
+
+    def always_429(req, timeout=None):
+        attempts["n"] += 1
+        raise urllib.error.HTTPError(req.full_url, 429, "slow down", {}, None)
+
+    monkeypatch.setattr(pv.urllib.request, "urlopen", always_429)
+    with pytest.raises(urllib.error.HTTPError):
+        pv._http_json("http://x/y", {})
+    assert attempts["n"] == pv._MAX_RETRIES_429 + 1  # intento original + reintentos
+
+
+# ------------------------------------------------------------- Collibra: robustez
+def test_collibra_column_table_relation_created_when_configured(monkeypatch):
+    monkeypatch.setenv("COLLIBRA_BASE_URL", "https://acme.collibra.com")
+    monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+    monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    monkeypatch.setenv("COLLIBRA_TABLE_TYPE_ID", "type-table")
+    monkeypatch.setenv("COLLIBRA_COLUMN_TYPE_ID", "type-column")
+    monkeypatch.setenv("COLLIBRA_COLUMN_TABLE_RELATION_TYPE_ID", "rel-col-table")
+    from mvdg import collibra_export as cb
+    cat, dic, _glo = _sample_gov_tables()
+
+    relations = []
+    asset_ids = iter(range(10_000))
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/sessions") and method == "POST":
+            return {}, ["JSESSIONID=abc123; Path=/"]
+        if url.endswith("/auth/sessions/current"):
+            return {}, []
+        if url.endswith("/assets"):
+            return {"id": f"asset-{next(asset_ids)}"}, []
+        if url.endswith("/attributes"):
+            return {"id": "attr-1"}, []
+        if url.endswith("/relations") and method == "POST":
+            relations.append(body)
+            return {"id": "rel-1"}, []
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(cb, "_http_json", fake_http_json)
+    r = cb.push_catalog(cat, dic, dry_run=False)
+    assert r["asset_count"] == len(cat) + len(dic)
+    assert len(relations) == len(dic)               # una relación por columna
+    assert all(rel["typeId"] == "rel-col-table" for rel in relations)
+    assert r["failed"] == []
+
+    # sin la env var: mismo push, cero llamadas a /relations (no regresión)
+    monkeypatch.delenv("COLLIBRA_COLUMN_TABLE_RELATION_TYPE_ID")
+    relations.clear()
+    cb.push_catalog(cat, dic, dry_run=False)
+    assert relations == []
+
+
+def test_collibra_push_partial_failure_isolated_per_item(monkeypatch):
+    monkeypatch.setenv("COLLIBRA_BASE_URL", "https://acme.collibra.com")
+    monkeypatch.setenv("COLLIBRA_USERNAME", "svc")
+    monkeypatch.setenv("COLLIBRA_PASSWORD", "pw")
+    monkeypatch.setenv("COLLIBRA_DOMAIN_ID", "dom-1")
+    monkeypatch.setenv("COLLIBRA_TABLE_TYPE_ID", "type-table")
+    monkeypatch.setenv("COLLIBRA_COLUMN_TYPE_ID", "type-column")
+    import urllib.error
+    from mvdg import collibra_export as cb
+    cat, dic, _glo = _sample_gov_tables()
+    bad_dataset = cat.iloc[0]["dataset"]
+
+    def fake_http_json(url, headers, method="GET", body=None):
+        if url.endswith("/auth/sessions") and method == "POST":
+            return {}, ["JSESSIONID=abc123; Path=/"]
+        if url.endswith("/auth/sessions/current"):
+            return {}, []
+        if url.endswith("/assets"):
+            if body.get("name") == bad_dataset:
+                raise urllib.error.HTTPError(url, 500, "boom", None, None)
+            return {"id": "asset-ok"}, []
+        if url.endswith("/attributes"):
+            return {"id": "attr-1"}, []
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(cb, "_http_json", fake_http_json)
+    r = cb.push_catalog(cat, dic, dry_run=False)
+    assert len(r["failed"]) == 1
+    assert r["failed"][0]["name"] == bad_dataset
+    # el resto de los assets (otras tablas + todas las columnas) sí se crearon
+    assert r["asset_count"] == len(cat) + len(dic) - 1
+
+
+def test_collibra_term_status_reflects_curation(tmp_path, monkeypatch):
+    """statusId Candidate/Accepted en Collibra tiene que salir de la
+    curaduría real, igual que Draft/Approved en Purview."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import collibra_export as cb, curation
+    _cat, _dic, glo = _sample_gov_tables()
+
+    def lookup(term_id):
+        rec = curation.get_record(f"glossary:demo:{term_id}", "es")
+        return (rec["status"], rec.get("text") or "") if rec else ("sugerido_ia", "")
+
+    before = cb.build_term_payloads(glo, "term-type", "dom-1", curation_lookup=lookup)
+    assert all(t["asset"]["statusId"] == cb._DEFAULT_CANDIDATE_STATUS_ID for t in before)
+
+    first_term_id = glo.iloc[0]["term_id"]
+    curation.save_validation(f"glossary:demo:{first_term_id}", "es", "validado",
+                             "", "María Viera", "Data Owner")
+    after = cb.build_term_payloads(glo, "term-type", "dom-1", curation_lookup=lookup)
+    statuses = {t["asset"]["name"]: t["asset"]["statusId"] for t in after}
+    approved_name = glo.iloc[0]["term"]
+    assert statuses[approved_name] == cb._DEFAULT_ACCEPTED_STATUS_ID
+    assert sum(1 for s in statuses.values() if s == cb._DEFAULT_ACCEPTED_STATUS_ID) == 1
+
+
+def test_collibra_status_ids_are_documented_and_overridable(monkeypatch):
+    from mvdg import collibra_export as cb
+    assert cb._DEFAULT_CANDIDATE_STATUS_ID == "00000000-0000-0000-0000-000000005008"
+    assert cb._DEFAULT_ACCEPTED_STATUS_ID == "00000000-0000-0000-0000-000000005009"
+    monkeypatch.setenv("COLLIBRA_CANDIDATE_STATUS_ID", "custom-candidate")
+    _cat, _dic, glo = _sample_gov_tables()
+    terms = cb.build_term_payloads(glo, "term-type", "dom-1")
+    assert terms[0]["asset"]["statusId"] == "custom-candidate"

@@ -294,3 +294,209 @@ revisar.
 - **"Escaneo batch de todas las conexiones"**: confirma con una conexión
   real (SQLite) que funciona, y otra rota a propósito, que una conexión
   caída no frena el escaneo de las demás.
+
+## Parte 3 — Ronda de correcciones y profundización (2026-07-16)
+
+Una auditoría externa (pedida explícitamente por el usuario) revisó el
+conector de migración y encontró bugs reales y gaps genuinos. Esta sección
+documenta qué se corrigió, qué se construyó de nuevo, y — con el mismo
+criterio de todo este documento — qué techo sigue existiendo y por qué.
+
+### Bugs corregidos
+
+- **Clasificación de teléfono mal mapeada**: `phone`/`telefono` caía en
+  `MICROSOFT.PERSONAL.IPADDRESS` (copiar y pegar). Corregido a
+  `MICROSOFT.PERSONAL.US.PHONE_NUMBER` — con una salvedad honesta: existe
+  la clasificación de sistema "U.S. phone number" en Purview, pero
+  Microsoft Learn no publica el string técnico exacto en ninguna página
+  (solo el nombre visible), así que a diferencia del resto de este
+  diccionario, este valor concreto **no está confirmado carácter por
+  carácter**. Antes de depender de esto en producción: `GET
+  {endpoint}/catalog/api/atlas/v2/types/typedefs` contra tu propio tenant
+  y confirmá el `classificationDef` real. `ip_address` (una columna que
+  de verdad es una IP) sí usa `MICROSOFT.PERSONAL.IPADDRESS` correctamente.
+- **Columnas huérfanas en Purview**: las entidades `rdbms_column` no
+  llevaban relación a su `rdbms_table` — la pestaña "Schema" de la tabla
+  quedaba vacía. Corregido con `relationshipAttributes.table`, el nombre
+  de atributo real que define Apache Atlas para esa relación (verificado
+  contra el typedef oficial `2010-rdbms_model.json` del repo de Apache
+  Atlas, y contra el tutorial de lineage de Microsoft Learn para el par
+  análogo `hive_column`/`hive_table`).
+- **Un segundo push del glosario a Purview fallaba**: `POST
+  glossary/term` devuelve 409 si el término ya existe por nombre — un
+  re-push completo abortaba a mitad de camino. Ahora `push_glossary`
+  primero lista los términos existentes del glosario (`GET
+  glossary/{guid}/terms`) y actualiza (`PUT glossary/term/{guid}`) los
+  que coinciden por nombre; solo los nuevos usan `POST`. Idempotente de
+  verdad, no solo en la happy path.
+
+### Gap más grande cerrado: pull desde Purview (antes solo existía para Collibra)
+
+`mvdg/purview_pull.py` (nuevo) trae de vuelta lo que ya está en Purview,
+espejo de `collibra_pull.py`:
+
+- **Glosario**: `GET .../catalog/api/atlas/v2/glossary` + `GET
+  .../glossary/{guid}/terms` — mismos endpoints clásicos que usa el push.
+- **Catálogo** (tablas ya registradas): acá hubo una sorpresa al
+  verificar — el endpoint de discovery/search clásico bajo
+  `/catalog/api/...` **ya no está documentado por Microsoft como un
+  recurso propio** (su página de referencia redirige permanentemente a la
+  de `/datamap/...`). Para esto puntual, `pull_catalog()` usa la API de
+  Discovery vigente hoy: `POST /datamap/api/search/query`, con un
+  envoltorio de respuesta distinto (`{"value": [...], "continuationToken":
+  ...}`, no el de Atlas) y paginación por cursor en vez de offset. El
+  resto del conector (`entity/bulk`, `glossary`) sigue funcionando bajo
+  `/catalog/...` sin problema — es solo la búsqueda la que migró de raíz.
+
+**Sigue sin traer**: asignaciones de owner/steward (Purview no expone eso
+por Atlas de forma directa) — mismo criterio de honestidad que con
+Collibra Responsibility.
+
+### El pull ahora persiste (antes era solo un visor)
+
+Antes, tanto `collibra_pull` como el nuevo `purview_pull` mostraban lo
+traído en pantalla (o lo dejaban bajar como CSV) pero no quedaba guardado
+en el programa — cerrabas la sesión y había que volver a traerlo todo.
+
+`mvdg/imported.py` (nuevo) guarda lo traído en
+`~/.mv_data_governance/importado.json` (mismo patrón que
+`curation.py`/`connectors.py`), con un botón **💾 Guardar localmente** en
+cada sección de pull. Más importante que el archivo: **lo importado entra
+al mismo circuito de gobierno que todo lo demás** — cada término/tabla
+guardado aparece en 🖊️ Curaduría, con su origen visible ("⬇️ purview" /
+"⬇️ collibra"), como cualquier otra definición pre-establecida esperando
+que un Data Owner/Steward la valide. No se lo mete a la fuerza en el
+catálogo/glosario de demo (que es un modelo fijo pensado para 4 datasets
+sintéticos) — es su propia colección visible, exportable, y con el mismo
+tratamiento de responsable.
+
+### qualifiedNames reales (Azure SQL Database) — merge en vez de catálogo fantasma
+
+Antes, TODO dataset se empujaba con un qualifiedName sintético
+(`mvdg://dataset`) — Purview lo trata como una entidad totalmente nueva,
+sin relación con lo que un scanner nativo ya haya indexado de esa misma
+tabla física. Se investigó qué formato de qualifiedName usa cada scanner
+nativo de Purview, y el resultado fue desparejo a propósito:
+
+- **Azure SQL Database**: formato **confirmado** —
+  `mssql://{server}.database.windows.net/{database}/{schema}/{table}` —
+  verificado con un ejemplo antes/después real en "Asset normalization in
+  Microsoft Purview Data Map" (Microsoft Learn). `connectors.
+  purview_qualified_name(profile, table)` lo arma solo cuando el host de
+  tu conexión guardada termina en `.database.windows.net`.
+- **SQL Server on-premises, PostgreSQL, MySQL**: Purview tiene scanners
+  nativos propios para todos estos, pero Microsoft **no publica** el
+  formato exacto de qualifiedName que les asignan (se verificó
+  explícitamente: ni el connector doc de on-prem SQL Server ni el de
+  PostgreSQL/MySQL lo mencionan). Inventar un patrón acá generaría
+  exactamente el catálogo fantasma que esto busca evitar — así que para
+  estos motores se sigue usando el identificador sintético. `push_all` y
+  `push_catalog` aceptan un `qualified_name_map` opcional; sin él (el
+  default), el comportamiento es idéntico al de antes.
+
+### Robustez de red
+
+Antes, un solo error HTTP a mitad de un push (un término, una entidad, un
+lote) abortaba TODO sin ningún resumen de qué sí y qué no se mandó.
+
+- **Purview**: `entity/bulk` ahora se banda en lotes de 500 entidades; si
+  un lote falla, el resto se sigue mandando igual (el fallo queda en
+  `failed_batches`). El push del glosario y las clasificaciones PII
+  reportan cada término/request que falló en `failed`, sin frenar el
+  resto. `_http_json` reintenta automáticamente ante 429 (Too Many
+  Requests) con backoff — respeta el header `Retry-After` si Purview lo
+  manda, y si no, backoff exponencial (hasta 3 reintentos).
+- **Collibra**: `_push_assets` aplica el mismo criterio — cada asset/
+  atributo/relación que falla queda registrado en `failed` (con el nombre
+  y el error) sin abortar el resto del catálogo o el glosario.
+
+### Relación columna→tabla en Collibra (opcional, sin adivinar el typeId)
+
+Igual que Purview, las columnas de Collibra quedaban sueltas del dominio,
+sin relación explícita a su tabla. Se agregó la creación de esa relación
+vía `POST /rest/2.0/relations` (`{sourceId, targetId, typeId}` —
+confirmado contra el OpenAPI del Collibra Developer Portal), pero **solo
+si** se configura `COLLIBRA_COLUMN_TABLE_RELATION_TYPE_ID`: ese typeId (el
+de la relación "Column is part of Table") depende del Operating Model de
+cada instancia y Collibra no publica un UUID de fábrica para adivinarlo —
+mismo criterio que `COLLIBRA_TABLE_TYPE_ID`/`COLLIBRA_COLUMN_TYPE_ID`. Sin
+la variable, el push funciona exactamente igual que antes (sin regresión).
+
+### Simetría de estados: Collibra también recibe Candidate/Accepted
+
+Antes, Purview recibía Draft/Approved reflejando la curaduría real, pero
+Collibra no recibía ningún status — quedaba con el default de la
+instancia. Ahora `build_term_payloads` manda `statusId`: **Candidate**
+(`00000000-0000-0000-0000-000000005008`, el status inicial de todo asset
+nuevo en Collibra) para lo sin revisar, **Accepted**
+(`00000000-0000-0000-0000-000000005009`, el que ponen los stewards al
+aprobar) para lo validado/modificado en 🖊️ Curaduría. Ambos son UUIDs
+out-of-the-box documentados por el Collibra Product Resource Center
+("Out-of-the-box statuses") — fijos en toda instancia, igual que
+`DEFINITION_ATTRIBUTE_TYPE_ID` — y overridables
+(`COLLIBRA_CANDIDATE_STATUS_ID`/`COLLIBRA_ACCEPTED_STATUS_ID`) para
+instancias con un modelo de statuses distinto.
+
+### Seguridad: contraseñas y login del modo servidor
+
+Dos hallazgos reales de una revisión de seguridad, y lo que se hizo:
+
+- **Contraseñas de conexión guardadas solo en base64**: eso es
+  ofuscación, no cifrado — cualquiera con el archivo `conexiones.json`
+  puede leerlas. Ahora `mvdg/connectors.py` intenta primero el **keyring
+  del sistema operativo** (Windows Credential Manager, macOS Keychain,
+  Secret Service de Linux) — ahí la contraseña queda cifrada por el
+  propio SO, y el JSON solo guarda una referencia (`secret_backend:
+  "keyring"`). Si no hay keyring disponible o utilizable (típico en un
+  servidor Linux headless, o en un backend roto — se probó explícitamente
+  contra un entorno sin él) cae, con aviso explícito y sin romper el
+  guardado, a la ofuscación base64 de antes (`secret_backend:
+  "obfuscated"`) — la interfaz nunca finge más seguridad de la que
+  realmente hay.
+- **Modo servidor sin login**: la lista de "servidores autorizados"
+  decide en qué MÁQUINA puede arrancar el programa, no QUIÉN puede entrar
+  una vez que ya está arriba — con la lista sola, cualquiera que llegue a
+  `host:puerto` en la red de la empresa entraba sin contraseña. Ahora, si
+  se define `MVDG_SERVER_PASSWORD`, el modo servidor pide esa contraseña
+  compartida antes de mostrar el dashboard (comparación en tiempo
+  constante, `hmac.compare_digest`). Sin la variable, el servidor sigue
+  funcionando como antes (abierto), con el mismo aviso explícito que ya
+  existía para "sin lista de hosts autorizados".
+
+### El techo del glosario clásico de Purview (Unified Catalog)
+
+Advertencia de la auditoría, documentada acá porque es real: los términos
+que este conector empuja/trae viajan por la API del **glosario "clásico"**
+de Atlas (`/catalog/api/atlas/v2/glossary`). Microsoft está moviendo la
+gestión de glosario de negocio hacia el **Unified Catalog** (governance
+domains) del portal nuevo de Purview — una API distinta, con su propio
+modelo de dominios de gobierno. El override `PURVIEW_API_BASE` (para
+instalaciones que ya usan `api.purview-service.microsoft.com` en vez del
+`{cuenta}.purview.azure.com` clásico) ya anticipa parte de este cambio de
+raíz, pero el glosario clásico sigue siendo la superficie soportada hoy —
+si tu organización ya migró por completo al Unified Catalog, confirmá con
+tu equipo de Purview si el glosario clásico sigue siendo el destino
+correcto antes de depender de este conector en producción.
+
+### Lo que sigue sin poder verificarse (honestidad, no ausencia de esfuerzo)
+
+Ninguno de los dos conectores (push ni pull, Purview ni Collibra) se
+probó contra un tenant/instancia real — sigue sin haber uno disponible en
+este entorno de desarrollo. Cada endpoint nuevo de esta ronda se verificó
+contra documentación oficial (Microsoft Learn, Apache Atlas GitHub,
+Collibra Developer Portal, Collibra Product Resource Center) con
+ejemplos de request/response reales — no se inventó ningún payload — pero
+eso no reemplaza una prueba contra un tenant de verdad. Antes de un push
+real: `dry_run=True` primero, después contra una colección/dominio de
+prueba, nunca directo a producción.
+
+### Verificación de esta ronda
+
+`tests/test_core.py` suma ~35 tests nuevos: roundtrip HTTP real (servidor
+local) para `purview_pull`, persistencia + integración a Curaduría de lo
+importado, keyring con fallback (probado explícitamente contra un backend
+roto), `purview_qualified_name` para Azure SQL y su ausencia deliberada
+para todo lo demás, login del modo servidor, batching + reintento 429 +
+aislamiento de fallos por ítem en ambos conectores, y la simetría de
+estados en Collibra. `python -m mvdg.selfcheck` suma 4 chequeos nuevos
+(40/40 en total).

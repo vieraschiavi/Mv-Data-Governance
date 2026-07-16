@@ -53,6 +53,15 @@ _REQUIRED_ENV = ("COLLIBRA_BASE_URL", "COLLIBRA_USERNAME", "COLLIBRA_PASSWORD",
 # default del modelo estándar pero overridable.
 DEFINITION_ATTRIBUTE_TYPE_ID = "00000000-0000-0000-0000-000000000202"
 _DEFAULT_TERM_TYPE_ID = "00000000-0000-0000-0000-000000011001"
+# Statuses out-of-the-box de Collibra (fijos en toda instancia, igual que
+# DEFINITION_ATTRIBUTE_TYPE_ID) — verificados contra "Out-of-the-box
+# statuses" del Collibra Product Resource Center. "Candidate" es el status
+# inicial de todo asset nuevo; "Accepted" es el que ponen los stewards al
+# aprobar. Overridables (COLLIBRA_CANDIDATE_STATUS_ID/
+# COLLIBRA_ACCEPTED_STATUS_ID) para instancias con un Operating Model
+# distinto, igual criterio que _DEFAULT_TERM_TYPE_ID.
+_DEFAULT_CANDIDATE_STATUS_ID = "00000000-0000-0000-0000-000000005008"
+_DEFAULT_ACCEPTED_STATUS_ID = "00000000-0000-0000-0000-000000005009"
 
 
 def configured() -> bool:
@@ -133,16 +142,29 @@ def build_asset_payloads(catalog: pd.DataFrame, dictionary: pd.DataFrame,
 
 def build_term_payloads(glossary: pd.DataFrame, term_type_id: str, domain_id: str,
                         curation_lookup=None) -> list[dict]:
+    """``curation_lookup(term_id) -> (status, text)`` es opcional — si se
+    pasa, el ``statusId`` del término en Collibra refleja la curaduría real:
+    Accepted si un responsable validó/modificó, Candidate (el status
+    inicial de Collibra para todo asset nuevo) si sigue siendo la
+    sugerencia de IA sin revisar. Mismo criterio que Draft/Approved en
+    Purview — Collibra ahora recibe la misma señal de qué está realmente
+    gobernado."""
+    candidate_id = os.environ.get("COLLIBRA_CANDIDATE_STATUS_ID") or _DEFAULT_CANDIDATE_STATUS_ID
+    accepted_id = os.environ.get("COLLIBRA_ACCEPTED_STATUS_ID") or _DEFAULT_ACCEPTED_STATUS_ID
     terms = []
     for _, row in glossary.iterrows():
         text = row["definition"]
+        status_id = candidate_id
         if curation_lookup is not None:
-            _status, cur_text = curation_lookup(row["term_id"])
+            cur_status, cur_text = curation_lookup(row["term_id"])
+            if cur_status in ("validado", "modificado"):
+                status_id = accepted_id
             if cur_text:
                 text = cur_text
         terms.append({
             "term_id": row["term_id"],
-            "asset": {"name": row["term"], "typeId": term_type_id, "domainId": domain_id},
+            "asset": {"name": row["term"], "typeId": term_type_id, "domainId": domain_id,
+                     "statusId": status_id},
             "description": text,
         })
     return terms
@@ -150,16 +172,49 @@ def build_term_payloads(glossary: pd.DataFrame, term_type_id: str, domain_id: st
 
 # ------------------------------------------------------------------ push
 def _push_assets(payloads: list[dict], cookie: str) -> list[dict]:
-    created = []
+    """Crea cada asset con su Definición y, para columnas, la relación a su
+    tabla — si el cliente configuró ``COLLIBRA_COLUMN_TABLE_RELATION_TYPE_ID``.
+
+    Ese typeId (el de la relación "Column is part of Table") depende del
+    Operating Model de cada instancia igual que ``COLLIBRA_TABLE_TYPE_ID``/
+    ``COLLIBRA_COLUMN_TYPE_ID`` — no hay un UUID de fábrica publicado para
+    adivinarlo, así que sin la variable configurada las columnas se crean
+    igual, solo sueltas del dominio sin relación explícita a su tabla (el
+    comportamiento de antes, no una regresión).
+
+    Ningún request individual frena el resto: si crear un asset, su
+    atributo o su relación falla (red, 4xx/5xx), el error queda registrado
+    en ``failed`` sobre ese item puntual y el push sigue con el resto."""
+    relation_type_id = os.environ.get("COLLIBRA_COLUMN_TABLE_RELATION_TYPE_ID", "")
+    table_id_by_dataset: dict[str, str] = {}
+    created, failed = [], []
     for item in payloads:
-        asset = _http_json(f"{_base_url()}/rest/2.0/assets", _headers(cookie),
-                           method="POST", body=item["asset"])[0]
+        try:
+            asset = _http_json(f"{_base_url()}/rest/2.0/assets", _headers(cookie),
+                               method="POST", body=item["asset"])[0]
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            failed.append({"name": item["asset"]["name"], "step": "asset", "error": str(exc)})
+            continue
         if item.get("description"):
-            _http_json(f"{_base_url()}/rest/2.0/attributes", _headers(cookie), method="POST",
-                      body={"assetId": asset["id"], "typeId": DEFINITION_ATTRIBUTE_TYPE_ID,
-                            "value": item["description"]})
+            try:
+                _http_json(f"{_base_url()}/rest/2.0/attributes", _headers(cookie), method="POST",
+                          body={"assetId": asset["id"], "typeId": DEFINITION_ATTRIBUTE_TYPE_ID,
+                                "value": item["description"]})
+            except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                failed.append({"name": item["asset"]["name"], "step": "attribute", "error": str(exc)})
+        if item.get("kind") == "table" and asset.get("id"):
+            table_id_by_dataset[item["dataset"]] = asset["id"]
+        elif (item.get("kind") == "column" and relation_type_id and asset.get("id")
+              and item["dataset"] in table_id_by_dataset):
+            try:
+                _http_json(f"{_base_url()}/rest/2.0/relations", _headers(cookie), method="POST",
+                          body={"sourceId": asset["id"],
+                                "targetId": table_id_by_dataset[item["dataset"]],
+                                "typeId": relation_type_id})
+            except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                failed.append({"name": item["asset"]["name"], "step": "relation", "error": str(exc)})
         created.append({**item, "asset_id": asset.get("id")})
-    return created
+    return created, failed
 
 
 def push_catalog(catalog: pd.DataFrame, dictionary: pd.DataFrame, dry_run: bool = True,
@@ -180,11 +235,11 @@ def push_catalog(catalog: pd.DataFrame, dictionary: pd.DataFrame, dry_run: bool 
     own_session = cookie is None
     cookie = cookie or _sign_in()
     try:
-        created = _push_assets(payloads, cookie)
+        created, failed = _push_assets(payloads, cookie)
     finally:
         if own_session:
             _sign_out(cookie)
-    return {"dry_run": False, "asset_count": len(created), "created": created}
+    return {"dry_run": False, "asset_count": len(created), "created": created, "failed": failed}
 
 
 def push_glossary(glossary: pd.DataFrame, curation_lookup=None, dry_run: bool = True,
@@ -200,11 +255,11 @@ def push_glossary(glossary: pd.DataFrame, curation_lookup=None, dry_run: bool = 
     own_session = cookie is None
     cookie = cookie or _sign_in()
     try:
-        created = _push_assets(payloads, cookie)
+        created, failed = _push_assets(payloads, cookie)
     finally:
         if own_session:
             _sign_out(cookie)
-    return {"dry_run": False, "term_count": len(created), "created": created}
+    return {"dry_run": False, "term_count": len(created), "created": created, "failed": failed}
 
 
 def push_all(catalog: pd.DataFrame, dictionary: pd.DataFrame, glossary: pd.DataFrame,

@@ -172,13 +172,21 @@ def _sample_items(lang: str) -> list[dict]:
     return items
 
 
+def _imported_items(lang: str) -> list[dict]:
+    """Lo traído (pull) de Purview/Collibra y guardado localmente — ver
+    ``mvdg.imported``. Entra al mismo inventario de curaduría que todo lo
+    demás: nada que se importa queda sin responsable acá tampoco."""
+    from . import imported
+    return imported.curation_items(lang)
+
+
 def list_items(lang: str = "es") -> pd.DataFrame:
     """Inventario completo de definiciones curables, con su estado actual,
     el texto vigente (pre-establecido u oficial del responsable) y quién
     lo validó/modificó."""
     records = load_records()
     rows = []
-    for it in _demo_items(lang) + _sample_items(lang):
+    for it in _demo_items(lang) + _sample_items(lang) + _imported_items(lang):
         rec = records.get(it["item_id"], {}).get(lang)
         status = rec["status"] if rec else "sugerido_ia"
         effective = (rec["text"] if rec and rec["status"] == "modificado"

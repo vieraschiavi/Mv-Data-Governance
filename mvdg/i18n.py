@@ -40,6 +40,16 @@ _T: dict[str, dict[str, str]] = {
         "en": "Demo with 100% synthetic data — no real customer information.",
         "pt": "Demo com dados 100% sintéticos — sem informações reais de clientes.",
     },
+    # ---------------------------------------------------- login (modo servidor)
+    "auth_title": {"es": "Ingresá la contraseña", "en": "Enter the password", "pt": "Digite a senha"},
+    "auth_intro": {
+        "es": "Este servidor pide una contraseña compartida antes de mostrar el dashboard (configurada por tu equipo de TI con MVDG_SERVER_PASSWORD).",
+        "en": "This server requires a shared password before showing the dashboard (configured by your IT team with MVDG_SERVER_PASSWORD).",
+        "pt": "Este servidor pede uma senha compartilhada antes de mostrar o dashboard (configurada pela sua equipe de TI com MVDG_SERVER_PASSWORD).",
+    },
+    "auth_prompt": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
+    "auth_button": {"es": "Entrar", "en": "Sign in", "pt": "Entrar"},
+    "auth_wrong": {"es": "⚠️ Contraseña incorrecta.", "en": "⚠️ Wrong password.", "pt": "⚠️ Senha incorreta."},
     # ----------------------------------------------------------------- tabs
     "tab_overview": {"es": "📊 Panorama", "en": "📊 Overview", "pt": "📊 Panorama"},
     "tab_catalog": {"es": "📚 Catálogo", "en": "📚 Catalog", "pt": "📚 Catálogo"},
@@ -728,9 +738,43 @@ _T: dict[str, dict[str, str]] = {
     "cbp_download_terms": {"es": "⬇️ Descargar términos (.csv)", "en": "⬇️ Download terms (.csv)", "pt": "⬇️ Baixar termos (.csv)"},
     "cbp_download_tables": {"es": "⬇️ Descargar tablas (.csv)", "en": "⬇️ Download tables (.csv)", "pt": "⬇️ Baixar tabelas (.csv)"},
     "cbp_local_note": {
-        "es": "Apagado por defecto. Esto solo LEE de tu instancia de Collibra — no modifica ni borra nada ahí. Lo que se trae queda en esta pantalla; guardarlo en el glosario/catálogo del programa es un paso manual, a propósito.",
-        "en": "Off by default. This only READS from your Collibra instance — it never modifies or deletes anything there. What's pulled stays on this screen; saving it into the program's glossary/catalog is a manual step, on purpose.",
-        "pt": "Desligado por padrão. Isso apenas LÊ da sua instância Collibra — nunca modifica ou apaga nada lá. O que é trazido fica nesta tela; salvá-lo no glossário/catálogo do programa é um passo manual, de propósito.",
+        "es": "Apagado por defecto. Esto solo LEE de tu instancia de Collibra — no modifica ni borra nada ahí. Lo que se trae queda en esta pantalla; guardarlo en el programa (botón 💾 Guardar localmente) es un paso manual, a propósito.",
+        "en": "Off by default. This only READS from your Collibra instance — it never modifies or deletes anything there. What's pulled stays on this screen; saving it into the program (💾 Save locally button) is a manual step, on purpose.",
+        "pt": "Desligado por padrão. Isso apenas LÊ da sua instância Collibra — nunca modifica ou apaga nada lá. O que é trazido fica nesta tela; salvá-lo no programa (botão 💾 Salvar localmente) é um passo manual, de propósito.",
+    },
+    # ----------------------------------------------------------- Purview pull (pvp)
+    "pvp_title": {"es": "⬇️ Traer de Purview (conector inverso)", "en": "⬇️ Pull from Purview (reverse connector)", "pt": "⬇️ Trazer do Purview (conector inverso)"},
+    "pvp_intro": {
+        "es": "Igual que ⬇️ Traer de Collibra, pero para Purview: trae los términos del glosario \"MV Data Governance\" que ya vive ahí (los que este mismo programa empujó, o los que alguien agregó directo en Purview) — para no perder trabajo hecho del lado de Purview.",
+        "en": "Same as ⬇️ Pull from Collibra, but for Purview: pulls the terms of the \"MV Data Governance\" glossary that already lives there (whether this program pushed them, or someone added them directly in Purview) — so work done on the Purview side isn't lost.",
+        "pt": "Igual a ⬇️ Trazer do Collibra, mas para o Purview: traz os termos do glossário \"MV Data Governance\" que já vive lá (os que este programa empurrou, ou os que alguém adicionou direto no Purview) — para não perder trabalho feito do lado do Purview.",
+    },
+    "pvp_env": {
+        "es": "Sin configurar — mismas variables que 🔀 Migración (`PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME`).",
+        "en": "Not configured — same variables as 🔀 Migration (`PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME`).",
+        "pt": "Não configurado — mesmas variáveis que 🔀 Migração (`PURVIEW_TENANT_ID`, `PURVIEW_CLIENT_ID`, `PURVIEW_CLIENT_SECRET`, `PURVIEW_ACCOUNT_NAME`).",
+    },
+    "pvp_run": {"es": "⬇️ Traer de Purview ahora", "en": "⬇️ Pull from Purview now", "pt": "⬇️ Trazer do Purview agora"},
+    "pvp_terms": {"es": "Términos traídos", "en": "Terms pulled", "pt": "Termos trazidos"},
+    "pvp_download_terms": {"es": "⬇️ Descargar términos (.csv)", "en": "⬇️ Download terms (.csv)", "pt": "⬇️ Baixar termos (.csv)"},
+    "pvp_local_note": {
+        "es": "Apagado por defecto. Esto solo LEE de tu Purview — no modifica ni borra nada ahí. El catálogo usa la API de Discovery vigente de Microsoft (`/datamap/api/search/query`), distinta de la que usa el resto del conector — ver docs/PURVIEW_COLLIBRA.md.",
+        "en": "Off by default. This only READS from your Purview — it never modifies or deletes anything there. Catalog uses Microsoft's current Discovery API (`/datamap/api/search/query`), different from the one the rest of the connector uses — see docs/PURVIEW_COLLIBRA.md.",
+        "pt": "Desligado por padrão. Isso apenas LÊ do seu Purview — nunca modifica ou apaga nada lá. O catálogo usa a API de Discovery vigente da Microsoft (`/datamap/api/search/query`), diferente da que o resto do conector usa — veja docs/PURVIEW_COLLIBRA.md.",
+    },
+    # --------------------------------------------------- importado (persistencia del pull)
+    "imp_save": {"es": "💾 Guardar localmente", "en": "💾 Save locally", "pt": "💾 Salvar localmente"},
+    "imp_saved_ok": {"es": "Guardado: {n} ítem(s).", "en": "Saved: {n} item(s).", "pt": "Salvo: {n} item(ns)."},
+    "imp_title": {"es": "📥 Importado (guardado localmente)", "en": "📥 Imported (saved locally)", "pt": "📥 Importado (salvo localmente)"},
+    "imp_intro": {
+        "es": "Lo que trajiste de Purview/Collibra y guardaste con 💾 — persiste entre sesiones (~/.mv_data_governance/importado.json).",
+        "en": "What you pulled from Purview/Collibra and saved with 💾 — persists across sessions (~/.mv_data_governance/importado.json).",
+        "pt": "O que você trouxe do Purview/Collibra e salvou com 💾 — persiste entre sessões (~/.mv_data_governance/importado.json).",
+    },
+    "imp_curation_note": {
+        "es": "Esto no queda aislado: cada término/tabla importado aparece también en 🖊️ Curaduría, con su origen visible, esperando que un Data Owner/Steward lo valide como cualquier otra definición del programa.",
+        "en": "This doesn't stay isolated: every imported term/table also shows up in 🖊️ Curation, with its origin visible, waiting for a Data Owner/Steward to validate it like any other definition in the program.",
+        "pt": "Isso não fica isolado: cada termo/tabela importado também aparece em 🖊️ Curadoria, com sua origem visível, esperando que um Data Owner/Steward o valide como qualquer outra definição do programa.",
     },
     # -------------------------------------------------------------- clients
     "cl_intro": {
