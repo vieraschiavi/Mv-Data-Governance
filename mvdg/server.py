@@ -21,9 +21,20 @@ abierto (sin restricción). El valor especial ``*`` autoriza cualquier host.
 Host y puerto de escucha se configuran con MVDG_SERVER_HOST (por defecto
 0.0.0.0, accesible en la red de la empresa) y MVDG_SERVER_PORT (por defecto
 8501).
+
+Ojo con lo que "servidor autorizado" NO cubre: esa lista decide en qué
+MÁQUINA puede arrancar el programa, no QUIÉN puede entrar una vez que ya
+está arriba — con la lista sola, cualquiera que llegue a host:puerto en la
+red de la empresa entra sin login. Por eso, en modo servidor, si se define
+``MVDG_SERVER_PASSWORD`` se exige esa contraseña compartida antes de
+mostrar el dashboard (ver ``auth_required``/``check_password``, aplicado en
+``app/app.py``). Sin esa variable, el servidor sigue funcionando (como
+antes) pero queda abierto a quien llegue a la red — se avisa igual que se
+avisa el modo "servidor abierto" sin lista de hosts.
 """
 from __future__ import annotations
 
+import hmac
 import os
 import socket
 import sys
@@ -31,6 +42,35 @@ import sys
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8501
 AUTHORIZED_FILE = "server_authorized.txt"
+_SERVER_MODE_ENV = "MVDG_SERVER_MODE"
+_PASSWORD_ENV = "MVDG_SERVER_PASSWORD"
+
+
+def server_mode_active() -> bool:
+    """¿Este proceso arrancó vía ``run_server`` (modo servidor), a
+    diferencia del .bat/.exe de escritorio? Lo marca ``run_server`` con una
+    variable de entorno antes de levantar Streamlit — así ``app/app.py``
+    puede diferenciar sin que el módulo de la UI necesite saber cómo se
+    lanzó el proceso."""
+    return os.environ.get(_SERVER_MODE_ENV) == "1"
+
+
+def auth_required() -> bool:
+    """¿Hay que pedir la contraseña compartida antes de mostrar el
+    dashboard? Solo aplica en modo servidor Y si se configuró
+    MVDG_SERVER_PASSWORD — en modo escritorio (un solo usuario, en su
+    propia PC) no tiene sentido pedir login."""
+    return server_mode_active() and bool(os.environ.get(_PASSWORD_ENV))
+
+
+def check_password(candidate: str) -> bool:
+    """Comparación en tiempo constante (evita timing attacks) contra
+    MVDG_SERVER_PASSWORD. Si la variable no está seteada, siempre False —
+    nunca "sin contraseña configurada = cualquiera entra silenciosamente"."""
+    expected = os.environ.get(_PASSWORD_ENV, "")
+    if not expected:
+        return False
+    return hmac.compare_digest((candidate or "").encode("utf-8"), expected.encode("utf-8"))
 
 
 def local_identities() -> set[str]:
@@ -146,6 +186,7 @@ def run_server(argv_out: list | None = None) -> int:
     Si ``argv_out`` es una lista, se rellena con los argumentos de Streamlit y
     NO se lanza el servidor (modo test / dry-run). Devuelve un código de salida.
     """
+    os.environ[_SERVER_MODE_ENV] = "1"
     base = _base_dir()
     host, port = _resolve_host_port()
     authorized = load_authorized(base)
@@ -174,6 +215,14 @@ def run_server(argv_out: list | None = None) -> int:
         sys.stderr.write(
             "\n  [MV Data Governance] Servidor autorizado / authorized / autorizado ("
             + str(status["matched"]) + "). Iniciando / starting / iniciando...\n\n")
+
+    if not auth_required():
+        sys.stderr.write(
+            "  [MV Data Governance] Sin MVDG_SERVER_PASSWORD: quien llegue a "
+            f"http://{host}:{port} en la red entra sin login / anyone reaching "
+            f"http://{host}:{port} on the network gets in without a login /\n"
+            "  quem chegar no endereço na rede entra sem login. Para pedir "
+            "contraseña compartida, definí MVDG_SERVER_PASSWORD.\n\n")
 
     app_path = os.path.join(base, "app", "app.py")
     os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")

@@ -321,6 +321,69 @@ def run_checks() -> list[tuple[str, bool, str]]:
             pass
         return "sin credenciales -> RuntimeError; no reimplementa Responsibility (owner/steward) sin verificar la API primero"
 
+    @check("Conector inverso Purview (pull, apagado por defecto)")
+    def _():
+        from . import purview_pull as pvp
+        assert pvp.configured() is False
+        try:
+            pvp.pull_glossary()
+            raise AssertionError("debería haber levantado RuntimeError sin credenciales")
+        except RuntimeError:
+            pass
+        return "sin credenciales -> RuntimeError; cubre glosario y catálogo (Discovery API vigente)"
+
+    @check("Persistencia de lo importado (Purview/Collibra) + entra a Curaduría")
+    def _():
+        import os
+        import tempfile
+
+        from . import curation, imported
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                n = imported.save_terms("collibra", [{"collibra_id": "sc-1", "name": "Selfcheck",
+                                                       "definition": "Definición de prueba."}])
+                assert n == 1
+                df = curation.list_items("es")
+                assert (df["item_id"] == "glossary:imported:collibra:sc-1").any()
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return "lo traído se guarda en disco y aparece en 🖊️ Curaduría con su origen visible"
+
+    @check("Contraseñas de conexión: keyring del SO con respaldo ofuscado")
+    def _():
+        from . import connectors as c
+        result = c._keyring_usable()
+        assert isinstance(result, bool)
+        return (f"keyring del SO {'disponible' if result else 'no disponible en este entorno'} "
+                "-> nunca se cae el guardado, solo cambia el respaldo (keyring real u ofuscado)")
+
+    @check("Login del modo servidor (MVDG_SERVER_PASSWORD)")
+    def _():
+        import os
+        from . import server
+        prev_mode = os.environ.pop("MVDG_SERVER_MODE", None)
+        prev_pwd = os.environ.pop("MVDG_SERVER_PASSWORD", None)
+        try:
+            assert server.auth_required() is False  # sin modo servidor, no pide login
+            os.environ["MVDG_SERVER_MODE"] = "1"
+            os.environ["MVDG_SERVER_PASSWORD"] = "selfcheck-pw"
+            assert server.auth_required() is True
+            assert server.check_password("selfcheck-pw") is True
+            assert server.check_password("otra") is False
+        finally:
+            os.environ.pop("MVDG_SERVER_MODE", None)
+            os.environ.pop("MVDG_SERVER_PASSWORD", None)
+            if prev_mode is not None:
+                os.environ["MVDG_SERVER_MODE"] = prev_mode
+            if prev_pwd is not None:
+                os.environ["MVDG_SERVER_PASSWORD"] = prev_pwd
+        return "sin MVDG_SERVER_PASSWORD no pide login (como antes); con ella, gate real antes del dashboard"
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os
