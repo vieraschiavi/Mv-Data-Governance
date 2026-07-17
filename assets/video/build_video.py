@@ -321,10 +321,10 @@ def scene_outro(p: float) -> Image.Image:
     center_text(d, 210, "MV Data Governance", font(56), INK)
     center_text(d, 300, "Tus datos, gobernados. Tus decisiones, confiables.", font(24, False), MUTED)
     center_text(d, 340, "Your data, governed. · Seus dados, governados.", font(20, False), FAINT)
-    if p > 0.35:
-        badge(d, W // 2, 430, "DESCARGA · DOWNLOAD: MV_DataGovernance.bat / .EXE", font(19))
-    if p > 0.6:
-        center_text(d, 510, "github.com/vieraschiavi/Mv-Data-Governance", font(21), AMBER)
+    # cierre orientado a clientes: solo la web de venta — sin nombres de
+    # archivos (.bat/.exe) ni el repositorio de GitHub (pedido explícito)
+    if p > 0.4:
+        badge(d, W // 2, 450, "mv-data-governance.vercel.app", font(22))
     return img
 
 

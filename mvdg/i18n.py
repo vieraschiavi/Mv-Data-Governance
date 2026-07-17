@@ -40,6 +40,35 @@ _T: dict[str, dict[str, str]] = {
         "en": "Demo with 100% synthetic data — no real customer information.",
         "pt": "Demo com dados 100% sintéticos — sem informações reais de clientes.",
     },
+    # -------------------------------------------------- 📦 entregable final (del)
+    "del_intro": {
+        "es": "El entregable final de cada caso: lo que un consultor deja sobre la mesa al terminar el trabajo de gobernanza — ficha, KPIs finales de calidad/documentación/curaduría, diccionario, reglas, glosario, linaje y el estado de migración a Purview/Collibra. Descargable en Excel y como resumen ejecutivo.",
+        "en": "The final deliverable for each case: what a consultant leaves on the table when the governance work is done — overview, final quality/documentation/curation KPIs, dictionary, rules, glossary, lineage and Purview/Collibra migration readiness. Downloadable as Excel and as an executive summary.",
+        "pt": "O entregável final de cada caso: o que um consultor deixa na mesa ao terminar o trabalho de governança — ficha, KPIs finais de qualidade/documentação/curadoria, dicionário, regras, glossário, linhagem e prontidão de migração para Purview/Collibra. Baixável em Excel e como resumo executivo.",
+    },
+    "del_pick": {"es": "Caso", "en": "Case", "pt": "Caso"},
+    "del_owner": {"es": "Dueño", "en": "Owner", "pt": "Dono"},
+    "del_source": {"es": "Fuente", "en": "Source", "pt": "Fonte"},
+    "del_kpi_rows": {"es": "Filas × columnas", "en": "Rows × columns", "pt": "Linhas × colunas"},
+    "del_kpi_rules": {"es": "Reglas OK", "en": "Rules OK", "pt": "Regras OK"},
+    "del_kpi_curation": {"es": "Curaduría revisada", "en": "Curation reviewed", "pt": "Curadoria revisada"},
+    "del_kpi_documented": {"es": "Columnas documentadas", "en": "Documented columns", "pt": "Colunas documentadas"},
+    "del_kpi_pii": {"es": "Columnas PII", "en": "PII columns", "pt": "Colunas PII"},
+    "del_kpi_fails": {"es": "Reglas en falla", "en": "Failing rules", "pt": "Regras em falha"},
+    "del_mig_title": {"es": "🔀 Listo para migrar", "en": "🔀 Ready to migrate", "pt": "🔀 Pronto para migrar"},
+    "del_mig_note": {
+        "es": "Calculado con los conectores reales en modo previsualización (mismos payloads que el push real), sin credenciales y sin tocar la red. El estado Approved sale de la curaduría real del caso.",
+        "en": "Computed with the real connectors in preview mode (same payloads as the real push), no credentials, no network. Approved status comes from the case's real curation.",
+        "pt": "Calculado com os conectores reais em modo prévia (mesmos payloads do push real), sem credenciais e sem tocar a rede. O status Approved vem da curadoria real do caso.",
+    },
+    "del_download": {"es": "⬇️ Descargar el entregable", "en": "⬇️ Download the deliverable", "pt": "⬇️ Baixar o entregável"},
+    "del_download_xlsx": {"es": "📊 Excel multi-hoja (ficha + diccionario + calidad + glosario + linaje)", "en": "📊 Multi-sheet Excel (overview + dictionary + quality + glossary + lineage)", "pt": "📊 Excel multi-planilha (ficha + dicionário + qualidade + glossário + linhagem)"},
+    "del_download_md": {"es": "📝 Resumen ejecutivo (Markdown)", "en": "📝 Executive summary (Markdown)", "pt": "📝 Resumo executivo (Markdown)"},
+    "del_honest_note": {
+        "es": "Cada número sale de correr las reglas reales sobre el archivo del caso y de la curaduría guardada — nada está inventado. Si la curaduría está en 0%, ese es el estado real: pasá por 🖊️ Curaduría a validar definiciones y el entregable lo refleja al instante.",
+        "en": "Every number comes from running the real rules on the case file and from the saved curation — nothing is made up. If curation shows 0%, that's the real state: go validate definitions in 🖊️ Curation and the deliverable reflects it instantly.",
+        "pt": "Cada número vem de rodar as regras reais no arquivo do caso e da curadoria salva — nada é inventado. Se a curadoria está em 0%, esse é o estado real: valide definições em 🖊️ Curadoria e o entregável reflete na hora.",
+    },
     # -------------------------------------- alcance combinado (demo + Mis datos)
     "scope_toggle": {
         "es": "🧩 Incluir los casos de Mis datos en todo el programa",
@@ -73,6 +102,7 @@ _T: dict[str, dict[str, str]] = {
     "tab_policies": {"es": "🛡️ Políticas", "en": "🛡️ Policies", "pt": "🛡️ Políticas"},
     "tab_profiler": {"es": "🔎 Mis datos", "en": "🔎 My data", "pt": "🔎 Meus dados"},
     "tab_bi": {"es": "📤 BI & API", "en": "📤 BI & API", "pt": "📤 BI & API"},
+    "tab_deliverable": {"es": "📦 Entregable", "en": "📦 Deliverable", "pt": "📦 Entregável"},
     "tab_clients": {"es": "🏢 Empresas", "en": "🏢 Companies", "pt": "🏢 Empresas"},
     "tab_workspace": {"es": "📁 Proyecto", "en": "📁 Project", "pt": "📁 Projeto"},
     "tab_help": {"es": "❓ Ayuda", "en": "❓ Help", "pt": "❓ Ajuda"},

@@ -422,6 +422,30 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
                 "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
 
+    @check("📦 Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
+    def _():
+        import os
+        import tempfile
+
+        from . import deliverable
+        prev = os.environ.get("MVDG_DATA_DIR")
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["MVDG_DATA_DIR"] = tmp
+            try:
+                for key in deliverable.case_keys():
+                    d = deliverable.build_deliverable(key, "es")
+                    assert d["kpis"]["rows"] > 0
+                    assert d["migration"]["purview_entities"] == 1 + d["kpis"]["columns"]
+                assert len(deliverable.deliverable_xlsx_bytes("medicamentos_openfda", "es")) > 5000
+                assert "Entregable" in deliverable.executive_summary_md("medicamentos_openfda", "es")
+            finally:
+                if prev is None:
+                    os.environ.pop("MVDG_DATA_DIR", None)
+                else:
+                    os.environ["MVDG_DATA_DIR"] = prev
+        return ("4 entregables con KPIs reales + migración en dry-run con los conectores "
+                "reales + Excel multi-hoja y resumen ejecutivo descargables")
+
     @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
     def _():
         import os
