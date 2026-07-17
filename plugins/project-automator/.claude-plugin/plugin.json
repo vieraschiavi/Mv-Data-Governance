@@ -1,0 +1,20 @@
+{
+  "name": "project-automator",
+  "displayName": "Project Automator",
+  "version": "0.1.0",
+  "description": "Convierte cualquier repo en un proyecto donde Claude Code trabaja de forma autónoma y segura, combinando las 12 capacidades de Claude Code (CLAUDE.md, permisos, plan mode, checkpoints, skills, hooks, MCP, plugins, context/compact, slash commands y sub-agentes) en un flujo repetible: init → plan → build → ship, más audit.",
+  "author": {
+    "name": "vieraschiavi"
+  },
+  "repository": "https://github.com/vieraschiavi/Mv-Data-Governance",
+  "license": "MIT",
+  "keywords": [
+    "automation",
+    "workflow",
+    "scaffolding",
+    "plan-mode",
+    "hooks",
+    "sub-agents",
+    "ci"
+  ]
+}

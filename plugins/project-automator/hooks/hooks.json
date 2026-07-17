@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/status.sh\"",
+            "statusMessage": "project-automator: leyendo estado del repo",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
