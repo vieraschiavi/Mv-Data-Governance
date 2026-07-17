@@ -47,6 +47,7 @@ from mvdg import glossary_auto
 from mvdg import purview_export
 from mvdg import purview_pull
 from mvdg import imported as ext_imported
+from mvdg import deliverable as case_deliverable
 from mvdg import samples as ext_samples
 from mvdg import scope as gov_scope
 from mvdg import server as mvdg_server
@@ -158,12 +159,12 @@ results = _results_combined(lang) if incl_samples else _results(lang)
 tables = _tables()
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_cu, tab_resp, tab_p,
- tab_pr, tab_bi, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+ tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
-    t("tab_bi", lang), t("tab_pbi", lang), t("tab_tableau", lang),
+    t("tab_bi", lang), t("tab_deliverable", lang), t("tab_pbi", lang), t("tab_tableau", lang),
     t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
 ])
 
@@ -1849,6 +1850,66 @@ with tab_h:
     for item in purview_collibra_faq(lang):
         with st.expander(f"❓ {item['q']}"):
             st.markdown(item["a"])
+
+# ---------------------------------------------------------- Entregable final
+with tab_del:
+    st.info(t("del_intro", lang), icon="📦")
+    _del_keys = case_deliverable.case_keys()
+    _del_key = st.selectbox(
+        t("del_pick", lang), _del_keys,
+        format_func=lambda k: ext_samples.sample_meta(k, lang)["name"])
+    _del = case_deliverable.build_deliverable(_del_key, lang)
+    _dm, _dk, _dmig = _del["meta"], _del["kpis"], _del["migration"]
+
+    st.subheader(f"📦 {_dm['name']}")
+    st.caption(f"{_dm['domain']} · {_dm['classification']} · "
+               f"{t('del_owner', lang)}: {_dm['owner']} · "
+               f"{t('col_steward', lang)}: {_dm['steward']}")
+    st.caption(f"{t('del_source', lang)}: {_dm['source']}")
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(t("del_kpi_rows", lang), f"{_dk['rows']:,} × {_dk['columns']}")
+    k2.metric(t("kpi_quality", lang), f"{_dk['quality_index']} / 100")
+    k3.metric(t("del_kpi_rules", lang), f"{_dk['rules_pass']} / {_dk['rules_total']}")
+    k4.metric(t("del_kpi_curation", lang),
+              f"{_dk['curation_pct']}% ({_dk['curation_reviewed']}/{_dk['curation_total']})")
+    k5, k6, k7 = st.columns(3)
+    k5.metric(t("del_kpi_documented", lang), f"{_dk['documented_pct']}%")
+    k6.metric(t("del_kpi_pii", lang), _dk["pii_columns"])
+    k7.metric(t("del_kpi_fails", lang), _dk["rules_fail"])
+
+    with st.expander(t("tbl_dictionary", lang)):
+        st.dataframe(_del["dictionary"], width="stretch", hide_index=True)
+    with st.expander(t("tbl_quality", lang)):
+        st.dataframe(_del["quality_results"], width="stretch", hide_index=True)
+    with st.expander(t("tbl_glossary", lang)):
+        st.dataframe(_del["glossary"], width="stretch", hide_index=True)
+    with st.expander(t("tbl_lineage", lang)):
+        st.dataframe(_del["lineage"], width="stretch", hide_index=True)
+
+    st.subheader(t("del_mig_title", lang))
+    st.caption(t("del_mig_note", lang))
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Purview · entidades", _dmig["purview_entities"])
+    g2.metric("Purview · términos",
+              f"{_dmig['purview_terms']} ({_dmig['purview_terms_approved']} Approved)")
+    g3.metric("Collibra · assets", _dmig["collibra_assets"])
+    g4.metric("Collibra · términos", _dmig["collibra_terms"])
+
+    st.subheader(t("del_download", lang))
+    dd1, dd2 = st.columns(2)
+    dd1.download_button(
+        t("del_download_xlsx", lang),
+        case_deliverable.deliverable_xlsx_bytes(_del_key, lang),
+        f"entregable_{_del_key}_{lang}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch")
+    dd2.download_button(
+        t("del_download_md", lang),
+        case_deliverable.executive_summary_md(_del_key, lang).encode("utf-8"),
+        f"entregable_{_del_key}_{lang}.md", "text/markdown",
+        width="stretch")
+    st.caption(t("del_honest_note", lang))
 
 # --------------------------------------------------------------- Power BI
 with tab_pbi:

@@ -3562,3 +3562,176 @@ def test_installer_iss_offers_optional_desktop_and_start_menu():
     assert 'Name: "desktopicon"' in iss               # casilla opcional
     assert "{autodesktop}" in iss and "Tasks: desktopicon" in iss
     assert "{group}" in iss                           # menú inicio siempre
+
+
+# --------------------------------------------- 📦 entregable final por caso
+def test_deliverable_builds_for_every_case(tmp_path, monkeypatch):
+    """El entregable se arma para los 4 casos con KPIs reales (calidad
+    calculada sobre el archivo, no números fijos) y migración en dry-run."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import deliverable
+    for key in deliverable.case_keys():
+        d = deliverable.build_deliverable(key, "es")
+        k = d["kpis"]
+        assert k["rows"] > 0 and k["columns"] > 0
+        assert 0 <= k["quality_index"] <= 100
+        assert k["rules_total"] > 0
+        assert k["documented_pct"] == 100.0  # los casos vienen documentados
+        m = d["migration"]
+        # entidades = 1 tabla + N columnas; términos > 0 — calculado con los
+        # conectores reales en dry-run
+        assert m["purview_entities"] == 1 + k["columns"]
+        assert m["collibra_assets"] == 1 + k["columns"]
+        assert m["purview_terms"] > 0 and m["collibra_terms"] > 0
+        assert len(d["lineage"]) == 2  # fuente->curado, curado->BI
+
+
+def test_deliverable_curation_progress_reflects_real_validation(tmp_path, monkeypatch):
+    """El KPI de curaduría del entregable se mueve cuando un responsable
+    valida de verdad — y el término validado sale Approved hacia Purview."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, deliverable, samples
+    key = "medicamentos_openfda"
+    before = deliverable.build_deliverable(key, "es")
+    assert before["kpis"]["curation_pct"] == 0.0
+    assert before["migration"]["purview_terms_approved"] == 0
+    term_id = samples.SAMPLES[key]["terms"][0]["term_id"]
+    curation.save_validation(f"glossary:{key}:{term_id}", "es", "validado",
+                             "", "M. Viera", "Data Owner")
+    after = deliverable.build_deliverable(key, "es")
+    assert after["kpis"]["curation_reviewed"] == 1
+    assert after["kpis"]["curation_pct"] > 0.0
+    assert after["migration"]["purview_terms_approved"] == 1
+
+
+def test_deliverable_downloads_are_real_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    import io
+    import openpyxl
+    from mvdg import deliverable
+    xlsx = deliverable.deliverable_xlsx_bytes("bank_marketing_uci", "es")
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx))
+    assert set(wb.sheetnames) == {"Ficha", "Diccionario", "Calidad", "Glosario", "Linaje"}
+    for lg, probe in (("es", "Entregable de gobernanza"),
+                      ("en", "Governance deliverable"),
+                      ("pt", "Entregável de governança")):
+        md = deliverable.executive_summary_md("rotulado_alimentos", lg)
+        assert probe in md
+        assert "284" in md  # filas reales del caso del gobierno uruguayo
+
+
+def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
+    """EL CIRCUITO COMPLETO con el caso del laboratorio (medicamentos_openfda),
+    contra un servidor HTTP real que imita Purview: (1) push del catálogo +
+    glosario del caso con su curaduría real, (2) pull de vuelta de lo que
+    quedó en 'Purview', (3) persistencia local de lo traído, (4) entra a
+    Curaduría. Ida y vuelta sin errores, con sockets de verdad."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, deliverable, imported, samples
+    from mvdg import purview_export as pv
+    from mvdg import purview_pull as pvp
+
+    key = "medicamentos_openfda"
+    # curaduría real previa: el laboratorio ya validó su primer término
+    term_id = samples.SAMPLES[key]["terms"][0]["term_id"]
+    curation.save_validation(f"glossary:{key}:{term_id}", "es", "validado",
+                             "", "Dra. Pérez", "Farmacovigilancia")
+
+    meta, cat, dic, glo, _res = deliverable._case_tables(key, "es")
+    lookup = deliverable._curation_lookup(key, "es")
+
+    stored = {"entities": [], "terms": []}  # lo que 'Purview' recibe y devuelve
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _body(self):
+            n = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(n)) if n else None
+
+        def _send(self, code, payload):
+            data = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            body = self._body()
+            if "/oauth2/token" in self.path:
+                self._send(200, {"access_token": "lab-token"})
+            elif self.path.endswith("/entity/bulk"):
+                stored["entities"].extend(body["entities"])
+                mutated = [{"guid": f"g{i}", "attributes":
+                           {"qualifiedName": e["attributes"]["qualifiedName"]}}
+                          for i, e in enumerate(body["entities"])]
+                self._send(200, {"mutatedEntities": {"CREATE": mutated, "UPDATE": []}})
+            elif self.path.endswith("/glossary/term"):
+                term = {**body, "guid": f"term-{len(stored['terms'])}"}
+                stored["terms"].append(term)
+                self._send(200, term)
+            elif self.path.endswith("/entity/bulk/classification"):
+                self._send(200, {})
+            elif "/datamap/api/search/query" in self.path:
+                self._send(200, {"value": [
+                    {"id": f"g{i}", "name": e["attributes"]["name"],
+                     "description": e["attributes"].get("description", "")}
+                    for i, e in enumerate(stored["entities"])
+                    if e["typeName"] == "rdbms_table"], "continuationToken": None})
+            else:
+                self._send(404, {"error": self.path})
+
+        def do_GET(self):
+            if self.path.endswith("/glossary"):
+                self._send(200, [{"guid": "gloss-1", "name": "MV Data Governance"}])
+            elif self.path.endswith("/glossary/gloss-1/terms"):
+                self._send(200, stored["terms"])
+            else:
+                self._send(404, {"error": self.path})
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("PURVIEW_TENANT_ID", "tid")
+        monkeypatch.setenv("PURVIEW_CLIENT_ID", "cid")
+        monkeypatch.setenv("PURVIEW_CLIENT_SECRET", "sec")
+        monkeypatch.setenv("PURVIEW_ACCOUNT_NAME", "lab")
+        monkeypatch.setenv("PURVIEW_API_BASE", f"http://127.0.0.1:{port}")
+
+        def fake_get_token():
+            import urllib.request
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/oauth2/token",
+                                         data=b"{}", method="POST")
+            with urllib.request.urlopen(req) as resp:
+                return json.loads(resp.read())["access_token"]
+
+        monkeypatch.setattr(pv, "_get_token", fake_get_token)
+
+        # (1) IDA: push real del caso del laboratorio
+        pushed = pv.push_all(cat, dic, glo, curation_lookup=lookup, dry_run=False)
+        assert pushed["catalog"]["failed_batches"] == []
+        assert pushed["glossary"]["failed"] == []
+        statuses = {t["name"]: t["status"] for t in stored["terms"]}
+        assert sum(1 for s in statuses.values() if s == "Approved") == 1  # el validado
+
+        # (2) VUELTA: pull de lo que quedó en 'Purview'
+        pulled = pvp.pull_all()
+        assert pulled["glossary"]["term_count"] == len(glo)
+        assert pulled["catalog"]["table_count"] == 1
+        assert pulled["catalog"]["tables"][0]["name"] == key
+
+        # (3) persistencia local + (4) entra a Curaduría
+        n = imported.save_terms("purview", pulled["glossary"]["terms"])
+        n += imported.save_tables("purview", pulled["catalog"]["tables"])
+        assert n == len(glo) + 1
+        cdf = curation.list_items("es")
+        assert cdf["item_id"].str.startswith("glossary:imported:purview:").sum() == len(glo)
+    finally:
+        server.shutdown()
