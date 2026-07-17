@@ -27,6 +27,7 @@ import pandas as pd
 
 from . import collibra_export, curation, purview_export, samples
 from .quality import overall_index
+from .remediation import suggest_fix
 
 _D = {
     "sheet_ficha": {"es": "Ficha", "en": "Overview", "pt": "Ficha"},
@@ -34,6 +35,7 @@ _D = {
     "sheet_cal": {"es": "Calidad", "en": "Quality", "pt": "Qualidade"},
     "sheet_glo": {"es": "Glosario", "en": "Glossary", "pt": "Glossário"},
     "sheet_lin": {"es": "Linaje", "en": "Lineage", "pt": "Linhagem"},
+    "sheet_plan": {"es": "Plan de acción", "en": "Action plan", "pt": "Plano de ação"},
 }
 
 
@@ -105,6 +107,35 @@ def case_lineage_df(key: str, lang: str = "es") -> pd.DataFrame:
     ])
 
 
+def findings_df(key: str, lang: str = "es",
+                results: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Hallazgos del caso con su plan de remediación: cada regla que no
+    pasó (warn/fail) + causa raíz, corrección de corto y largo plazo y a
+    quién le toca — el mismo motor de sugerencias (mvdg.remediation) que
+    usa la pestaña ✅ Calidad. Esto es lo que convierte una "regla en
+    falla" en un entregable profesional: el problema, diagnosticado y con
+    plan de acción, no escondido."""
+    if results is None:
+        results = samples.sample_quality_results(key, lang)
+    rows = []
+    for _, r in results[results["status"] != "pass"].iterrows():
+        fix = suggest_fix(r["rule_id"], r["dimension"], r["column"],
+                          int(r["affected_rows"]), lang)
+        rows.append({
+            "rule_id": r["rule_id"], "column": r["column"],
+            "dimension": r["dimension"], "status": r["status"],
+            "score": r["score"], "threshold": r["threshold"],
+            "affected_rows": int(r["affected_rows"]),
+            "root_cause": fix["root_cause"],
+            "short_term": fix["short_term"],
+            "long_term": fix["long_term"],
+            "owner": fix["owner"],
+        })
+    return pd.DataFrame(rows, columns=[
+        "rule_id", "column", "dimension", "status", "score", "threshold",
+        "affected_rows", "root_cause", "short_term", "long_term", "owner"])
+
+
 def build_deliverable(key: str, lang: str = "es") -> dict:
     """El entregable completo de un caso, listo para mostrarse o exportarse."""
     meta, cat, dic, glo, res = _case_tables(key, lang)
@@ -128,7 +159,8 @@ def build_deliverable(key: str, lang: str = "es") -> dict:
     return {
         "key": key, "meta": meta, "kpis": kpis,
         "catalog": cat, "dictionary": dic, "glossary": glo,
-        "quality_results": res, "lineage": case_lineage_df(key, lang),
+        "quality_results": res, "findings": findings_df(key, lang, res),
+        "lineage": case_lineage_df(key, lang),
         "migration": migration_readiness(key, lang),
     }
 
@@ -146,12 +178,14 @@ def deliverable_xlsx_bytes(key: str, lang: str = "es") -> bytes:
             "fuente": meta["source"], "licencia": meta["license"],
         }, **kpis}.items()], columns=["campo", "valor"])
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:
+    with pd.ExcelWriter(buf, engine="xlsxwriter",
+                       engine_kwargs={"options": {"in_memory": True}}) as xw:
         ficha.to_excel(xw, sheet_name=_t("sheet_ficha", lang)[:31], index=False)
         d["dictionary"].to_excel(xw, sheet_name=_t("sheet_dic", lang)[:31], index=False)
         d["quality_results"].to_excel(xw, sheet_name=_t("sheet_cal", lang)[:31], index=False)
         d["glossary"].to_excel(xw, sheet_name=_t("sheet_glo", lang)[:31], index=False)
         d["lineage"].to_excel(xw, sheet_name=_t("sheet_lin", lang)[:31], index=False)
+        d["findings"].to_excel(xw, sheet_name=_t("sheet_plan", lang)[:31], index=False)
     return buf.getvalue()
 
 
@@ -212,7 +246,31 @@ def executive_summary_md(key: str, lang: str = "es") -> str:
             "regras reais no arquivo do caso e da curadoria salva.*\n"
         ),
     }
-    return tpl.get(lang, tpl["es"]).format(
+    heads = {
+        "es": ("## Hallazgos y plan de remediación\n\n"
+               "El entregable no esconde los problemas: los diagnostica con plan. "
+               "Cada hallazgo tiene causa raíz, corrección inmediata, corrección "
+               "de fondo y responsable:\n\n"),
+        "en": ("## Findings and remediation plan\n\n"
+               "The deliverable doesn't hide problems: it diagnoses them with a plan. "
+               "Each finding has a root cause, an immediate fix, a structural fix "
+               "and an owner:\n\n"),
+        "pt": ("## Achados e plano de remediação\n\n"
+               "O entregável não esconde os problemas: diagnostica-os com plano. "
+               "Cada achado tem causa raiz, correção imediata, correção estrutural "
+               "e responsável:\n\n"),
+    }
+    fnd = d["findings"]
+    findings_md = ""
+    if len(fnd):
+        findings_md = heads.get(lang, heads["es"])
+        for _, r in fnd.iterrows():
+            findings_md += (
+                f"- **{r['rule_id']}** ({r['column']}, {r['status']}, "
+                f"{r['affected_rows']:,} filas) — {r['root_cause']} "
+                f"→ *{r['short_term']}* — **{r['owner']}**\n")
+        findings_md += "\n"
+    body = tpl.get(lang, tpl["es"]).format(
         name=m["name"], key=key, domain=m["domain"], cls=m["classification"],
         owner=m["owner"], steward=m["steward"], source=m["source"],
         license=m["license"], rows=k["rows"], cols=k["columns"],
@@ -222,3 +280,6 @@ def executive_summary_md(key: str, lang: str = "es") -> str:
         pv_e=mig["purview_entities"], pv_t=mig["purview_terms"],
         pv_a=mig["purview_terms_approved"], pv_p=mig["purview_pii"],
         cb_a=mig["collibra_assets"], cb_t=mig["collibra_terms"])
+    marker = "*Generado por" if lang == "es" else ("*Generated by" if lang == "en" else "*Gerado pelo")
+    idx = body.rfind(marker)
+    return body[:idx] + findings_md + body[idx:]

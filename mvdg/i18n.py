@@ -54,7 +54,13 @@ _T: dict[str, dict[str, str]] = {
     "del_kpi_curation": {"es": "Curaduría revisada", "en": "Curation reviewed", "pt": "Curadoria revisada"},
     "del_kpi_documented": {"es": "Columnas documentadas", "en": "Documented columns", "pt": "Colunas documentadas"},
     "del_kpi_pii": {"es": "Columnas PII", "en": "PII columns", "pt": "Colunas PII"},
-    "del_kpi_fails": {"es": "Reglas en falla", "en": "Failing rules", "pt": "Regras em falha"},
+    "del_kpi_fails": {"es": "Hallazgos (con plan)", "en": "Findings (with plan)", "pt": "Achados (com plano)"},
+    "del_findings": {"es": "🩺 Hallazgos y plan de remediación", "en": "🩺 Findings and remediation plan", "pt": "🩺 Achados e plano de remediação"},
+    "del_findings_note": {
+        "es": "Un entregable profesional no esconde los problemas del dato: los diagnostica. Cada regla que no pasó aparece acá con su causa raíz, la corrección inmediata, la de fondo y el responsable — ese ES el trabajo de gobernanza. (Los casos de ejemplo usan datos reales sucios a propósito: si todo diera verde, la demo no probaría nada.)",
+        "en": "A professional deliverable doesn't hide data problems: it diagnoses them. Every rule that didn't pass shows up here with its root cause, immediate fix, structural fix and owner — that IS the governance work. (The sample cases use genuinely dirty real data on purpose: if everything came out green, the demo would prove nothing.)",
+        "pt": "Um entregável profissional não esconde os problemas do dado: diagnostica-os. Cada regra que não passou aparece aqui com sua causa raiz, correção imediata, correção estrutural e responsável — esse É o trabalho de governança. (Os casos de exemplo usam dados reais sujos de propósito: se tudo desse verde, a demo não provaria nada.)",
+    },
     "del_mig_title": {"es": "🔀 Listo para migrar", "en": "🔀 Ready to migrate", "pt": "🔀 Pronto para migrar"},
     "del_mig_note": {
         "es": "Calculado con los conectores reales en modo previsualización (mismos payloads que el push real), sin credenciales y sin tocar la red. El estado Approved sale de la curaduría real del caso.",
@@ -250,6 +256,21 @@ _T: dict[str, dict[str, str]] = {
     "g_term": {"es": "Término", "en": "Term", "pt": "Termo"},
     "g_definition": {"es": "Definición", "en": "Definition", "pt": "Definição"},
     "g_linked": {"es": "Datasets vinculados", "en": "Linked datasets", "pt": "Datasets vinculados"},
+    # ------------------------------------------------ curaduría masiva (cu_bulk)
+    "cu_bulk_title": {"es": "✅ Validación masiva por caso", "en": "✅ Bulk validation per case", "pt": "✅ Validação em massa por caso"},
+    "cu_bulk_intro": {
+        "es": "Cuando un responsable ya revisó un caso completo y está de acuerdo con las definiciones tal cual están, puede validarlas todas de una — firmadas con su nombre, cargo y fecha, igual que una por una. Así el entregable llega al 100% de curaduría sin 20 clics.",
+        "en": "When a responsible person has reviewed a whole case and agrees with the definitions as they are, they can validate them all at once — signed with their name, role and date, same as one by one. That's how the deliverable reaches 100% curation without 20 clicks.",
+        "pt": "Quando um responsável já revisou um caso inteiro e concorda com as definições como estão, pode validá-las todas de uma vez — assinadas com nome, cargo e data, igual a uma por uma. Assim o entregável chega a 100% de curadoria sem 20 cliques.",
+    },
+    "cu_bulk_pick": {"es": "Caso / dataset", "en": "Case / dataset", "pt": "Caso / dataset"},
+    "cu_bulk_btn": {"es": "✅ Validar las {n} definiciones pendientes tal cual", "en": "✅ Validate the {n} pending definitions as-is", "pt": "✅ Validar as {n} definições pendentes como estão"},
+    "cu_bulk_done": {"es": "{n} definiciones validadas, firmadas por {name}.", "en": "{n} definitions validated, signed by {name}.", "pt": "{n} definições validadas, assinadas por {name}."},
+    "cu_bulk_note": {
+        "es": "Esto NO es un atajo para inflar métricas: queda registrado quién validó y cuándo, y cada definición se puede reabrir una por una. Validar en masa sin haber leído es responsabilidad de quien firma — igual que en Purview o Collibra.",
+        "en": "This is NOT a shortcut to inflate metrics: who validated and when is recorded, and each definition can be reopened one by one. Bulk-validating without reading is on whoever signs — same as in Purview or Collibra.",
+        "pt": "Isto NÃO é um atalho para inflar métricas: fica registrado quem validou e quando, e cada definição pode ser reaberta uma a uma. Validar em massa sem ler é responsabilidade de quem assina — igual ao Purview ou Collibra.",
+    },
     # ------------------------------------------- glosario automático desde la base (ga)
     "ga_title": {"es": "🗄️ Glosario automático desde tu base de datos",
                  "en": "🗄️ Automatic glossary from your database",

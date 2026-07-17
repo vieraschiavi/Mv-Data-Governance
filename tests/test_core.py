@@ -3611,13 +3611,86 @@ def test_deliverable_downloads_are_real_files(tmp_path, monkeypatch):
     from mvdg import deliverable
     xlsx = deliverable.deliverable_xlsx_bytes("bank_marketing_uci", "es")
     wb = openpyxl.load_workbook(io.BytesIO(xlsx))
-    assert set(wb.sheetnames) == {"Ficha", "Diccionario", "Calidad", "Glosario", "Linaje"}
+    assert set(wb.sheetnames) == {"Ficha", "Diccionario", "Calidad", "Glosario",
+                                  "Linaje", "Plan de acción"}
     for lg, probe in (("es", "Entregable de gobernanza"),
                       ("en", "Governance deliverable"),
                       ("pt", "Entregável de governança")):
         md = deliverable.executive_summary_md("rotulado_alimentos", lg)
         assert probe in md
         assert "284" in md  # filas reales del caso del gobierno uruguayo
+
+
+def test_excel_generation_needs_no_disk_at_all(tmp_path, monkeypatch):
+    """Regresión del crash real en la máquina del usuario: xlsxwriter usa
+    archivos temporales EN DISCO aunque el destino sea BytesIO — con el
+    disco lleno, todo botón de descarga Excel explotaba con FileCreateError
+    [Errno 28]. Con in_memory=True no se toca el disco: se simula el disco
+    inutilizable apuntando TMPDIR a una ruta inexistente y los tres
+    generadores tienen que funcionar igual."""
+    import io
+    import openpyxl
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    broken = str(tmp_path / "no" / "existe" / "tmp")
+    monkeypatch.setenv("TMPDIR", broken)
+    monkeypatch.setenv("TEMP", broken)
+    monkeypatch.setenv("TMP", broken)
+    import tempfile
+    monkeypatch.setattr(tempfile, "tempdir", None)  # fuerza re-lectura de env
+    from mvdg import deliverable
+    from mvdg.exporters import bi_bundle_xlsx, governance_tables, to_excel_bytes
+    df = governance_tables("es")["catalog"]
+    xlsx = to_excel_bytes(df, "catalog")
+    assert openpyxl.load_workbook(io.BytesIO(xlsx)).sheetnames == ["catalog"]
+    assert len(bi_bundle_xlsx("es")) > 5000
+    assert len(deliverable.deliverable_xlsx_bytes("rotulado_alimentos", "es")) > 5000
+
+
+def test_deliverable_findings_have_remediation_plan(tmp_path, monkeypatch):
+    """Cada regla que no pasó aparece como hallazgo CON plan: causa raíz,
+    corrección inmediata, corrección de fondo y responsable — el entregable
+    diagnostica, no esconde."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import deliverable
+    for key in deliverable.case_keys():
+        d = deliverable.build_deliverable(key, "es")
+        f = d["findings"]
+        not_pass = int((d["quality_results"]["status"] != "pass").sum())
+        assert len(f) == not_pass, key
+        if len(f):
+            assert (f["root_cause"].str.len() > 0).all()
+            assert (f["short_term"].str.len() > 0).all()
+            assert (f["owner"].str.len() > 0).all()
+    # y viajan en el Excel (hoja Plan de acción) y en el resumen ejecutivo
+    import io
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(
+        deliverable.deliverable_xlsx_bytes("medicamentos_openfda", "es")))
+    assert "Plan de acción" in wb.sheetnames
+    md = deliverable.executive_summary_md("medicamentos_openfda", "es")
+    assert "Hallazgos y plan de remediación" in md
+
+
+def test_curation_bulk_validation_reaches_100_pct(tmp_path, monkeypatch):
+    """La validación masiva firma TODAS las definiciones pendientes de un
+    caso con nombre/cargo/fecha — el entregable llega al 100% de curaduría
+    legítimamente, y cada registro individual queda auditable."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, deliverable
+    key = "bank_marketing_uci"
+    df = curation.list_items("es")
+    pending = df[(df["dataset"] == key) & (df["status"] == "sugerido_ia")]
+    assert len(pending) > 0
+    for _, it in pending.iterrows():  # mismo recorrido que hace el botón
+        curation.save_validation(it["item_id"], "es", "validado", "",
+                                 "L. Santos", "Data Steward Banca")
+    prog = deliverable.curation_progress(key, "es")
+    assert prog["pct"] == 100.0
+    rec = curation.get_record(pending.iloc[0]["item_id"], "es")
+    assert rec["responsible_name"] == "L. Santos"  # firmado, auditable
+    d = deliverable.build_deliverable(key, "es")
+    assert d["kpis"]["curation_pct"] == 100.0
+    assert d["migration"]["purview_terms_approved"] == d["migration"]["purview_terms"]
 
 
 def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):

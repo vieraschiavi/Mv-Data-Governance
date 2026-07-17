@@ -914,6 +914,29 @@ with tab_cu:
             st.rerun()
     st.caption(t("cu_local_note", lang))
 
+    st.divider()
+    st.subheader(t("cu_bulk_title", lang))
+    st.caption(t("cu_bulk_intro", lang))
+    _cub_ds_opts = sorted(_cu_df["dataset"].unique().tolist())
+    cb1, cb2, cb3 = st.columns(3)
+    _cub_ds = cb1.selectbox(t("cu_bulk_pick", lang), _cub_ds_opts, key="cu_bulk_ds")
+    _cub_name = cb2.text_input(t("cu_resp_name", lang), key="cu_bulk_name")
+    _cub_role = cb3.text_input(t("cu_resp_role", lang), key="cu_bulk_role")
+    _cub_pending = _cu_df[(_cu_df["dataset"] == _cub_ds)
+                          & (_cu_df["status"] == "sugerido_ia")]
+    if st.button(t("cu_bulk_btn", lang).format(n=len(_cub_pending)),
+                 key="cu_bulk_btn", disabled=len(_cub_pending) == 0):
+        if not _cub_name.strip():
+            st.error(t("cu_need_name", lang))
+        else:
+            for _, _it in _cub_pending.iterrows():
+                curation.save_validation(_it["item_id"], lang, "validado", "",
+                                         _cub_name, _cub_role)
+            st.success(t("cu_bulk_done", lang).format(
+                n=len(_cub_pending), name=_cub_name.strip()))
+            st.rerun()
+    st.caption(t("cu_bulk_note", lang))
+
 # ------------------------------------------------------------- Responsables
 with tab_resp:
     st.info(t("rs_intro", lang), icon="👥")
@@ -1876,7 +1899,12 @@ with tab_del:
     k5, k6, k7 = st.columns(3)
     k5.metric(t("del_kpi_documented", lang), f"{_dk['documented_pct']}%")
     k6.metric(t("del_kpi_pii", lang), _dk["pii_columns"])
-    k7.metric(t("del_kpi_fails", lang), _dk["rules_fail"])
+    k7.metric(t("del_kpi_fails", lang), len(_del["findings"]))
+
+    if len(_del["findings"]):
+        with st.expander(t("del_findings", lang), expanded=True):
+            st.caption(t("del_findings_note", lang))
+            st.dataframe(_del["findings"], width="stretch", hide_index=True)
 
     with st.expander(t("tbl_dictionary", lang)):
         st.dataframe(_del["dictionary"], width="stretch", hide_index=True)
