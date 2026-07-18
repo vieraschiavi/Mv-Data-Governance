@@ -48,6 +48,7 @@ from mvdg import purview_export
 from mvdg import purview_pull
 from mvdg import imported as ext_imported
 from mvdg import deliverable as case_deliverable
+from mvdg import contracts as data_contracts
 from mvdg import samples as ext_samples
 from mvdg import scope as gov_scope
 from mvdg import server as mvdg_server
@@ -158,11 +159,11 @@ def _results_combined(lang: str):
 results = _results_combined(lang) if incl_samples else _results(lang)
 tables = _tables()
 
-(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_g, tab_cu, tab_resp, tab_p,
- tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
+ tab_p, tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
-    t("tab_lineage", lang), t("tab_glossary", lang), t("tab_curation", lang),
+    t("tab_lineage", lang), t("tab_contracts", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
     t("tab_bi", lang), t("tab_deliverable", lang), t("tab_pbi", lang), t("tab_tableau", lang),
     t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
@@ -913,6 +914,29 @@ with tab_cu:
             st.success(t("cu_reset_ok", lang))
             st.rerun()
     st.caption(t("cu_local_note", lang))
+
+    st.divider()
+    st.subheader(t("cu_bulk_title", lang))
+    st.caption(t("cu_bulk_intro", lang))
+    _cub_ds_opts = sorted(_cu_df["dataset"].unique().tolist())
+    cb1, cb2, cb3 = st.columns(3)
+    _cub_ds = cb1.selectbox(t("cu_bulk_pick", lang), _cub_ds_opts, key="cu_bulk_ds")
+    _cub_name = cb2.text_input(t("cu_resp_name", lang), key="cu_bulk_name")
+    _cub_role = cb3.text_input(t("cu_resp_role", lang), key="cu_bulk_role")
+    _cub_pending = _cu_df[(_cu_df["dataset"] == _cub_ds)
+                          & (_cu_df["status"] == "sugerido_ia")]
+    if st.button(t("cu_bulk_btn", lang).format(n=len(_cub_pending)),
+                 key="cu_bulk_btn", disabled=len(_cub_pending) == 0):
+        if not _cub_name.strip():
+            st.error(t("cu_need_name", lang))
+        else:
+            for _, _it in _cub_pending.iterrows():
+                curation.save_validation(_it["item_id"], lang, "validado", "",
+                                         _cub_name, _cub_role)
+            st.success(t("cu_bulk_done", lang).format(
+                n=len(_cub_pending), name=_cub_name.strip()))
+            st.rerun()
+    st.caption(t("cu_bulk_note", lang))
 
 # ------------------------------------------------------------- Responsables
 with tab_resp:
@@ -1876,7 +1900,12 @@ with tab_del:
     k5, k6, k7 = st.columns(3)
     k5.metric(t("del_kpi_documented", lang), f"{_dk['documented_pct']}%")
     k6.metric(t("del_kpi_pii", lang), _dk["pii_columns"])
-    k7.metric(t("del_kpi_fails", lang), _dk["rules_fail"])
+    k7.metric(t("del_kpi_fails", lang), len(_del["findings"]))
+
+    if len(_del["findings"]):
+        with st.expander(t("del_findings", lang), expanded=True):
+            st.caption(t("del_findings_note", lang))
+            st.dataframe(_del["findings"], width="stretch", hide_index=True)
 
     with st.expander(t("tbl_dictionary", lang)):
         st.dataframe(_del["dictionary"], width="stretch", hide_index=True)
@@ -1912,6 +1941,90 @@ with tab_del:
     st.caption(t("del_honest_note", lang))
 
 # --------------------------------------------------------------- Power BI
+with tab_con:
+    st.info(t("con_intro", lang), icon="🤝")
+
+    with st.expander(t("con_theory", lang)):
+        st.caption(t("con_theory_note", lang))
+        for _th in data_contracts.theory(lang):
+            st.markdown(f"**{_th['concept']}** — {_th['plain']}")
+            st.caption(f"🛠️ {_th['practice']}")
+
+    # Siempre sobre el alcance combinado completo (demo + casos): un contrato
+    # por cada producto gobernado, evaluado con la última corrida real.
+    _con_res = _results_combined(lang)
+    _kp = data_contracts.kpis(lang, _con_res)
+    _c1, _c2, _c3, _c4, _c5, _c6 = st.columns(6)
+    _c1.metric(t("con_kpi_products", lang), _kp["products"])
+    _c2.metric(t("con_kpi_ok", lang), _kp["ok"])
+    _c3.metric(t("con_kpi_risk", lang), _kp["at_risk"])
+    _c4.metric(t("con_kpi_breach", lang), _kp["breached"])
+    _c5.metric(t("con_kpi_alerts", lang), _kp["alerts"])
+    _c6.metric(t("con_kpi_signed", lang), _kp["signed"])
+
+    st.subheader(t("con_table_title", lang))
+    st.caption(t("con_table_note", lang))
+    _con_df = data_contracts.contracts_df(lang, _con_res)
+    _con_show = _con_df.copy()
+    _con_show["compliance"] = _con_show["compliance"].map(
+        lambda v: t(f"con_st_{v}", lang))
+    _con_show["agreement"] = _con_show["agreement"].map(
+        lambda v: t(f"con_agr_{v}", lang))
+    st.dataframe(_con_show[["dataset", "domain", "domain_owner",
+                            "product_owner", "producer", "sla_refresh",
+                            "rules", "compliance_pct", "compliance",
+                            "agreement", "signed_by"]],
+                 width="stretch", hide_index=True)
+
+    _con_key = st.selectbox(t("con_pick", lang),
+                            _con_df["dataset"].tolist(), key="con_pick")
+    _con_row = _con_df[_con_df["dataset"] == _con_key].iloc[0]
+    st.caption(f'{t("con_role_do", lang)}: {_con_row["domain_owner"]} · '
+               f'{t("con_role_po", lang)}: {_con_row["product_owner"]} · '
+               f'{t("con_sla", lang)}: {_con_row["sla_refresh"]}')
+    st.caption(f'{t("con_role_prod", lang)}: {_con_row["producer"]}')
+    st.caption(f'{t("con_role_cons", lang)}: {_con_row["consumers"]}')
+
+    st.markdown(f'**{t("con_rules_title", lang)}**')
+    _con_rules = _con_res[_con_res["dataset"] == _con_key]
+    st.dataframe(_con_rules[["rule_id", "column", "dimension", "description",
+                             "score", "threshold", "status"]],
+                 width="stretch", hide_index=True)
+    st.markdown(f'**{t("con_esc_title", lang)}**')
+    st.markdown(f'- {t("con_esc_warn", lang)}')
+    st.markdown(f'- {t("con_esc_fail", lang)}')
+
+    st.markdown(f'**{t("con_sign_title", lang)}**')
+    st.caption(t("con_sign_note", lang))
+    _agr = data_contracts.agreement_for(_con_key)
+    if _agr:
+        st.success(t("con_signed_info", lang).format(
+            name=_agr["signed_by"], role=_agr["role"], date=_agr["date"]))
+    _cs1, _cs2 = st.columns(2)
+    _con_name = _cs1.text_input(t("con_sign_name", lang), key="con_sign_name")
+    _con_role = _cs2.text_input(t("con_sign_role", lang), key="con_sign_role")
+    if st.button(t("con_sign_btn", lang), key="con_sign_btn"):
+        if not _con_name.strip():
+            st.error(t("con_need_name", lang))
+        else:
+            data_contracts.save_agreement(_con_key, _con_name, _con_role)
+            st.rerun()
+
+    st.subheader(t("con_alerts_title", lang))
+    st.caption(t("con_alerts_note", lang))
+    _con_ale = data_contracts.alerts_df(lang, _con_res)
+    if len(_con_ale):
+        st.dataframe(_con_ale, width="stretch", hide_index=True)
+    else:
+        st.success(t("con_alerts_none", lang))
+
+    st.download_button(t("con_dl_xlsx", lang),
+                       data_contracts.contracts_xlsx_bytes(lang, _con_res),
+                       file_name="contratos_datos.xlsx",
+                       mime=("application/vnd.openxmlformats-officedocument"
+                             ".spreadsheetml.sheet"),
+                       key="con_dl_xlsx")
+
 with tab_pbi:
     st.info(t("pbi_intro", lang), icon="🔷")
     st.caption("🔐 " + t("pbi_secure_note", lang))

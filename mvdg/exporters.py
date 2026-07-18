@@ -74,7 +74,8 @@ def to_json_bytes(df: pd.DataFrame) -> bytes:
 
 def to_excel_bytes(df: pd.DataFrame, sheet: str = "data") -> bytes:
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:
+    with pd.ExcelWriter(buf, engine="xlsxwriter",
+                       engine_kwargs={"options": {"in_memory": True}}) as xw:
         df.to_excel(xw, sheet_name=sheet[:31], index=False)
     return buf.getvalue()
 
@@ -92,7 +93,8 @@ def to_parquet_bytes(df: pd.DataFrame) -> bytes | None:
 def bi_bundle_xlsx(lang: str = "es") -> bytes:
     """Excel multi-hoja con todo el paquete de gobierno (para cualquier BI)."""
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:
+    with pd.ExcelWriter(buf, engine="xlsxwriter",
+                       engine_kwargs={"options": {"in_memory": True}}) as xw:
         for name, df in governance_tables(lang).items():
             df.to_excel(xw, sheet_name=name[:31], index=False)
     return buf.getvalue()

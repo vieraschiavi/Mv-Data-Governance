@@ -769,6 +769,33 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (".exe (PyInstaller) · .bat portable · web servidor · accesos "
                 "directos opcionales (escritorio/menú inicio) — presentes")
 
+    @check("Data Products, contratos de datos y alarmística sobre linaje")
+    def _():
+        import tempfile
+        from unittest import mock
+        from . import contracts
+        from .scope import combined_results
+        res = combined_results("es")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict("os.environ", {"MVDG_DATA_DIR": tmp}):
+            con = contracts.contracts_df("es", res)
+            assert len(con) == 8, f"esperaba 8 productos, hay {len(con)}"
+            assert set(con["compliance"]) <= set(contracts.COMPLIANCE)
+            assert (con["domain_owner"] != "").all() and (con["producer"] != "").all()
+            ale = contracts.alerts_df("es", res)
+            no_pass = int((res[res["dataset"].isin(con["dataset"])]["status"] != "pass").sum())
+            assert len(ale) == no_pass, f"alertas {len(ale)} != reglas no aprobadas {no_pass}"
+            assert ale["impact_downstream"].str.len().gt(0).all()
+            # firma de acuerdo persiste y cambia el estado
+            contracts.save_agreement("fct_sales", "L. Santos", "Data Product Owner")
+            assert contracts.contracts_df("es", res).set_index("dataset").loc[
+                "fct_sales", "agreement"] == "vigente"
+            for lg in ("es", "en", "pt"):
+                assert len(contracts.theory(lg)) == 8
+                assert contracts.contracts_xlsx_bytes(lg, res)[:2] == b"PK"
+        return (f"{len(con)} contratos evaluados con reglas reales · "
+                f"{len(ale)} alertas con impacto aguas abajo · firma auditable · teoría x3 idiomas")
+
     @check("Dashboard importable (sin errores)")
     def _():
         import importlib

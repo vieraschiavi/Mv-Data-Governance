@@ -3611,13 +3611,189 @@ def test_deliverable_downloads_are_real_files(tmp_path, monkeypatch):
     from mvdg import deliverable
     xlsx = deliverable.deliverable_xlsx_bytes("bank_marketing_uci", "es")
     wb = openpyxl.load_workbook(io.BytesIO(xlsx))
-    assert set(wb.sheetnames) == {"Ficha", "Diccionario", "Calidad", "Glosario", "Linaje"}
+    assert set(wb.sheetnames) == {"Ficha", "Diccionario", "Calidad", "Glosario",
+                                  "Linaje", "Plan de acción"}
     for lg, probe in (("es", "Entregable de gobernanza"),
                       ("en", "Governance deliverable"),
                       ("pt", "Entregável de governança")):
         md = deliverable.executive_summary_md("rotulado_alimentos", lg)
         assert probe in md
         assert "284" in md  # filas reales del caso del gobierno uruguayo
+
+
+def test_excel_generation_needs_no_disk_at_all(tmp_path, monkeypatch):
+    """Regresión del crash real en la máquina del usuario: xlsxwriter usa
+    archivos temporales EN DISCO aunque el destino sea BytesIO — con el
+    disco lleno, todo botón de descarga Excel explotaba con FileCreateError
+    [Errno 28]. Con in_memory=True no se toca el disco: se simula el disco
+    inutilizable apuntando TMPDIR a una ruta inexistente y los tres
+    generadores tienen que funcionar igual."""
+    import io
+    import openpyxl
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    broken = str(tmp_path / "no" / "existe" / "tmp")
+    monkeypatch.setenv("TMPDIR", broken)
+    monkeypatch.setenv("TEMP", broken)
+    monkeypatch.setenv("TMP", broken)
+    import tempfile
+    monkeypatch.setattr(tempfile, "tempdir", None)  # fuerza re-lectura de env
+    from mvdg import deliverable
+    from mvdg.exporters import bi_bundle_xlsx, governance_tables, to_excel_bytes
+    df = governance_tables("es")["catalog"]
+    xlsx = to_excel_bytes(df, "catalog")
+    assert openpyxl.load_workbook(io.BytesIO(xlsx)).sheetnames == ["catalog"]
+    assert len(bi_bundle_xlsx("es")) > 5000
+    assert len(deliverable.deliverable_xlsx_bytes("rotulado_alimentos", "es")) > 5000
+
+
+def test_deliverable_findings_have_remediation_plan(tmp_path, monkeypatch):
+    """Cada regla que no pasó aparece como hallazgo CON plan: causa raíz,
+    corrección inmediata, corrección de fondo y responsable — el entregable
+    diagnostica, no esconde."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import deliverable
+    for key in deliverable.case_keys():
+        d = deliverable.build_deliverable(key, "es")
+        f = d["findings"]
+        not_pass = int((d["quality_results"]["status"] != "pass").sum())
+        assert len(f) == not_pass, key
+        if len(f):
+            assert (f["root_cause"].str.len() > 0).all()
+            assert (f["short_term"].str.len() > 0).all()
+            assert (f["owner"].str.len() > 0).all()
+    # y viajan en el Excel (hoja Plan de acción) y en el resumen ejecutivo
+    import io
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(
+        deliverable.deliverable_xlsx_bytes("medicamentos_openfda", "es")))
+    assert "Plan de acción" in wb.sheetnames
+    md = deliverable.executive_summary_md("medicamentos_openfda", "es")
+    assert "Hallazgos y plan de remediación" in md
+
+
+def test_curation_bulk_validation_reaches_100_pct(tmp_path, monkeypatch):
+    """La validación masiva firma TODAS las definiciones pendientes de un
+    caso con nombre/cargo/fecha — el entregable llega al 100% de curaduría
+    legítimamente, y cada registro individual queda auditable."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import curation, deliverable
+    key = "bank_marketing_uci"
+    df = curation.list_items("es")
+    pending = df[(df["dataset"] == key) & (df["status"] == "sugerido_ia")]
+    assert len(pending) > 0
+    for _, it in pending.iterrows():  # mismo recorrido que hace el botón
+        curation.save_validation(it["item_id"], "es", "validado", "",
+                                 "L. Santos", "Data Steward Banca")
+    prog = deliverable.curation_progress(key, "es")
+    assert prog["pct"] == 100.0
+    rec = curation.get_record(pending.iloc[0]["item_id"], "es")
+    assert rec["responsible_name"] == "L. Santos"  # firmado, auditable
+    d = deliverable.build_deliverable(key, "es")
+    assert d["kpis"]["curation_pct"] == 100.0
+    assert d["migration"]["purview_terms_approved"] == d["migration"]["purview_terms"]
+
+
+def test_data_contracts_evaluate_against_real_rule_runs(tmp_path, monkeypatch):
+    """Los contratos de datos formalizan las reglas REALES: la evaluación debe
+    coincidir exactamente con la última corrida de reglas, sin números nuevos."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import contracts
+    from mvdg.scope import combined_results
+
+    res = combined_results("es")
+    con = contracts.contracts_df("es", res)
+    # un contrato por producto gobernado (4 demo + 4 casos reales)
+    assert len(con) == 8
+    assert set(con["dataset"]) == set(contracts.product_keys("es"))
+    # roles del modelo completos y salidos del catálogo real
+    for col in ("domain", "domain_owner", "product_owner", "producer",
+                "sla_refresh"):
+        assert (con[col].astype(str).str.len() > 0).all(), col
+    # la matemática del cumplimiento es la de la corrida real
+    for _, row in con.iterrows():
+        sub = res[res["dataset"] == row["dataset"]]
+        assert row["rules"] == len(sub)
+        assert row["rules_fail"] == int((sub["status"] == "fail").sum())
+        expected = ("incumple" if row["rules_fail"] else
+                    "en_riesgo" if row["rules_warn"] else "cumple")
+        assert row["compliance"] == expected
+    # el laboratorio (openFDA) tiene fails reales -> su contrato incumple
+    lab = con.set_index("dataset").loc["medicamentos_openfda"]
+    assert lab["compliance"] == "incumple" and lab["rules_fail"] > 0
+
+
+def test_data_contract_alerts_carry_downstream_impact_and_owner(tmp_path, monkeypatch):
+    """Alarmística sobre el linaje: cada regla no aprobada genera exactamente
+    una alerta, con impacto aguas abajo real y a quién avisar."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import contracts
+    from mvdg.scope import combined_results
+
+    res = combined_results("es")
+    ale = contracts.alerts_df("es", res)
+    assert len(ale) == int((res["status"] != "pass").sum())
+    # el impacto sale de recorrer el linaje real: los casos llegan al BI
+    lab_alerts = ale[ale["dataset"] == "medicamentos_openfda"]
+    assert len(lab_alerts) and lab_alerts["impact_downstream"].str.contains(
+        "Dashboard BI").all()
+    # y la demo pasa por los marts antes del BI
+    cus = ale[ale["dataset"] == "dim_customers"]
+    assert len(cus) and cus["impact_downstream"].str.contains("mart_").all()
+    # a quién avisar: warn -> PO; fail -> Domain Owner + PO
+    for _, a in ale.iterrows():
+        assert a["notify"].strip()
+        if a["severity"] == "fail":
+            assert "+" in a["notify"]
+    # acción inmediata del motor de remediación real, nunca vacía
+    assert (ale["action"].astype(str).str.len() > 0).all()
+
+
+def test_data_contract_agreement_signature_persists(tmp_path, monkeypatch):
+    """Documentar acuerdos: la firma persiste local, cambia el estado a
+    'vigente' y es auditable (quién, rol, fecha)."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import contracts
+    from mvdg.scope import combined_results
+
+    res = combined_results("es")
+    assert contracts.agreement_for("fct_sales") is None
+    contracts.save_agreement("fct_sales", "L. Santos", "Data Product Owner")
+    agr = contracts.agreement_for("fct_sales")
+    assert agr["signed_by"] == "L. Santos" and agr["role"] == "Data Product Owner"
+    assert agr["date"]  # fecha registrada
+    con = contracts.contracts_df("es", res).set_index("dataset")
+    assert con.loc["fct_sales", "agreement"] == "vigente"
+    assert con.loc["dim_customers", "agreement"] == "borrador"
+    kp = contracts.kpis("es", res)
+    assert kp["signed"] == 1 and kp["products"] == 8
+    contracts.delete_agreement("fct_sales")
+    assert contracts.agreement_for("fct_sales") is None
+
+
+def test_data_contracts_theory_and_export_trilingual(tmp_path, monkeypatch):
+    """Marco teórico (Data Mesh / contratos) trilingüe + export Excel 100% en
+    memoria con las 3 hojas."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    import io
+    import openpyxl
+    from mvdg import contracts
+    from mvdg.scope import combined_results
+
+    res = combined_results("es")
+    keys = {c["key"] for c in contracts.THEORY}
+    assert {"domain", "product", "contract", "sla", "alerts", "roles",
+            "agreement", "federated"} == keys
+    for lg in ("es", "en", "pt"):
+        th = contracts.theory(lg)
+        assert len(th) == 8
+        assert all(c["concept"] and c["plain"] and c["practice"] for c in th)
+        wb = openpyxl.load_workbook(io.BytesIO(
+            contracts.contracts_xlsx_bytes(lg, res)))
+        assert len(wb.sheetnames) == 3
+    # honestidad: la teoría dice cómo lo practica el programa, no solo qué es
+    es = {c["key"]: c for c in contracts.theory("es")}
+    assert "linaje" in es["alerts"]["practice"].lower()
+    assert "catálogo" in es["roles"]["practice"].lower()
 
 
 def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
