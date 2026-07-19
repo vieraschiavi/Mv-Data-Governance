@@ -74,6 +74,16 @@ from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
 # ----------------------------------------------------------------- página
 st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
 
+# Guardián de integridad: si la carpeta se actualizó a medias (app.py nuevo con
+# mvdg/ viejo o al revés), mostramos un cartel claro en vez de un traceback.
+from mvdg import integrity as _integrity
+_missing = _integrity.check_install()
+if _missing:
+    _glang = st.session_state.get("lang", "es")
+    st.error(_integrity.MESSAGE.get(_glang, _integrity.MESSAGE["es"]))
+    st.code("\n".join(_missing))
+    st.stop()
+
 st.markdown(f"""
 <style>
 .stApp {{ background: linear-gradient(160deg, {BRAND['navy']} 0%, #0a1a2f 100%); }}
@@ -2332,3 +2342,13 @@ with tab_tab:
                         st.caption(f"{t('pbi_r_expl', lang)}: {_tres['explanation']}")
                     else:
                         st.info(t("fix_note", lang))
+
+    # ------------------------------------------------------------- MCP Tableau
+    st.divider()
+    st.subheader(t("mcp_tab_title", lang))
+    st.markdown(t("mcp_tab_body", lang))
+    st.caption(t("mcp_tab_cfg", lang))
+    st.code('{\n  "mcpServers": {\n    "tableau": {\n      "command": "npx",\n      "args": ["-y", "@tableau/mcp-server@3.0.0"],\n      "env": {\n        "SERVER": "https://mi-servidor-tableau",\n        "SITE_NAME": "mi_sitio",\n        "PAT_NAME": "mi_pat",\n        "PAT_VALUE": "<valor-del-PAT>",\n        "PRODUCT_TELEMETRY_ENABLED": "false"\n      }\n    }\n  }\n}', language="json")
+    st.warning(t("mcp_tab_caveats", lang), icon="⚠️")
+    st.info(t("mcp_tab_verified", lang), icon="🧪")
+    st.caption(t("mcp_tab_gov", lang))

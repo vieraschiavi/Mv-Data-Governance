@@ -821,6 +821,16 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return ("9 herramientas · catálogo y contratos consultados por el "
                 "protocolo real (cliente y servidor propios, stdio local)")
 
+    @check("Integridad de la instalación (app.py <-> mvdg coherentes)")
+    def _():
+        from . import integrity
+        missing = integrity.check_install()
+        assert not missing, f"piezas faltantes: {missing}"
+        # el mensaje del cartel existe en los 3 idiomas
+        assert set(integrity.MESSAGE) == {"es", "en", "pt"}
+        return (f"{len(integrity._CANARY_I18N)} claves canario + "
+                f"{len(integrity._CANARY_ATTRS)} atributos de motor: todo presente")
+
     @check("Dashboard importable (sin errores)")
     def _():
         import importlib
