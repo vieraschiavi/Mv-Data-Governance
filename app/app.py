@@ -74,6 +74,16 @@ from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
 # ----------------------------------------------------------------- página
 st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
 
+# Guardián de integridad: si la carpeta se actualizó a medias (app.py nuevo con
+# mvdg/ viejo o al revés), mostramos un cartel claro en vez de un traceback.
+from mvdg import integrity as _integrity
+_missing = _integrity.check_install()
+if _missing:
+    _glang = st.session_state.get("lang", "es")
+    st.error(_integrity.MESSAGE.get(_glang, _integrity.MESSAGE["es"]))
+    st.code("\n".join(_missing))
+    st.stop()
+
 st.markdown(f"""
 <style>
 .stApp {{ background: linear-gradient(160deg, {BRAND['navy']} 0%, #0a1a2f 100%); }}

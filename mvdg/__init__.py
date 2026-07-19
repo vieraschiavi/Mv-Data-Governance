@@ -7,7 +7,7 @@ compatibles con cualquier herramienta de BI (Power BI, Tableau, Looker,
 MicroStrategy, Qlik, Excel…).
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 APP_NAME = "MV Data Governance"
 
 # Paleta de marca (misma familia visual que MV Kobra AI)

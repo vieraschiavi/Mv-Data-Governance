@@ -3943,6 +3943,32 @@ def test_tableau_official_mcp_interop_real_protocol(tmp_path):
         srv.shutdown()
 
 
+def test_install_integrity_guard_passes_on_consistent_repo():
+    """En el repo (copia consistente) el guardián no reporta nada."""
+    from mvdg import integrity
+    assert integrity.check_install() == []
+    assert set(integrity.MESSAGE) == {"es", "en", "pt"}
+
+
+def test_install_integrity_guard_catches_stale_i18n(monkeypatch):
+    """Simula un i18n viejo (sin la clave de Contratos): el guardián lo detecta
+    con un mensaje que nombra la pieza — así el usuario sabe qué actualizar."""
+    from mvdg import integrity
+    from mvdg import i18n
+    stale = {k: v for k, v in i18n._T.items() if k != "tab_contracts"}
+    monkeypatch.setattr(i18n, "_T", stale)
+    missing = integrity.check_install()
+    assert any("tab_contracts" in m for m in missing)
+
+
+def test_install_integrity_guard_catches_stale_engine(monkeypatch):
+    """Simula un motor viejo (deliverable sin findings_df): detectado."""
+    from mvdg import integrity, deliverable
+    monkeypatch.delattr(deliverable, "findings_df", raising=True)
+    missing = integrity.check_install()
+    assert any("findings_df" in m for m in missing)
+
+
 def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
     """EL CIRCUITO COMPLETO con el caso del laboratorio (medicamentos_openfda),
     contra un servidor HTTP real que imita Purview: (1) push del catálogo +
