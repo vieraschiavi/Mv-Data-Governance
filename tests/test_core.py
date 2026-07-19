@@ -3796,6 +3796,84 @@ def test_data_contracts_theory_and_export_trilingual(tmp_path, monkeypatch):
     assert "catálogo" in es["roles"]["practice"].lower()
 
 
+def _mcp_env(tmp_path):
+    import os
+    return {**os.environ, "MVDG_DATA_DIR": str(tmp_path),
+            "PYTHONPATH": os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))}
+
+
+def test_mcp_server_full_roundtrip_over_real_stdio(tmp_path):
+    """El servidor MCP de gobernanza responde por el protocolo REAL (stdio):
+    cliente oficial ↔ subproceso servidor, sin mocks de transporte."""
+    import json
+    import sys
+    pytest.importorskip("mcp")
+    from mvdg import mcp_client
+
+    cmd, args, env = sys.executable, ["-m", "mvdg.mcp_server"], _mcp_env(tmp_path)
+
+    tools = mcp_client.list_tools(cmd, args, env=env)
+    assert sorted(t["name"] for t in tools) == [
+        "mvdg_alerts", "mvdg_case_deliverable", "mvdg_catalog",
+        "mvdg_contracts", "mvdg_dictionary", "mvdg_glossary",
+        "mvdg_lineage", "mvdg_quality", "mvdg_search"]
+    # todas anunciadas con descripción utilizable por un agente
+    assert all(len(t["description"]) > 40 for t in tools)
+
+    cat = json.loads(mcp_client.call_tool(
+        cmd, args, "mvdg_catalog", {"lang": "es"}, env=env))
+    assert len(cat) == 8 and {"dataset", "owner", "domain"} <= set(cat[0])
+
+    q = json.loads(mcp_client.call_tool(
+        cmd, args, "mvdg_quality", {"dataset": "medicamentos_openfda"},
+        env=env))
+    from mvdg import samples
+    real = samples.sample_quality_results("medicamentos_openfda", "es")
+    assert len(q) == len(real)
+    assert (sum(1 for r in q if r["status"] == "fail")
+            == int((real["status"] == "fail").sum()))
+
+    lin = json.loads(mcp_client.call_tool(cmd, args, "mvdg_lineage", {},
+                                          env=env))
+    ids = {n["id"] for n in lin["nodes"]}
+    assert "bi_dashboard" in ids and "medicamentos_openfda" in ids
+
+    md = mcp_client.call_tool(
+        cmd, args, "mvdg_case_deliverable",
+        {"case": "rotulado_alimentos", "lang": "pt"}, env=env)
+    assert "Entregável de governança" in md
+
+
+def test_mcp_server_errors_are_actionable_and_metadata_only(tmp_path):
+    """Errores accionables (dicen qué valores son válidos) y respuesta de
+    metadata: el servidor jamás expone filas de datos de los casos."""
+    import json
+    import sys
+    pytest.importorskip("mcp")
+    from mvdg import mcp_client, samples
+
+    cmd, args, env = sys.executable, ["-m", "mvdg.mcp_server"], _mcp_env(tmp_path)
+
+    err = mcp_client.call_tool(cmd, args, "mvdg_quality",
+                               {"dataset": "no_existe"}, env=env)
+    assert err.startswith("Error:") and "medicamentos_openfda" in err
+    err2 = mcp_client.call_tool(cmd, args, "mvdg_case_deliverable",
+                                {"case": "zzz"}, env=env)
+    assert err2.startswith("Error:") and "rotulado_alimentos" in err2
+
+    # búsqueda encuentra metadata del catálogo/diccionario/glosario...
+    hits = json.loads(mcp_client.call_tool(cmd, args, "mvdg_search",
+                                           {"term": "NDC"}, env=env))
+    assert sum(len(v) for v in hits.values()) > 0
+    # ...pero ningún tool devuelve valores de las filas reales del caso
+    table = samples.load_sample_table("cafe_sales_kaggle")
+    sample_cell = str(table.iloc[0, 0])
+    dic = mcp_client.call_tool(cmd, args, "mvdg_dictionary",
+                               {"dataset": "cafe_sales_kaggle"}, env=env)
+    assert sample_cell not in dic
+
+
 def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
     """EL CIRCUITO COMPLETO con el caso del laboratorio (medicamentos_openfda),
     contra un servidor HTTP real que imita Purview: (1) push del catálogo +

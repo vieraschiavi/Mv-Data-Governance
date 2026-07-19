@@ -796,6 +796,31 @@ def run_checks() -> list[tuple[str, bool, str]]:
         return (f"{len(con)} contratos evaluados con reglas reales · "
                 f"{len(ale)} alertas con impacto aguas abajo · firma auditable · teoría x3 idiomas")
 
+    @check("Servidor MCP de gobernanza (roundtrip real por stdio)")
+    def _():
+        import importlib.util
+        if importlib.util.find_spec("mcp") is None:
+            raise AssertionError("SDK 'mcp' no instalado (pip install mcp)")
+        import json
+        import os
+        import sys
+        import tempfile
+        from . import mcp_client
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "MVDG_DATA_DIR": tmp}
+            cmd, args = sys.executable, ["-m", "mvdg.mcp_server"]
+            tools = mcp_client.list_tools(cmd, args, env=env)
+            assert len(tools) == 9, f"esperaba 9 herramientas, hay {len(tools)}"
+            cat = json.loads(mcp_client.call_tool(
+                cmd, args, "mvdg_catalog", {"lang": "es"}, env=env))
+            assert len(cat) == 8
+            con = json.loads(mcp_client.call_tool(
+                cmd, args, "mvdg_contracts", {}, env=env))
+            assert {c["compliance"] for c in con} <= {"cumple", "en_riesgo",
+                                                     "incumple"}
+        return ("9 herramientas · catálogo y contratos consultados por el "
+                "protocolo real (cliente y servidor propios, stdio local)")
+
     @check("Dashboard importable (sin errores)")
     def _():
         import importlib
