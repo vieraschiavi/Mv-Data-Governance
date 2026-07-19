@@ -2332,3 +2332,13 @@ with tab_tab:
                         st.caption(f"{t('pbi_r_expl', lang)}: {_tres['explanation']}")
                     else:
                         st.info(t("fix_note", lang))
+
+    # ------------------------------------------------------------- MCP Tableau
+    st.divider()
+    st.subheader(t("mcp_tab_title", lang))
+    st.markdown(t("mcp_tab_body", lang))
+    st.caption(t("mcp_tab_cfg", lang))
+    st.code('{\n  "mcpServers": {\n    "tableau": {\n      "command": "npx",\n      "args": ["-y", "@tableau/mcp-server@3.0.0"],\n      "env": {\n        "SERVER": "https://mi-servidor-tableau",\n        "SITE_NAME": "mi_sitio",\n        "PAT_NAME": "mi_pat",\n        "PAT_VALUE": "<valor-del-PAT>",\n        "PRODUCT_TELEMETRY_ENABLED": "false"\n      }\n    }\n  }\n}', language="json")
+    st.warning(t("mcp_tab_caveats", lang), icon="⚠️")
+    st.info(t("mcp_tab_verified", lang), icon="🧪")
+    st.caption(t("mcp_tab_gov", lang))

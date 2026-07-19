@@ -3874,6 +3874,75 @@ def test_mcp_server_errors_are_actionable_and_metadata_only(tmp_path):
     assert sample_cell not in dic
 
 
+def test_tableau_official_mcp_interop_real_protocol(tmp_path):
+    """Interop REAL con el MCP oficial de Tableau (@tableau/mcp-server):
+    nuestro cliente MCP lanza el binario oficial, completa el handshake del
+    protocolo y lista sus herramientas. El Tableau Server se simula con un
+    HTTP local (el binario valida `GET /api/x.y/serverinfo` al arrancar —
+    comprobado empíricamente); el protocolo MCP y el binario son 100% reales.
+
+    Requiere el paquete npm instalado: se salta con instrucción clara si no
+    está (seteá MVDG_TABLEAU_MCP_BIN o instalá @tableau/mcp-server).
+    """
+    import json
+    import os
+    import shutil
+    import socket
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    pytest.importorskip("mcp")
+    bin_path = os.environ.get("MVDG_TABLEAU_MCP_BIN") or shutil.which(
+        "tableau-mcp-server")
+    if not bin_path or not os.path.exists(bin_path):
+        pytest.skip("binario oficial de Tableau MCP no instalado "
+                    "(npm i @tableau/mcp-server y seteá MVDG_TABLEAU_MCP_BIN)")
+
+    from mvdg import mcp_client
+
+    class FakeTableau(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _reply(self, obj):
+            body = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if "serverinfo" in self.path.lower():
+                self._reply({"serverInfo": {
+                    "productVersion": {"value": "2025.1.0",
+                                       "build": "20251.25.0"},
+                    "restApiVersion": "3.24"}})
+            else:
+                self._reply({})
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    srv = HTTPServer(("127.0.0.1", port), FakeTableau)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        env = {**os.environ,
+               "SERVER": f"http://127.0.0.1:{port}",
+               "SITE_NAME": "demo", "PAT_NAME": "demo", "PAT_VALUE": "demo",
+               "NO_PROXY": "127.0.0.1,localhost",
+               "no_proxy": "127.0.0.1,localhost"}
+        tools = mcp_client.list_tools(bin_path, [], env=env, timeout=90)
+        names = {t["name"] for t in tools}
+        # herramientas núcleo del server oficial (v3.0.0: 21 en total)
+        assert {"list-datasources", "query-datasource", "list-workbooks",
+                "list-views", "search-content"} <= names
+        assert len(tools) >= 15
+    finally:
+        srv.shutdown()
+
+
 def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
     """EL CIRCUITO COMPLETO con el caso del laboratorio (medicamentos_openfda),
     contra un servidor HTTP real que imita Purview: (1) push del catálogo +
