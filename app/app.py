@@ -2184,6 +2184,43 @@ with tab_pbi:
                         st.info(t("fix_note", lang))
 
 # ---------------------------------------------------------------- Tableau
+    # ------------------------------------------------------------- MCP
+    st.divider()
+    st.subheader(t("mcp_title", lang))
+    st.caption(t("mcp_intro", lang))
+
+    with st.expander(t("mcp_local_title", lang)):
+        st.markdown(t("mcp_local_body", lang))
+    with st.expander(t("mcp_remote_title", lang)):
+        st.markdown(t("mcp_remote_body", lang))
+        st.caption(t("mcp_docs_note", lang))
+
+    st.markdown(f'**{t("mcp_expose_title", lang)}**')
+    st.markdown(t("mcp_expose_body", lang))
+    import importlib.util as _ilu
+    _mcp_ok = _ilu.find_spec("mcp") is not None
+    if _mcp_ok:
+        st.success(t("mcp_expose_status_ok", lang), icon="🔌")
+    else:
+        st.warning(t("mcp_expose_status_missing", lang), icon="⚠️")
+    st.caption(t("mcp_cfg_claude", lang))
+    st.code("claude mcp add mvdg -- python -m mvdg.mcp_server", language="bash")
+    st.caption(t("mcp_cfg_vscode", lang))
+    st.code('{\n  "servers": {\n    "mvdg": {"type": "stdio", "command": "python",\n             "args": ["-m", "mvdg.mcp_server"]}\n  }\n}', language="json")
+    st.caption(t("mcp_cfg_pbi_local", lang))
+    st.code('{\n  "powerbi-modeling-mcp": {\n    "type": "stdio", "command": "npx",\n    "args": ["-y", "@microsoft/powerbi-modeling-mcp@latest", "--start"]\n  }\n}', language="json")
+
+    st.caption(t("mcp_try_note", lang))
+    if st.button(t("mcp_try_btn", lang), key="mcp_try_btn", disabled=not _mcp_ok):
+        from mvdg import mcp_client as _mcp_cli
+        _mcp_tools = _mcp_cli.list_tools(
+            sys.executable, ["-m", "mvdg.mcp_server"],
+            env={**os.environ, "PYTHONPATH": os.path.dirname(os.path.dirname(os.path.abspath(__file__)))})
+        st.success(t("mcp_try_ok", lang).format(n=len(_mcp_tools)))
+        st.json({tl["name"]: tl["description"].split("\n")[0] for tl in _mcp_tools})
+
+    st.info(t("mcp_honest_note", lang), icon="🧭")
+
 with tab_tab:
     st.info(t("tab_intro", lang), icon="📊")
 

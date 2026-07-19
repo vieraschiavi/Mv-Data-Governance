@@ -10,6 +10,7 @@ xlsxwriter>=3.1
 pyarrow>=14.0
 sqlalchemy>=2.0
 keyring>=24.0
+mcp>=1.28
 
 # --- Drivers de base de datos (opcionales, instalá el que uses) ---
 # Database drivers (optional — install the one you use):
