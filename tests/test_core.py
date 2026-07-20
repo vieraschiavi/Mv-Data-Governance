@@ -3420,6 +3420,42 @@ def _read_accesos_bat():
         return fh.read()
 
 
+def _read_bat(name):
+    with open(os.path.join(_repo_root(), name), encoding="ascii") as fh:
+        return fh.read()
+
+
+def test_api_and_server_bats_are_self_sufficient_and_open_browser():
+    """Los .bat de API y Servidor deben poder usarse SOLOS (crear su propio
+    entorno como el .bat principal) y abrir el navegador — si no, el usuario ve
+    una ventana negra con logs y cree que 'no funciona'."""
+    api = _read_bat("MV_DataGovernance_API.bat")
+    srv = _read_bat("MV_DataGovernance_Server.bat")
+    for src, entry in ((api, "bi_api.main"), (srv, "mvdg.server")):
+        # bootstrap propio: detecta python, crea venv, instala con reintentos
+        assert "-m venv .venv" in src, "no crea el entorno solo"
+        assert ":install_deps" in src and "requirements.txt" in src
+        assert "goto errdeps" in src, "sin manejo de fallo de instalacion"
+        # abre el navegador (si no, parece que no hace nada)
+        assert "webbrowser.open" in src, "no abre el navegador"
+        # arranca el entrypoint correcto
+        assert entry in src
+    # el API abre las docs interactivas; el server, la app
+    assert "/docs" in api
+    assert "localhost:%MVDG_SERVER_PORT%" in srv
+
+
+def test_api_bat_no_longer_dead_ends_without_venv():
+    """Regresion: antes el API.bat abortaba si no existia .venv (mandaba a
+    correr otro .bat). Ahora tiene que arrancarlo el mismo."""
+    api = _read_bat("MV_DataGovernance_API.bat")
+    # ya no depende de que el usuario corra antes el .bat principal
+    assert "Ejecuta primero MV_DataGovernance.bat" not in api
+    assert "Run MV_DataGovernance.bat first" not in api
+    # y define un puerto por defecto antes de usarlo en la URL
+    assert 'set "MVDG_API_PORT=8600"' in api
+
+
 def test_accesos_bat_creates_optional_desktop_and_start_menu_shortcuts():
     """El cliente elige (S/N) escritorio y/o menú inicio; los .lnk se crean
     por usuario (sin admin) vía WScript.Shell, con el icono del programa."""
