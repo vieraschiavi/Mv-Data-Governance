@@ -38,17 +38,24 @@ call :install_deps
 if errorlevel 1 goto errdeps
 
 :launch
+if not defined MVDG_SERVER_PORT set "MVDG_SERVER_PORT=8501"
 echo.
 echo  [ES] Iniciando en modo servidor. Host/puerto: MVDG_SERVER_HOST / MVDG_SERVER_PORT
-echo       (por defecto 0.0.0.0:8501). Autorizados: server_authorized.txt o
+echo       (por defecto 0.0.0.0:%MVDG_SERVER_PORT%). Autorizados: server_authorized.txt o
 echo       MVDG_AUTHORIZED_HOSTS. Para detener, cerra esta ventana.
 echo  [EN] Starting in server mode. Host/port: MVDG_SERVER_HOST / MVDG_SERVER_PORT
-echo       (default 0.0.0.0:8501). Authorized: server_authorized.txt or
+echo       (default 0.0.0.0:%MVDG_SERVER_PORT%). Authorized: server_authorized.txt or
 echo       MVDG_AUTHORIZED_HOSTS. To stop, close this window.
 echo  [PT] Iniciando em modo servidor. Host/porta: MVDG_SERVER_HOST / MVDG_SERVER_PORT
-echo       (padrao 0.0.0.0:8501). Autorizados: server_authorized.txt ou
+echo       (padrao 0.0.0.0:%MVDG_SERVER_PORT%). Autorizados: server_authorized.txt ou
 echo       MVDG_AUTHORIZED_HOSTS. Para parar, feche esta janela.
 echo.
+echo  [ES] Abrilo en el navegador: http://localhost:%MVDG_SERVER_PORT%
+echo  [EN] Open it in the browser: http://localhost:%MVDG_SERVER_PORT%
+echo  [PT] Abra no navegador: http://localhost:%MVDG_SERVER_PORT%
+echo.
+rem --- Abre el navegador tras unos segundos (ventana aparte) ---
+start "" /min ".venv\Scripts\python.exe" -c "import time,webbrowser; time.sleep(6); webbrowser.open('http://localhost:%MVDG_SERVER_PORT%')"
 ".venv\Scripts\python.exe" -m mvdg.server
 goto end
 
