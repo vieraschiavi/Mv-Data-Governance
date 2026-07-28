@@ -357,13 +357,13 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   <p class="lead-d" data-i="sh_lead">Capturas reales del programa — no maquetas. Esto es lo que ve
     tu equipo desde el primer día, en el navegador o en el programa de escritorio.</p>
   <div class="shgrid">
-    <figure class="shot"><a href="img/tab_panorama.jpg" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" loading="lazy" alt="Panorama"></a>
+    <figure class="shot"><a href="img/tab_panorama.jpg" data-shot="tab_panorama" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" data-shot="tab_panorama" loading="lazy" alt="Panorama"></a>
       <figcaption data-i="sh_c1">📊 Panorama ejecutivo: KPIs de gobierno, calidad por dominio y evolución de 12 meses</figcaption></figure>
-    <figure class="shot"><a href="img/tab_calidad.jpg" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" loading="lazy" alt="Calidad"></a>
-      <figcaption data-i="sh_c2">✅ Motor de calidad: 17 reglas con estados, umbrales y mapa de calor dataset × dimensión</figcaption></figure>
-    <figure class="shot"><a href="img/tab_linaje.jpg" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" loading="lazy" alt="Linaje"></a>
+    <figure class="shot"><a href="img/tab_calidad.jpg" data-shot="tab_calidad" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" data-shot="tab_calidad" loading="lazy" alt="Calidad"></a>
+      <figcaption data-i="sh_c2">✅ Motor de calidad: 44 reglas con estados, umbrales y sugerencias de corrección con IA</figcaption></figure>
+    <figure class="shot"><a href="img/tab_linaje.jpg" data-shot="tab_linaje" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" data-shot="tab_linaje" loading="lazy" alt="Linaje"></a>
       <figcaption data-i="sh_c3">🧬 Linaje interactivo: de la fuente al tablero de BI, aguas arriba y aguas abajo</figcaption></figure>
-    <figure class="shot"><a href="img/tab_bi.jpg" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" loading="lazy" alt="BI y API"></a>
+    <figure class="shot"><a href="img/tab_bi.jpg" data-shot="tab_bi" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" data-shot="tab_bi" loading="lazy" alt="BI y API"></a>
       <figcaption data-i="sh_c4">📤 Exportación y API: CSV, Excel, JSON, Parquet y endpoints para tu BI en un clic</figcaption></figure>
   </div>
 </div></section>
@@ -733,7 +733,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   sh_eye:"The real product",sh_h2:"This is what your dashboards look like",
   sh_lead:"Real screenshots of the program — not mockups. This is what your team sees from day one, in the browser or in the desktop app.",
   sh_c1:"📊 Executive overview: governance KPIs, quality by domain and 12-month trend",
-  sh_c2:"✅ Quality engine: 17 rules with statuses, thresholds and a dataset × dimension heatmap",
+  sh_c2:"✅ Quality engine: 44 rules with statuses, thresholds and AI-assisted fix suggestions",
   sh_c3:"🧬 Interactive lineage: from source to BI dashboard, upstream and downstream",
   sh_c4:"📤 Export & API: CSV, Excel, JSON, Parquet and endpoints for your BI in one click",
   st_eye:"Results",st_h2:"Numbers that convince",
@@ -856,7 +856,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   sh_eye:"O produto de verdade",sh_h2:"É assim que seus painéis se parecem",
   sh_lead:"Capturas reais do programa — não maquetes. Isto é o que sua equipe vê desde o primeiro dia, no navegador ou no programa de desktop.",
   sh_c1:"📊 Panorama executivo: KPIs de governança, qualidade por domínio e evolução de 12 meses",
-  sh_c2:"✅ Motor de qualidade: 17 regras com status, limites e mapa de calor dataset × dimensão",
+  sh_c2:"✅ Motor de qualidade: 44 regras com status, limites e sugestões de correção com IA",
   sh_c3:"🧬 Linhagem interativa: da fonte ao painel de BI, a montante e a jusante",
   sh_c4:"📤 Exportação e API: CSV, Excel, JSON, Parquet e endpoints para seu BI em um clique",
   st_eye:"Resultados",st_h2:"Números que convencem",
@@ -959,7 +959,17 @@ function setLang(lang){
   document.documentElement.lang=lang;
   try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
   setVideoLang(lang);
+  setShots(lang);
   renderReviews();
+}
+/* Las capturas de los tableros se sirven en el idioma elegido (ES/EN/PT). */
+function setShots(lang){
+  var suf=lang==='es'?'':'_'+lang;
+  document.querySelectorAll('[data-shot]').forEach(function(el){
+    var base=el.getAttribute('data-shot');
+    var url='img/'+base+suf+'.jpg';
+    if(el.tagName==='IMG')el.src=url; else el.href=url;
+  });
 }
 /* La demo narrada se sirve en el idioma elegido (voz en off ES/EN/PT). */
 function setVideoLang(lang){
