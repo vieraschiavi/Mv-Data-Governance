@@ -3,13 +3,13 @@ rem ============================================================
 rem  MV Data Governance - Constructor del ejecutable Windows
 rem  ES: Genera dist\MVDataGovernance\MVDataGovernance.exe con
 rem      PyInstaller y, si Inno Setup esta instalado, tambien el
-rem      instalador dist\MVDataGovernance_Setup_v1.0.0.exe.
+rem      instalador dist\MVDataGovernance_Setup_v<version>.exe.
 rem  EN: Builds dist\MVDataGovernance\MVDataGovernance.exe with
 rem      PyInstaller and, if Inno Setup is installed, also the
-rem      dist\MVDataGovernance_Setup_v1.0.0.exe installer.
+rem      dist\MVDataGovernance_Setup_v<version>.exe installer.
 rem  PT: Gera dist\MVDataGovernance\MVDataGovernance.exe com
 rem      PyInstaller e, se o Inno Setup estiver instalado, tambem
-rem      o instalador dist\MVDataGovernance_Setup_v1.0.0.exe.
+rem      o instalador dist\MVDataGovernance_Setup_v<version>.exe.
 rem ============================================================
 setlocal EnableExtensions
 cd /d "%~dp0.."
@@ -43,9 +43,17 @@ set "ISCC="
 if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
 if not defined ISCC goto noiscc
-"%ISCC%" packaging\instalador.iss
+
+rem Version real del programa (mvdg.__version__), no un numero pisado a
+rem mano: asi el instalador y el build_release.py (que busca el .exe por
+rem nombre) siempre coinciden con lo que efectivamente se empaqueto.
+set "MVDGVER="
+for /f "delims=" %%V in ('".venv\Scripts\python.exe" -c "import mvdg; print(mvdg.__version__)" 2^>nul') do set "MVDGVER=%%V"
+if not defined MVDGVER set "MVDGVER=1.1.0"
+
+"%ISCC%" /DAppVersion=%MVDGVER% packaging\instalador.iss
 if errorlevel 1 goto erriscc
-echo  OK: dist\MVDataGovernance_Setup_v1.0.0.exe
+echo  OK: dist\MVDataGovernance_Setup_v%MVDGVER%.exe
 goto done
 
 :noiscc

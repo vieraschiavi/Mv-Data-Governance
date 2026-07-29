@@ -8,7 +8,10 @@
 
 #define AppName "MV Data Governance"
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  ; Fallback si se compila a mano (iscc packaging\instalador.iss) sin pasar
+  ; /DAppVersion. El camino recomendado, packaging\build_exe.bat, SIEMPRE lo
+  ; pasa leyendo mvdg.__version__ (fuente única de la versión) - ver ahí.
+  #define AppVersion "1.1.0"
 #endif
 #define AppPublisher "MV Data Governance"
 #define AppExe "MVDataGovernance.exe"
@@ -17,19 +20,36 @@
 AppId={{D4F8A2B7-3C1E-4B9A-8E52-MVDGOV000001}
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppVersion}
+VersionInfoDescription={#AppName} Setup
+VersionInfoCopyright=(c) {#AppPublisher}
+; Carpeta de destino sugerida - el asistente SIEMPRE muestra la página
+; "Seleccionar la carpeta de destino" (Inno Setup 6 la muestra por defecto;
+; DisableDirPage=no lo deja explícito) para que el cliente pueda elegir
+; otro disco/carpeta en vez de Archivos de programa, como cualquier
+; instalador profesional de Windows.
 DefaultDirName={autopf}\MV Data Governance
+DisableDirPage=no
 DefaultGroupName=MV Data Governance
 DisableProgramGroupPage=yes
+; Si el programa quedó abierto durante una actualización, Setup detecta el
+; .exe en uso y ofrece cerrarlo antes de sobrescribir los archivos (evita
+; el típico "no se pudo reemplazar MVDataGovernance.exe" a mitad de upgrade).
+CloseApplications=yes
+RestartApplications=yes
 OutputDir=..\dist
 OutputBaseFilename=MVDataGovernance_Setup_v{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+MinVersion=10.0
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=dialog
 SetupIconFile=..\assets\brand\mv.ico
 UninstallDisplayIcon={app}\{#AppExe}
+UninstallDisplayName={#AppName}
 
 [Languages]
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
