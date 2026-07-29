@@ -6,13 +6,15 @@ para que Power BI, Tableau, Looker, MicroStrategy, Qlik o Excel las consuman
 como origen de datos web. Documentación interactiva en ``/docs``.
 
 Levantar:
-    python -m api.main            # http://127.0.0.1:8600
-    MVDG_API_PORT=9000 python -m api.main
+    python -m bi_api.main            # http://127.0.0.1:8600
+    MVDG_API_PORT=9000 python -m bi_api.main
 """
 from __future__ import annotations
 
 import json
 import os
+import socket
+import sys
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -124,9 +126,40 @@ def get_sample_meta(dataset: str, lang: str = Query("es", pattern="^(es|en|pt)$"
     return meta
 
 
+def _port_free(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
 def main():
     port = int(os.environ.get("MVDG_API_PORT", DEFAULT_PORT))
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    host = "127.0.0.1"
+
+    # Este puerto es un punto de integración FIJO: Power BI/Tableau/Excel lo
+    # tienen configurado como origen de datos, y docs/BI_INTEGRATION.md lo
+    # documenta como http://127.0.0.1:8600. Si otro programa ya lo está
+    # usando, NO lo "resolvemos" saltando en silencio a otro puerto (eso
+    # rompería esas conexiones ya armadas sin avisar) — se corta acá con un
+    # mensaje claro y accionable en vez del traceback crudo de uvicorn.
+    if not _port_free(host, port):
+        sys.stderr.write(
+            f"\n  [MV Data Governance] El puerto {port} ya está en uso por otro "
+            f"programa / port {port} is already in use by another program / a "
+            f"porta {port} ja esta em uso por outro programa.\n"
+            f"  ES: Cerrá ese programa, o corré con MVDG_API_PORT=<otro puerto> "
+            f"para usar otro (recordá actualizar la URL en tu BI).\n"
+            f"  EN: Close that program, or run with MVDG_API_PORT=<port> to use "
+            f"a different one (remember to update the URL in your BI tool).\n"
+            f"  PT: Feche esse programa, ou rode com MVDG_API_PORT=<porta> para "
+            f"usar outra (lembre de atualizar a URL na sua ferramenta de BI).\n\n")
+        sys.exit(1)
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
