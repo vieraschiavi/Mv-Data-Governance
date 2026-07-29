@@ -86,6 +86,12 @@ Tableau, Purview y Collibra (en las dos direcciones).
 - No introduzcas dependencias pesadas nuevas sin justificarlo.
 - No uses `git push --force` ni `rm -rf`.
 
+## Agentes disponibles
+
+`explorer` (mapear el repo) · `planificador` (plan antes de cambiar) · `parallel-worker` (fan-out)
+· `specialist` (motor de gobierno de datos) · `revisor` (review del diff) · `verificador` (gate de
+evidencia, corre `pytest tests/ -v`).
+
 ## Contexto / Compact
 
 - Empezá por este archivo y el `README.md` (tiene el detalle de cada módulo).
