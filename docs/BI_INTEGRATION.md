@@ -12,6 +12,12 @@ Tablas disponibles: `catalog`, `dictionary`, `quality_results`,
 `quality_by_dataset`, `quality_by_dimension`, `lineage`, `glossary`,
 `policies`, `kpis`. Todas aceptan `?lang=es|en|pt` y `?format=json|csv`.
 
+**El puerto 8600 es fijo a propósito** (es el que ya tenés configurado como
+origen de datos en Power BI/Tableau). Si otro programa ya lo está usando, la
+API no arranca en silencio ni salta a otro puerto — corta con un mensaje
+claro. Para usar otro puerto, definí `MVDG_API_PORT=<otro puerto>` (y
+actualizá la URL en tu herramienta de BI).
+
 ```
 GET http://127.0.0.1:8600/api/catalog?lang=es
 GET http://127.0.0.1:8600/api/quality_results?lang=en&format=csv

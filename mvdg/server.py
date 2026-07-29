@@ -180,6 +180,16 @@ def _base_dir() -> str:
                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _port_free(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
 def run_server(argv_out: list | None = None) -> int:
     """Arranca el dashboard en modo servidor si el host está autorizado.
 
@@ -242,6 +252,26 @@ def run_server(argv_out: list | None = None) -> int:
     if argv_out is not None:
         argv_out[:] = argv
         return 0
+
+    # Este es el puerto que TI distribuye al resto de la empresa para llegar
+    # al servidor — un punto fijo, no algo que deba "resolverse" saltando en
+    # silencio a otro puerto si ya está ocupado (eso dejaría a todo el mundo
+    # apuntando a una URL muerta sin saber por qué). Se corta acá con un
+    # mensaje claro en vez del traceback crudo de Streamlit/Tornado.
+    if not _port_free(host, port):
+        sys.stderr.write(
+            f"\n  [MV Data Governance] El puerto {port} ya está en uso por otro "
+            f"programa / port {port} is already in use by another program / a "
+            f"porta {port} ja esta em uso por outro programa.\n"
+            f"  ES: Cerrá ese programa, o corré con MVDG_SERVER_PORT=<otro "
+            f"puerto> para usar otro (avisale a quien lo vaya a usar en la "
+            f"red).\n"
+            f"  EN: Close that program, or run with MVDG_SERVER_PORT=<port> to "
+            f"use a different one (tell whoever will reach it over the "
+            f"network).\n"
+            f"  PT: Feche esse programa, ou rode com MVDG_SERVER_PORT=<porta> "
+            f"para usar outra (avise quem for acessar pela rede).\n\n")
+        return 3
 
     print(f"MV Data Governance (servidor) -> http://{host}:{port}")
     from streamlit.web import cli as stcli
