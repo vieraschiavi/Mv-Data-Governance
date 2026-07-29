@@ -21,9 +21,11 @@
 2. Obtenés `dist\MVDataGovernance\MVDataGovernance.exe` (portable, no
    requiere Python en la máquina destino) y, si tenés
    [Inno Setup](https://jrsoftware.org/isdl.php), también el instalador
-   `dist\MVDataGovernance_Setup_v1.0.0.exe`, que durante la instalación
-   crea el acceso del **Menú Inicio** y ofrece con una casilla el del
-   **Escritorio** — el cliente elige.
+   `dist\MVDataGovernance_Setup_v<versión>.exe` (instalador profesional
+   estilo Windows: el cliente elige la **carpeta de destino** — no queda
+   fijo en Archivos de programa —, crea el acceso del **Menú Inicio** y
+   ofrece con una casilla el del **Escritorio**, y queda con
+   **Agregar o quitar programas** para desinstalar prolijo).
 
 ### Opción 3 · Web (servidor de la empresa)
 Corré el programa como servidor web para que varios usuarios lo abran desde
@@ -79,7 +81,11 @@ la pestaña **Ayuda**.
 2. You get `dist\MVDataGovernance\MVDataGovernance.exe` (portable, no Python
    needed on the target machine) and, with
    [Inno Setup](https://jrsoftware.org/isdl.php) installed, also the
-   `dist\MVDataGovernance_Setup_v1.0.0.exe` installer with shortcuts.
+   `dist\MVDataGovernance_Setup_v<version>.exe` installer (a professional
+   Windows setup: the client picks the **install folder** — not locked to
+   Program Files —, creates the **Start Menu** shortcut, offers the
+   **Desktop** one as a checkbox, and shows up in **Add or remove
+   programs** for a clean uninstall).
 
 ### Option 3 · Web (company server)
 Run the program as a web server so multiple users open it from their browser,
@@ -128,7 +134,12 @@ under the **Help** tab.
 2. Você obtém `dist\MVDataGovernance\MVDataGovernance.exe` (portátil, não
    requer Python na máquina de destino) e, com o
    [Inno Setup](https://jrsoftware.org/isdl.php) instalado, também o
-   instalador `dist\MVDataGovernance_Setup_v1.0.0.exe` com atalhos.
+   instalador `dist\MVDataGovernance_Setup_v<versão>.exe` (instalador
+   profissional estilo Windows: o cliente escolhe a **pasta de destino**
+   — não fica preso em Arquivos de Programas —, cria o atalho do **Menu
+   Iniciar**, oferece o da **Área de Trabalho** com uma caixa de seleção,
+   e aparece em **Adicionar ou remover programas** para desinstalar
+   direitinho).
 
 ### Opção 3 · Web (servidor da empresa)
 Rode o programa como servidor web para vários usuários abrirem pelo

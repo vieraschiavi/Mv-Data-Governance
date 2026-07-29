@@ -49,7 +49,32 @@ def _abrir_navegador(url: str) -> None:
     webbrowser.open(url)
 
 
+def _dispatch_module_flag() -> bool:
+    """Soporte de ``-m <módulo>`` cuando este launcher corre como .exe
+    congelado (PyInstaller).
+
+    El botón "Probar servidor MCP" (app/app.py) y el selfcheck
+    (mvdg/selfcheck.py) lanzan un subproceso con
+    ``sys.executable, ["-m", "mvdg.mcp_server"]`` — el mismo patrón que
+    usarían con un ``python.exe`` normal. En el .bat portable eso funciona
+    porque ``sys.executable`` ES python.exe. Pero en el .exe empaquetado,
+    ``sys.executable`` es este mismo binario congelado, que no sabe
+    interpretar "-m módulo" como haría un intérprete real — sin este atajo,
+    el subproceso simplemente relanzaría el dashboard completo (una segunda
+    ventana) en vez de correr ``mvdg.mcp_server``. Acá lo interceptamos y
+    corremos el módulo pedido con runpy, igual que ``python -m`` haría.
+    Devuelve True si se consumió el flag (el caller no debe seguir)."""
+    if len(sys.argv) >= 3 and sys.argv[1] == "-m":
+        import runpy
+        runpy.run_module(sys.argv[2], run_name="__main__", alter_sys=True)
+        return True
+    return False
+
+
 def main() -> None:
+    if _dispatch_module_flag():
+        return
+
     base = _base_dir()
     app_path = os.path.join(base, "app", "app.py")
 
