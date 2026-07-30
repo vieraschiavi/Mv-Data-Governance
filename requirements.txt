@@ -11,6 +11,11 @@ pyarrow>=14.0
 sqlalchemy>=2.0
 keyring>=24.0
 mcp>=1.28
+# Verificación de la firma Ed25519 de las licencias (mvdg/licensing.py). Ya
+# venía instalada de arriba como dependencia de keyring en Linux/macOS, pero
+# acá es de uso DIRECTO y en Windows keyring no la arrastra: sin declararla, el
+# programa no podría validar ninguna licencia en el SO donde más se instala.
+cryptography>=42.0
 
 # --- Drivers de base de datos (opcionales, instalá el que uses) ---
 # Database drivers (optional — install the one you use):
