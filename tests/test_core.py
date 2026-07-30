@@ -262,7 +262,70 @@ def test_build_release_option_b(tmp_path, monkeypatch):
     assert "MVDataGovernance/server_authorized.txt" in names
     assert "MVDataGovernance/bi_api/main.py" in names
     assert not any(".venv" in n or "__pycache__" in n for n in names)
+    # los terminos de uso viajan con el producto: el .bat portable y el ZIP no
+    # pasan por el instalador, asi que si no estan aca se distribuye sin licencia
+    assert "MVDataGovernance/LICENSE" in names
+    assert "MVDataGovernance/legal/EULA_es.txt" in names
     assert br.build_option_a() is None  # sin Setup.exe construido
+
+
+# --------------------------------------------- compilación del motor (Cython)
+def _load_build_compiled():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "build_compiled", os.path.join(_repo_root(), "packaging", "build_compiled.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_build_compiled_excludes_every_dash_m_entrypoint():
+    """Todo módulo que se lance con ``python -m mvdg.X`` DEBE quedar sin
+    compilar.
+
+    Una extensión nativa no se puede ejecutar con ``-m``: el intérprete corta
+    con "No code object available", porque runpy necesita fuente o bytecode.
+    Si alguien agrega un entrypoint nuevo y se olvida de excluirlo, el build
+    compilado se rompe SOLO en el .exe entregado al cliente (el .bat portable
+    sigue andando), que es la peor forma de enterarse. Este test lo detecta
+    escaneando el repo de verdad, no una lista escrita a mano."""
+    import re
+    bc = _load_build_compiled()
+    root = _repo_root()
+    encontrados = set()
+    for base, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in
+                   {".git", "node_modules", "dist", "build", "__pycache__",
+                    ".venv", "electron", ".pytest_cache"}]
+        for fn in files:
+            if not fn.endswith((".py", ".bat", ".sh", ".md", ".iss", ".txt")):
+                continue
+            try:
+                txt = open(os.path.join(base, fn), encoding="utf-8",
+                           errors="ignore").read()
+            except OSError:
+                continue
+            encontrados.update(re.findall(r"-m\s+mvdg\.([a-z_]+)", txt))
+    assert encontrados, "no se detectó ningún entrypoint -m mvdg.X (¿regex roto?)"
+    faltan = sorted(f"{m}.py" for m in encontrados
+                    if f"{m}.py" not in bc.NO_COMPILAR)
+    assert not faltan, (
+        "estos módulos se lanzan con 'python -m' pero build_compiled.py los "
+        f"compilaría (se romperían en el .exe): {faltan}")
+
+
+def test_build_compiled_excludes_module_whose_source_the_selfcheck_audits():
+    """El selfcheck abre el código fuente de enforcement.py para afirmar que no
+    contiene 'sqlalchemy' ni '.execute(' — la garantía auditable de que genera
+    DDL como texto y nunca lo ejecuta. Compilado, ese open() falla y la
+    garantía queda sin poder verificarse."""
+    bc = _load_build_compiled()
+    assert "enforcement.py" in bc.NO_COMPILAR
+    sc = open(os.path.join(_repo_root(), "mvdg", "selfcheck.py"),
+              encoding="utf-8").read()
+    assert "open(en.__file__" in sc, (
+        "el selfcheck ya no lee el fuente de enforcement.py: revisá si sigue "
+        "haciendo falta excluirlo de la compilación")
 
 
 # ----------------------------------------------------- modo servidor (web)

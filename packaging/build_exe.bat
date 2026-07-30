@@ -28,17 +28,27 @@ if errorlevel 1 goto errvenv
 
 :deps
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt pyinstaller
+".venv\Scripts\python.exe" -m pip install -r requirements.txt pyinstaller cython
 if errorlevel 1 goto errdeps
 
 echo.
-echo  [1/2] PyInstaller: empaquetando el programa standalone...
+echo  [1/3] Cython: compilando el motor a binario (.pyd)...
+rem Sin esto, mvdg\ viaja como .py en texto plano dentro del .exe (Streamlit
+rem corre app.py como script, asi que PyInstaller lo copia tal cual, y el
+rem cliente se queda con el motor legible en el Bloc de notas). No es
+rem bloqueante: si falta Cython o el compilador de C, se avisa y se sigue con
+rem el motor sin compilar. En Windows requiere Build Tools de Visual Studio.
+".venv\Scripts\python.exe" packaging\build_compiled.py
+if errorlevel 1 echo  AVISO: el motor NO se compilo; se empaqueta como codigo fuente legible.
+
+echo.
+echo  [2/3] PyInstaller: empaquetando el programa standalone...
 ".venv\Scripts\python.exe" -m PyInstaller packaging\mvdg.spec --noconfirm
 if errorlevel 1 goto errbuild
 echo  OK: dist\MVDataGovernance\MVDataGovernance.exe
 
 echo.
-echo  [2/2] Inno Setup: creando el instalador (opcional)...
+echo  [3/3] Inno Setup: creando el instalador (opcional)...
 set "ISCC="
 if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"

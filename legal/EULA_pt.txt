@@ -1,0 +1,86 @@
+MV DATA GOVERNANCE
+CONTRATO DE LICENCA DE USUARIO FINAL (EULA)
+
+Copyright (c) 2026 MV Data Governance. Todos os direitos reservados.
+
+Leia este contrato antes de instalar. Ao instalar ou usar o programa, voce
+aceita estes termos. Se nao os aceitar, cancele a instalacao.
+
+Este programa NAO e de codigo aberto: e licenciado, nao vendido.
+
+
+1. O QUE VOCE PODE FAZER
+
+   - Versao demo / avaliacao: instalar e usar o programa para avalia-lo
+     internamente na sua organizacao.
+   - Uso em producao ou comercial: requer uma licenca paga vigente concedida
+     pelo titular do copyright. Sem essa licenca, o uso produtivo nao esta
+     autorizado.
+   - Os dados que voce processa com o programa sao seus. O programa funciona
+     localmente: nao envia seus dados para a internet, salvo se voce
+     configurar e ativar expressamente um conector externo.
+
+
+2. O QUE VOCE NAO PODE FAZER
+
+   Salvo autorizacao previa e por escrito do titular:
+
+   - Redistribuir, publicar, sublicenciar, vender, alugar, emprestar ou
+     disponibilizar o programa a terceiros, por qualquer meio.
+   - Fazer engenharia reversa, descompilar, desmontar ou desofuscar as partes
+     distribuidas em forma compilada, exceto na medida em que a lei aplicavel
+     permita expressamente e tal direito nao possa ser excluido por contrato.
+   - Criar obras derivadas, adaptacoes ou produtos concorrentes baseados no
+     programa, sua arquitetura, suas regras ou sua logica de negocio.
+   - Remover, alterar ou ocultar avisos de copyright, marcas ou atribuicoes.
+   - Usar o programa para prestar um servico equivalente a terceiros (SaaS,
+     hosting, consultoria empacotada) sem licenca comercial.
+
+
+3. PROPRIEDADE
+
+   O titular mantem a propriedade e todos os direitos de propriedade
+   intelectual sobre o programa. Esta licenca concede a voce apenas os
+   direitos de uso aqui descritos.
+
+
+4. COMPONENTES DE TERCEIROS
+
+   O programa inclui componentes de software livre (Streamlit, pandas, NumPy,
+   Plotly, FastAPI e outros) e conjuntos de dados de exemplo de terceiros
+   (Kaggle CC BY-SA 4.0, UCI CC BY 4.0, openFDA dominio publico, dados
+   abertos de governo). Cada um e regido por sua propria licenca e nao por
+   este contrato; suas atribuicoes sao exibidas dentro do programa.
+
+   Os dados de demonstracao gerados pelo programa sao 100% sinteticos e nao
+   contem informacao real de pessoas.
+
+
+5. SEM GARANTIA E LIMITE DE RESPONSABILIDADE
+
+   O PROGRAMA E FORNECIDO "COMO ESTA", SEM GARANTIAS DE QUALQUER TIPO. E uma
+   ferramenta de apoio a governanca de dados: nao substitui o julgamento
+   profissional, a revisao humana nem o cumprimento regulatorio devido pela
+   sua organizacao.
+
+   Na maxima medida permitida pela lei aplicavel, o titular nao sera
+   responsavel por danos indiretos, incidentais, especiais ou consequentes,
+   nem por lucros cessantes ou perda de dados, decorrentes do uso ou da
+   impossibilidade de uso do programa.
+
+
+6. RESCISAO
+
+   Esta licenca termina automaticamente se voce violar qualquer de seus
+   termos. Ao terminar, voce deve cessar todo uso e desinstalar o programa.
+
+
+7. LEI APLICAVEL
+
+   Esta licenca e regida pelas leis da jurisdicao do domicilio do titular, sem
+   prejuizo dos direitos que a lei do consumidor aplicavel lhe reconheca de
+   forma imperativa.
+
+
+O texto completo da licenca esta no arquivo LICENSE instalado junto ao
+programa.

@@ -128,7 +128,7 @@ traducciones está cubierta por tests.
 ## ✅ Tests
 
 ```bash
-pip install -r requirements.txt pytest httpx2
+pip install -r requirements.txt pytest httpx
 pytest tests/ -v
 ```
 
@@ -146,3 +146,27 @@ políticas e perfilamento — 100% web + desktop (`.bat` portátil e `.exe`
 Windows, sem APK), compatível com qualquer ferramenta de BI via arquivos
 (CSV/Excel/JSON/Parquet) e API REST. Veja
 [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
+
+---
+
+## ⚖️ Licencia · License · Licença
+
+Software **propietario** — no es código abierto. Ver [`LICENSE`](LICENSE)
+(ES/EN/PT) para los términos completos, y [`legal/`](legal/) para el EULA que
+muestra el instalador de Windows.
+
+- **Demo / evaluación:** permitida para evaluar el programa internamente.
+- **Uso en producción o comercial:** requiere licencia paga vigente.
+- **No permitido:** redistribuir, hacer ingeniería inversa sobre las partes
+  compiladas, crear productos derivados, o prestar el programa como servicio a
+  terceros sin licencia comercial.
+
+Las dependencias de software libre y los datasets de ejemplo de terceros
+(Kaggle CC BY-SA 4.0, UCI CC BY 4.0, openFDA dominio público, datos abiertos de
+gobierno) conservan **sus propias licencias** — el detalle y las atribuciones
+están en `LICENSE` y se muestran dentro del programa. Los datos de demostración
+que genera el programa son 100% sintéticos.
+
+> El motor (`mvdg/`) se distribuye **compilado a binario** en el `.exe`
+> (ver [`packaging/build_compiled.py`](packaging/build_compiled.py)). Eso eleva
+> el costo de copiar el código; no lo vuelve inviolable, y no pretende hacerlo.

@@ -138,7 +138,7 @@ def suggest_label(classification: str, labels: list[dict]) -> dict | None:
 
 
 def build_assignment_plan(catalog: pd.DataFrame, file_map: dict[str, dict],
-                          labels: list[dict]) -> list[dict]:
+                          labels: list[dict]) -> dict:
     """Arma qué etiqueta se aplicaría a cada dataset que SÍ tiene un
     archivo mapeado en OneDrive/SharePoint (``file_map``: {dataset:
     {"driveId":.., "itemId":..}}). Los datasets sin archivo mapeado no
