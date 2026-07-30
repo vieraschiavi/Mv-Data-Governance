@@ -1,0 +1,275 @@
+MV Data Governance — Licencia de software propietario
+MV Data Governance — Proprietary software license
+MV Data Governance — Licença de software proprietário
+
+Copyright (c) 2026 MV Data Governance. Todos los derechos reservados.
+All rights reserved. Todos os direitos reservados.
+
+En caso de discrepancia entre las versiones, la versión en ESPAÑOL es la
+autoritativa. / In case of discrepancy, the SPANISH version prevails. / Em caso
+de divergência, a versão em ESPANHOL prevalece.
+
+===============================================================================
+🇪🇸 ESPAÑOL
+===============================================================================
+
+Este software NO es de código abierto. Se licencia, no se vende.
+
+1. DEFINICIONES
+   "Software" es el programa MV Data Governance: su código fuente y compilado,
+   el motor (catálogo, calidad, linaje, glosario, políticas, perfilado, MDM,
+   conectores, exportadores), la interfaz, la API, la documentación y los
+   materiales asociados. "Licenciante" es el titular del copyright indicado
+   arriba. "Usted" es la persona física o jurídica que usa el Software.
+
+2. LICENCIA OTORGADA
+   a) Versión demo / evaluación: se le otorga una licencia limitada, no
+      exclusiva, no transferible y revocable para instalar y usar el Software
+      con fines de evaluación interna.
+   b) Uso en producción, comercial o dentro de una organización: requiere una
+      licencia paga vigente otorgada por el Licenciante. Sin esa licencia, el
+      uso productivo no está autorizado.
+
+3. RESTRICCIONES
+   Salvo autorización previa y por escrito del Licenciante, usted NO puede:
+   a) Redistribuir, publicar, sublicenciar, vender, alquilar, prestar ni poner
+      el Software a disposición de terceros, por ningún medio.
+   b) Realizar ingeniería inversa, descompilar, desensamblar, desofuscar ni
+      intentar de otro modo derivar el código fuente de las partes distribuidas
+      en forma compilada, salvo en la medida en que la ley aplicable lo permita
+      expresamente y no pueda excluirse por contrato.
+   c) Crear obras derivadas, adaptaciones o productos competidores basados en
+      el Software o en su arquitectura, reglas o lógica de negocio.
+   d) Remover, alterar u ocultar avisos de copyright, marcas, atribuciones o
+      este texto de licencia.
+   e) Usar el Software para prestar un servicio equivalente a terceros
+      (SaaS, hosting, consultoría empaquetada) sin licencia comercial.
+
+4. PROPIEDAD
+   El Licenciante conserva la titularidad y todos los derechos de propiedad
+   intelectual sobre el Software. Esta licencia no le transfiere propiedad
+   alguna, solo los derechos de uso expresamente descritos.
+
+5. COMPONENTES DE TERCEROS
+   Esta licencia NO se aplica a componentes de terceros incluidos o usados por
+   el Software, que se rigen por sus propias licencias:
+
+   a) Dependencias de software libre (Streamlit, pandas, NumPy, Plotly,
+      FastAPI, uvicorn, openpyxl, XlsxWriter, PyArrow, SQLAlchemy, keyring,
+      el SDK de MCP, entre otras): cada una conserva su licencia original.
+   b) Conjuntos de datos de ejemplo incluidos con el Software:
+      - "Dirty Cafe Sales" (Kaggle, por Ahmed Mohamed) — CC BY-SA 4.0,
+        requiere atribución.
+      - "Bank Marketing" (UCI Machine Learning Repository; S. Moro, P. Rita,
+        P. Cortez) — CC BY 4.0, requiere atribución.
+      - Directorio NDC de openFDA (api.fda.gov) — obra del gobierno de EE. UU.,
+        dominio público. openFDA advierte que estos datos NO están validados
+        para decisiones médicas.
+      - Control bromatológico de alimentos (Uruguay) — datos abiertos de
+        gobierno.
+      Las atribuciones y licencias de cada dataset se muestran dentro del
+      propio programa. El Licenciante no reclama titularidad sobre ellos.
+
+   Los datos de demostración generados por el Software son 100% sintéticos y no
+   contienen información real de personas.
+
+6. SIN GARANTÍA
+   EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍAS DE NINGÚN TIPO,
+   EXPRESAS O IMPLÍCITAS, INCLUIDAS ENTRE OTRAS LAS DE COMERCIABILIDAD,
+   IDONEIDAD PARA UN FIN PARTICULAR Y NO INFRACCIÓN. El Software es una
+   herramienta de apoyo al gobierno de datos: no sustituye el juicio
+   profesional, la revisión humana ni el cumplimiento normativo que
+   corresponda a su organización.
+
+7. LIMITACIÓN DE RESPONSABILIDAD
+   En la máxima medida permitida por la ley aplicable, el Licenciante no será
+   responsable por daños indirectos, incidentales, especiales, punitivos o
+   consecuentes, ni por lucro cesante o pérdida de datos, derivados del uso o
+   la imposibilidad de uso del Software.
+
+8. TERMINACIÓN
+   Esta licencia termina automáticamente si usted incumple cualquiera de sus
+   términos. Al terminar, debe cesar todo uso y desinstalar el Software.
+
+9. LEY APLICABLE
+   Esta licencia se rige por las leyes de la jurisdicción del domicilio del
+   Licenciante, sin perjuicio de los derechos que la ley del consumidor
+   aplicable le reconozca de forma imperativa.
+
+Contacto para licencias comerciales: el titular indicado en el aviso de
+copyright.
+
+===============================================================================
+🇬🇧 ENGLISH
+===============================================================================
+
+This software is NOT open source. It is licensed, not sold.
+
+1. DEFINITIONS
+   "Software" means the MV Data Governance program: its source and compiled
+   code, the engine (catalog, quality, lineage, glossary, policies, profiling,
+   MDM, connectors, exporters), the interface, the API, the documentation and
+   associated materials. "Licensor" is the copyright holder named above.
+   "You" is the individual or entity using the Software.
+
+2. LICENSE GRANTED
+   a) Demo / evaluation version: you are granted a limited, non-exclusive,
+      non-transferable, revocable license to install and use the Software for
+      internal evaluation purposes.
+   b) Production, commercial or organization-wide use requires a valid paid
+      license from the Licensor. Without such a license, productive use is not
+      authorized.
+
+3. RESTRICTIONS
+   Except with the Licensor's prior written permission, you may NOT:
+   a) Redistribute, publish, sublicense, sell, rent, lend or otherwise make the
+      Software available to third parties, by any means.
+   b) Reverse engineer, decompile, disassemble, deobfuscate or otherwise
+      attempt to derive the source code of parts distributed in compiled form,
+      except to the extent applicable law expressly permits and such right
+      cannot be excluded by contract.
+   c) Create derivative works, adaptations or competing products based on the
+      Software or on its architecture, rules or business logic.
+   d) Remove, alter or obscure copyright notices, trademarks, attributions or
+      this license text.
+   e) Use the Software to provide an equivalent service to third parties
+      (SaaS, hosting, packaged consulting) without a commercial license.
+
+4. OWNERSHIP
+   The Licensor retains title and all intellectual property rights in the
+   Software. This license transfers no ownership to you, only the usage rights
+   expressly described.
+
+5. THIRD-PARTY COMPONENTS
+   This license does NOT apply to third-party components included in or used by
+   the Software, which are governed by their own licenses:
+
+   a) Open source dependencies (Streamlit, pandas, NumPy, Plotly, FastAPI,
+      uvicorn, openpyxl, XlsxWriter, PyArrow, SQLAlchemy, keyring, the MCP SDK,
+      among others): each retains its original license.
+   b) Sample datasets shipped with the Software:
+      - "Dirty Cafe Sales" (Kaggle, by Ahmed Mohamed) — CC BY-SA 4.0,
+        attribution required.
+      - "Bank Marketing" (UCI Machine Learning Repository; S. Moro, P. Rita,
+        P. Cortez) — CC BY 4.0, attribution required.
+      - openFDA NDC Directory (api.fda.gov) — U.S. Government work, public
+        domain. openFDA warns these data are NOT validated for medical
+        decisions.
+      - Food safety control data (Uruguay) — open government data.
+      Each dataset's attribution and license are shown inside the program
+      itself. The Licensor claims no ownership over them.
+
+   Demo data generated by the Software is 100% synthetic and contains no real
+   personal information.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. The Software is a
+   data governance support tool: it does not replace professional judgment,
+   human review or the regulatory compliance owed by your organization.
+
+7. LIMITATION OF LIABILITY
+   To the maximum extent permitted by applicable law, the Licensor shall not be
+   liable for indirect, incidental, special, punitive or consequential damages,
+   nor for lost profits or lost data, arising from the use of or inability to
+   use the Software.
+
+8. TERMINATION
+   This license terminates automatically if you breach any of its terms. Upon
+   termination you must cease all use and uninstall the Software.
+
+9. GOVERNING LAW
+   This license is governed by the laws of the jurisdiction of the Licensor's
+   domicile, without prejudice to any mandatory consumer rights granted to you
+   by applicable law.
+
+Commercial licensing contact: the holder named in the copyright notice.
+
+===============================================================================
+🇧🇷 PORTUGUÊS
+===============================================================================
+
+Este software NÃO é de código aberto. É licenciado, não vendido.
+
+1. DEFINIÇÕES
+   "Software" é o programa MV Data Governance: seu código-fonte e compilado, o
+   motor (catálogo, qualidade, linhagem, glossário, políticas, perfilamento,
+   MDM, conectores, exportadores), a interface, a API, a documentação e os
+   materiais associados. "Licenciante" é o titular do copyright indicado acima.
+   "Você" é a pessoa física ou jurídica que usa o Software.
+
+2. LICENÇA CONCEDIDA
+   a) Versão demo / avaliação: concede-se a você uma licença limitada, não
+      exclusiva, não transferível e revogável para instalar e usar o Software
+      para fins de avaliação interna.
+   b) Uso em produção, comercial ou dentro de uma organização requer uma
+      licença paga vigente concedida pelo Licenciante. Sem essa licença, o uso
+      produtivo não está autorizado.
+
+3. RESTRIÇÕES
+   Salvo autorização prévia e por escrito do Licenciante, você NÃO pode:
+   a) Redistribuir, publicar, sublicenciar, vender, alugar, emprestar nem
+      disponibilizar o Software a terceiros, por qualquer meio.
+   b) Fazer engenharia reversa, descompilar, desmontar, desofuscar ou de outro
+      modo tentar derivar o código-fonte das partes distribuídas em forma
+      compilada, exceto na medida em que a lei aplicável permita expressamente
+      e tal direito não possa ser excluído por contrato.
+   c) Criar obras derivadas, adaptações ou produtos concorrentes baseados no
+      Software ou em sua arquitetura, regras ou lógica de negócio.
+   d) Remover, alterar ou ocultar avisos de copyright, marcas, atribuições ou
+      este texto de licença.
+   e) Usar o Software para prestar um serviço equivalente a terceiros (SaaS,
+      hosting, consultoria empacotada) sem licença comercial.
+
+4. PROPRIEDADE
+   O Licenciante mantém a titularidade e todos os direitos de propriedade
+   intelectual sobre o Software. Esta licença não transfere a você nenhuma
+   propriedade, apenas os direitos de uso expressamente descritos.
+
+5. COMPONENTES DE TERCEIROS
+   Esta licença NÃO se aplica a componentes de terceiros incluídos ou usados
+   pelo Software, regidos por suas próprias licenças:
+
+   a) Dependências de software livre (Streamlit, pandas, NumPy, Plotly,
+      FastAPI, uvicorn, openpyxl, XlsxWriter, PyArrow, SQLAlchemy, keyring, o
+      SDK do MCP, entre outras): cada uma mantém sua licença original.
+   b) Conjuntos de dados de exemplo incluídos com o Software:
+      - "Dirty Cafe Sales" (Kaggle, por Ahmed Mohamed) — CC BY-SA 4.0, requer
+        atribuição.
+      - "Bank Marketing" (UCI Machine Learning Repository; S. Moro, P. Rita,
+        P. Cortez) — CC BY 4.0, requer atribuição.
+      - Diretório NDC do openFDA (api.fda.gov) — obra do governo dos EUA,
+        domínio público. O openFDA adverte que esses dados NÃO estão validados
+        para decisões médicas.
+      - Controle bromatológico de alimentos (Uruguai) — dados abertos de
+        governo.
+      As atribuições e licenças de cada dataset são exibidas dentro do próprio
+      programa. O Licenciante não reivindica titularidade sobre eles.
+
+   Os dados de demonstração gerados pelo Software são 100% sintéticos e não
+   contêm informação real de pessoas.
+
+6. SEM GARANTIA
+   O SOFTWARE É FORNECIDO "COMO ESTÁ", SEM GARANTIAS DE QUALQUER TIPO,
+   EXPRESSAS OU IMPLÍCITAS, INCLUINDO ENTRE OUTRAS AS DE COMERCIABILIDADE,
+   ADEQUAÇÃO A UM FIM ESPECÍFICO E NÃO VIOLAÇÃO. O Software é uma ferramenta de
+   apoio à governança de dados: não substitui o julgamento profissional, a
+   revisão humana nem o cumprimento regulatório devido pela sua organização.
+
+7. LIMITAÇÃO DE RESPONSABILIDADE
+   Na máxima medida permitida pela lei aplicável, o Licenciante não será
+   responsável por danos indiretos, incidentais, especiais, punitivos ou
+   consequentes, nem por lucros cessantes ou perda de dados, decorrentes do uso
+   ou da impossibilidade de uso do Software.
+
+8. RESCISÃO
+   Esta licença termina automaticamente se você violar qualquer de seus termos.
+   Ao terminar, você deve cessar todo uso e desinstalar o Software.
+
+9. LEI APLICÁVEL
+   Esta licença é regida pelas leis da jurisdição do domicílio do Licenciante,
+   sem prejuízo dos direitos que a lei do consumidor aplicável lhe reconheça de
+   forma imperativa.
+
+Contato para licenças comerciais: o titular indicado no aviso de copyright.

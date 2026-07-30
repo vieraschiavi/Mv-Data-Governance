@@ -51,16 +51,25 @@ SetupIconFile=..\assets\brand\mv.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 
+; El EULA se muestra en el idioma elegido, con el paso "Acepto los terminos"
+; que Inno Setup agrega automaticamente cuando hay LicenseFile. Los .txt estan
+; escritos SIN acentos a proposito: el renderizado de un .txt en el asistente
+; depende de la codificacion/BOM y de la codepage del equipo, y un EULA con
+; caracteres corruptos se ve peor que uno sin tildes. No es descuido.
 [Languages]
-Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
-Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"; LicenseFile: "..\legal\EULA_es.txt"
+Name: "en"; MessagesFile: "compiler:Default.isl"; LicenseFile: "..\legal\EULA_en.txt"
+Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"; LicenseFile: "..\legal\EULA_pt.txt"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "..\dist\MVDataGovernance\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+; La licencia completa queda instalada junto al programa (el EULA del asistente
+; es el resumen; LICENSE es el texto autoritativo, y los terminos tienen que
+; poder consultarse despues de instalar, no solo durante la instalacion).
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

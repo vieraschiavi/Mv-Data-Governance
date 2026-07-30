@@ -121,15 +121,35 @@ VSVersionInfo(
 )
 """)
 
+# El motor: si packaging/build_compiled.py ya corrió, se empaqueta la versión
+# COMPILADA (.pyd/.so, ver ese script para el por qué y las exclusiones); si no,
+# se cae al mvdg/ de siempre en texto plano. El fallback es a propósito: el
+# build nunca se rompe por no tener Cython o un compilador de C instalado, solo
+# entrega el motor menos protegido — y se avisa por consola cuál de las dos
+# variantes se está empaquetando, para que no pase inadvertido.
+_MVDG_COMPILADO = os.path.join(ROOT, "build", "mvdg_compiled", "mvdg")
+if os.path.isdir(_MVDG_COMPILADO) and any(
+        f.endswith((".pyd", ".so")) for f in os.listdir(_MVDG_COMPILADO)):
+    _mvdg_src = _MVDG_COMPILADO
+    print("[mvdg.spec] motor COMPILADO (Cython): " + _MVDG_COMPILADO)
+else:
+    _mvdg_src = os.path.join(ROOT, "mvdg")
+    print("[mvdg.spec] motor en CÓDIGO FUENTE (sin compilar) — corré "
+          "packaging/build_compiled.py antes si querés el motor compilado")
+
 # Código y recursos propios. bi_api = API REST para BI (Python/FastAPI); NO se
 # incluye la carpeta api/ (funciones serverless Node.js de MercadoPago, que solo
 # corren en Vercel y no forman parte del programa de escritorio).
 datas += [
     (os.path.join(ROOT, "app"), "app"),
-    (os.path.join(ROOT, "mvdg"), "mvdg"),
+    (_mvdg_src, "mvdg"),
     (os.path.join(ROOT, "bi_api"), "bi_api"),
     (os.path.join(ROOT, "assets", "brand"), os.path.join("assets", "brand")),
     (os.path.join(ROOT, "assets", "samples"), os.path.join("assets", "samples")),
+    # La licencia viaja DENTRO del programa (además de instalarla el Setup):
+    # el .bat portable y el ZIP no pasan por el instalador, así que si no
+    # estuviera acá esas dos vías se distribuirían sin términos de uso.
+    (os.path.join(ROOT, "LICENSE"), "."),
 ]
 
 a = Analysis(

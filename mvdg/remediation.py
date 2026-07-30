@@ -17,7 +17,11 @@ una sugerencia genérica por dimensión DAMA.
 from __future__ import annotations
 
 
-def _f(root: str, short: str, long: str, owner: str) -> dict:
+def _f(root: dict, short: dict, long: dict, owner: dict) -> dict:
+    """Los 4 argumentos son diccionarios trilingües de ``_d()`` (es/en/pt), no
+    strings: la anotación decía ``str`` y Python no lo chequea, pero Cython sí
+    la aplica en runtime y el módulo no llegaba a importarse en el build
+    compilado (TypeError: Argument 'root' has incorrect type)."""
     return {"root_cause": root, "short_term": short, "long_term": long, "owner": owner}
 
 
