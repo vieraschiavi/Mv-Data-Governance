@@ -31,6 +31,7 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
                              save_connection, scan_all_connections,
                              stored_password, test_connection)
 from mvdg.help_center import automation_rows, purview_collibra_faq, speeches
+from mvdg import licensing
 from mvdg.lab_case import lab_measure, lab_steps
 from mvdg import azure_discovery
 from mvdg import cobit_iso
@@ -184,6 +185,18 @@ _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
                "timeliness", "accuracy"]}
 _STATUS_LABEL = {"pass": t("q_pass", lang), "warn": t("q_warn", lang),
                  "fail": t("q_fail", lang)}
+
+
+def _licencia_ok(funcion: str, lang: str) -> bool:
+    """¿Está habilitada esta función para el plan vigente?
+
+    Si no, muestra el aviso y devuelve False para que el llamador NO dibuje el
+    botón de la acción real. La política de qué es pago vive en un solo lugar
+    (mvdg/licensing.py, FUNCIONES_PAGAS) — acá solo se consulta."""
+    if licensing.has_feature(funcion):
+        return True
+    st.info(t("lic_locked", lang).format(tab=t("tab_help", lang)), icon="🔒")
+    return False
 
 
 def _render_fixes(results_df, lang):
@@ -1381,7 +1394,10 @@ with tab_bi:
         if st.button(t("mig_preview", lang), key="mig_prev_pv"):
             st.session_state["mig_result"] = purview_export.push_all(
                 _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=True)
-        if _mig_ready and st.button(t("mig_push", lang), type="primary", key="mig_push_pv"):
+        # La vista previa queda libre (es lo que hace lucir el producto); el
+        # push REAL contra el Purview de la empresa es lo que se licencia.
+        if _mig_ready and _licencia_ok("migracion_purview", lang) and \
+                st.button(t("mig_push", lang), type="primary", key="mig_push_pv"):
             with st.spinner("…"):
                 try:
                     st.session_state["mig_result"] = purview_export.push_all(
@@ -1395,7 +1411,8 @@ with tab_bi:
         if st.button(t("mig_preview", lang), key="mig_prev_cb"):
             st.session_state["mig_result"] = collibra_export.push_all(
                 _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=True)
-        if _mig_ready and st.button(t("mig_push", lang), type="primary", key="mig_push_cb"):
+        if _mig_ready and _licencia_ok("migracion_collibra", lang) and \
+                st.button(t("mig_push", lang), type="primary", key="mig_push_cb"):
             with st.spinner("…"):
                 try:
                     st.session_state["mig_result"] = collibra_export.push_all(
@@ -1858,6 +1875,42 @@ with tab_ws:
 with tab_h:
     st.info(t("h_intro", lang), icon="❓")
 
+    # --- Licencia -----------------------------------------------------------
+    st.subheader(t("lic_title", lang))
+    _lic = licensing.status()
+    st.caption(t("lic_intro", lang))
+    if not _lic["emisor_configurado"]:
+        st.warning(t("lic_no_issuer", lang), icon="⚠️")
+    _lc1, _lc2 = st.columns([1, 2])
+    _lc1.metric(t("lic_plan", lang),
+                _lic["plan"] if _lic["licenciado"] else t("lic_demo", lang))
+    if _lic["licenciado"]:
+        with _lc2:
+            st.write(f"**{t('lic_email', lang)}:** {_lic['email'] or '—'}")
+            if _lic["vence"]:
+                import datetime as _dt
+                st.write(f"**{t('lic_expires', lang)}:** "
+                         f"{_dt.datetime.fromtimestamp(_lic['vence']):%Y-%m-%d}")
+            else:
+                st.write(f"**{t('lic_expires', lang)}:** {t('lic_never', lang)}")
+        if st.button(t("lic_remove", lang), key="lic_remove_btn"):
+            licensing.clear()
+            st.success(t("lic_removed", lang))
+            st.rerun()
+    else:
+        _lic_key = st.text_input(t("lic_input", lang), key="lic_key_input",
+                                 placeholder="MVDG2.…")
+        if st.button(t("lic_activate", lang), type="primary", key="lic_activate_btn"):
+            _payload = licensing.save(_lic_key)
+            if _payload:
+                st.success(t("lic_ok", lang).format(plan=_payload.get("plan")))
+                st.rerun()
+            else:
+                st.error(t("lic_bad", lang), icon="⚠️")
+    st.caption(f"**{t('lic_paid_features', lang)}:** "
+               + ", ".join(_lic["funciones_pagas"]))
+    st.divider()
+
     st.subheader(t("h_matrix", lang))
     st.markdown(t("h_matrix_note", lang))
     _LEVEL_LABEL = {"auto": t("h_auto", lang), "partial": t("h_partial", lang),
@@ -2099,7 +2152,8 @@ with tab_pbi:
             st.caption(t("pbi_tenant_hint", lang))
             pbi_max_ws = st.number_input(t("pbi_tenant_max_ws", lang), min_value=1, max_value=1000,
                                          value=25, step=5, key="pbi_tenant_max_ws")
-            if st.button(t("pbi_tenant_scan", lang), key="pbi_tenant_scan_btn"):
+            if _licencia_ok("escaneo_tenant_bi", lang) and \
+                    st.button(t("pbi_tenant_scan", lang), key="pbi_tenant_scan_btn"):
                 try:
                     with st.spinner(t("pbi_wait", lang)):
                         model_out = pbi.ingest_tenant(lang, max_workspaces=int(pbi_max_ws))

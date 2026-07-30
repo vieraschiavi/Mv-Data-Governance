@@ -269,6 +269,123 @@ def test_build_release_option_b(tmp_path, monkeypatch):
     assert br.build_option_a() is None  # sin Setup.exe construido
 
 
+# ------------------------------------------------------------------ licencias
+def _par_de_claves():
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    priv = Ed25519PrivateKey.generate()
+    pub = base64.urlsafe_b64encode(priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw)).decode().rstrip("=")
+    return priv, pub
+
+
+def _emitir(priv, plan="professional", exp=None, email="c@empresa.com"):
+    import base64
+    import json
+    import time as _t
+    p = {"plan": plan, "email": email, "iat": int(_t.time())}
+    if exp is not None:
+        p["exp"] = exp
+    body = base64.urlsafe_b64encode(json.dumps(
+        p, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
+    sig = base64.urlsafe_b64encode(priv.sign(body.encode())).decode().rstrip("=")
+    return f"MVDG2.{body}.{sig}"
+
+
+def test_licencia_valida_y_gating(tmp_path, monkeypatch):
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    assert licensing.plan() == licensing.PLAN_DEMO
+    assert licensing.has_feature("migracion_purview") is False
+    # una función que no está en la tabla de pagas está abierta para todos
+    assert licensing.has_feature("catalogo") is True
+
+    token = _emitir(priv)
+    assert licensing.save(token) is not None
+    assert licensing.plan() == "professional"
+    assert licensing.has_feature("migracion_purview") is True
+    licensing.clear()
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
+def test_licencia_rechaza_manipulacion_y_vencimiento(tmp_path, monkeypatch):
+    """Los tres ataques que importan contra una verificación local."""
+    import base64
+    import json
+    import time as _t
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    # 1) editar el payload conservando la firma original
+    token = _emitir(priv, plan="professional")
+    body, firma = token.split(".")[1], token.split(".")[2]
+    p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+    p["plan"] = "enterprise"
+    body2 = base64.urlsafe_b64encode(json.dumps(
+        p, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
+    assert licensing.verify(f"MVDG2.{body2}.{firma}") is None
+
+    # 2) firmar con otra clave (un falsificador con su propio par)
+    otra, _ = _par_de_claves()
+    assert licensing.verify(_emitir(otra, plan="enterprise")) is None
+
+    # 3) licencia vencida
+    assert licensing.verify(_emitir(priv, exp=int(_t.time()) - 10)) is None
+
+    # y sin clave pública configurada, NADA valida (falla cerrado)
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", "")
+    assert licensing.verify(_emitir(priv)) is None
+
+
+def test_licencia_guardada_se_revalida_no_se_confia_en_el_json(tmp_path, monkeypatch):
+    """Editar licencia.json a mano no sirve: el plan sale de revalidar la firma
+    del token, no del payload guardado en el archivo."""
+    import json
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    licensing.save(_emitir(priv, plan="professional"))
+    ruta = os.path.join(str(tmp_path), "licencia.json")
+    guardado = json.load(open(ruta, encoding="utf-8"))
+    guardado["payload"]["plan"] = "enterprise"  # intento de escalar de plan
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(guardado, fh)
+
+    assert licensing.plan() == "professional"  # la edición se ignora
+
+    # y si se rompe el token, se cae a demo (no se confía en el payload)
+    guardado["token"] = "MVDG2.roto.roto"
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(guardado, fh)
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
+def test_licencia_no_se_guarda_si_no_valida(tmp_path, monkeypatch):
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    _, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+    otra, _ = _par_de_claves()
+    assert licensing.save(_emitir(otra)) is None
+    assert not os.path.exists(os.path.join(str(tmp_path), "licencia.json"))
+
+
+def test_licencia_se_compila_con_cython():
+    """licensing.py es la pieza que decide qué está pago: tiene que viajar
+    compilada, no como .py que se edita con el Bloc de notas."""
+    bc = _load_build_compiled()
+    assert "licensing.py" not in bc.NO_COMPILAR
+
+
 # --------------------------------------------- compilación del motor (Cython)
 def _load_build_compiled():
     import importlib.util

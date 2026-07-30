@@ -3,7 +3,7 @@
 // sin haber pagado. Si el pago está aprobado, emite automáticamente la
 // licencia MV Data Governance (firmada).
 
-const { sign } = require("./_license");
+const { sign, signEd25519 } = require("./_license");
 
 module.exports = async (req, res) => {
   const paymentId = String((req.query && req.query.payment_id) || "").trim();
@@ -24,18 +24,36 @@ module.exports = async (req, res) => {
     const approved = data.status === "approved";
     const plan = (data.metadata && data.metadata.plan) || null;
 
+    const payload = {
+      plan: plan,
+      pid: paymentId,
+      email: (data.payer && data.payer.email) || null,
+      iat: Math.floor(Date.now() / 1000),
+    };
+
+    // MVDG1 (HMAC): se mantiene por compatibilidad con lo ya emitido.
     let license = null;
     const secret = process.env.LICENSE_SECRET;
-    if (approved && secret) {
-      license = sign({
-        plan: plan,
-        pid: paymentId,
-        email: (data.payer && data.payer.email) || null,
-        iat: Math.floor(Date.now() / 1000),
-      }, secret);
+    if (approved && secret) license = sign(payload, secret);
+
+    // MVDG2 (Ed25519): ESTA es la que el programa de escritorio sabe validar
+    // (ver mvdg/licensing.py). Si falta LICENSE_PRIVATE_KEY o la firma falla,
+    // se devuelve null y el cliente ve "no se pudo emitir la licencia" — nunca
+    // se entrega una licencia rota como si fuera buena.
+    let licenseKey = null;
+    const privKey = process.env.LICENSE_PRIVATE_KEY;
+    if (approved && privKey) {
+      try {
+        licenseKey = signEd25519(payload, privKey);
+      } catch (e) {
+        licenseKey = null;
+      }
     }
 
-    res.status(200).json({ approved: approved, status: data.status, plan: plan, license: license });
+    res.status(200).json({
+      approved: approved, status: data.status, plan: plan,
+      license: license, license_key: licenseKey,
+    });
   } catch (e) {
     res.status(500).json({ approved: false, error: "exception" });
   }

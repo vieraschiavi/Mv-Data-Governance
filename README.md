@@ -170,3 +170,34 @@ que genera el programa son 100% sintéticos.
 > El motor (`mvdg/`) se distribuye **compilado a binario** en el `.exe`
 > (ver [`packaging/build_compiled.py`](packaging/build_compiled.py)). Eso eleva
 > el costo de copiar el código; no lo vuelve inviolable, y no pretende hacerlo.
+
+### Claves de licencia
+
+El programa corre **completo en modo demo**. Las funciones que solo tienen
+sentido dentro de una empresa ya decidida a comprar piden una licencia:
+empujar metadata a **Purview/Collibra** y **escanear un tenant de BI** entero
+(la vista previa de ambas queda libre). La política de qué es pago vive en un
+solo lugar — `FUNCIONES_PAGAS` en [`mvdg/licensing.py`](mvdg/licensing.py) —
+para poder abrir o cerrar el demo sin tocar nada más.
+
+Las licencias se firman con **Ed25519**: el backend firma con la clave privada
+y el programa verifica con la pública embebida, que no sirve para falsificar
+nada aunque se extraiga del binario. El cliente pega su clave en la pestaña
+**❓ Ayuda**.
+
+Para el dueño del producto:
+
+```bash
+python packaging/licencias.py keygen     # una sola vez: genera el par de claves
+python packaging/licencias.py firmar --plan professional \
+       --email cliente@empresa.com --dias 365
+```
+
+`keygen` imprime qué pegar en `mvdg/licensing.py` (pública) y qué cargar como
+`LICENSE_PRIVATE_KEY` en Vercel (privada, **nunca** al repo). Sin la pública
+configurada, ninguna licencia valida y todo queda en demo — falla cerrado a
+propósito.
+
+> Es verificación del lado del cliente: alguien con conocimiento puede parchear
+> el binario y saltearla. Sirve para que el uso pago sea una decisión explícita
+> y para darle sustento técnico al `LICENSE`, no como DRM inviolable.

@@ -221,6 +221,43 @@ _T: dict[str, dict[str, str]] = {
         "pt": "Com isso ativado, os 4 casos reais de 🔎 Meus dados (Rotulagem, Dirty Cafe, Bank Marketing, openFDA) fluem por Panorama, Catálogo, Qualidade, Linhagem, Glossário, Políticas e BI & API — a jornada end-to-end completa. Desligue para ver só a demo sintética.",
     },
     # ---------------------------------------------------- login (modo servidor)
+    # --- Licencias ---
+    "lic_title": {"es": "🔑 Licencia", "en": "🔑 License", "pt": "🔑 Licença"},
+    "lic_plan": {"es": "Plan actual", "en": "Current plan", "pt": "Plano atual"},
+    "lic_demo": {"es": "Demo (gratis)", "en": "Demo (free)", "pt": "Demo (grátis)"},
+    "lic_intro": {
+        "es": "El programa funciona completo en modo demo. Algunas funciones para empresas requieren una licencia paga — abajo se listan cuáles.",
+        "en": "The program runs fully in demo mode. Some enterprise features require a paid license — they are listed below.",
+        "pt": "O programa funciona completo em modo demo. Algumas funções para empresas exigem uma licença paga — estão listadas abaixo.",
+    },
+    "lic_input": {"es": "Pegá acá tu clave de licencia", "en": "Paste your license key here", "pt": "Cole aqui sua chave de licença"},
+    "lic_activate": {"es": "Activar licencia", "en": "Activate license", "pt": "Ativar licença"},
+    "lic_ok": {
+        "es": "Licencia activada · plan {plan}",
+        "en": "License activated · {plan} plan",
+        "pt": "Licença ativada · plano {plan}",
+    },
+    "lic_bad": {
+        "es": "La clave no es válida (firma incorrecta, vencida o mal copiada). Revisá que la hayas pegado completa.",
+        "en": "The key is not valid (bad signature, expired, or mis-copied). Check that you pasted it in full.",
+        "pt": "A chave não é válida (assinatura incorreta, vencida ou mal copiada). Verifique se colou por completo.",
+    },
+    "lic_remove": {"es": "Quitar licencia", "en": "Remove license", "pt": "Remover licença"},
+    "lic_removed": {"es": "Licencia quitada — volviste al plan demo.", "en": "License removed — back to the demo plan.", "pt": "Licença removida — de volta ao plano demo."},
+    "lic_email": {"es": "Emitida a", "en": "Issued to", "pt": "Emitida para"},
+    "lic_expires": {"es": "Vence", "en": "Expires", "pt": "Vence"},
+    "lic_never": {"es": "Sin vencimiento", "en": "No expiry", "pt": "Sem vencimento"},
+    "lic_paid_features": {"es": "Funciones que requieren licencia", "en": "Features requiring a license", "pt": "Funções que exigem licença"},
+    "lic_locked": {
+        "es": "🔒 Esta función requiere una licencia paga. Podés seguir usando todo el resto del programa; activá tu licencia en la pestaña {tab}.",
+        "en": "🔒 This feature requires a paid license. You can keep using the rest of the program; activate your license in the {tab} tab.",
+        "pt": "🔒 Esta função exige uma licença paga. Você pode continuar usando todo o resto do programa; ative sua licença na aba {tab}.",
+    },
+    "lic_no_issuer": {
+        "es": "Este build no tiene configurada la clave pública del emisor, así que no puede validar licencias. Es un problema de empaquetado — avisale a quien te lo entregó.",
+        "en": "This build has no issuer public key configured, so it cannot validate licenses. That is a packaging problem — tell whoever delivered it.",
+        "pt": "Este build não tem a chave pública do emissor configurada, então não pode validar licenças. É um problema de empacotamento — avise quem o entregou.",
+    },
     "auth_title": {"es": "Ingresá la contraseña", "en": "Enter the password", "pt": "Digite a senha"},
     "auth_intro": {
         "es": "Este servidor pide una contraseña compartida antes de mostrar el dashboard (configurada por tu equipo de TI con MVDG_SERVER_PASSWORD).",
