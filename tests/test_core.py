@@ -1705,6 +1705,20 @@ def test_un_solo_comando_instala_y_testea():
     assert "--upgrade pip" not in mk
 
 
+def test_mcp_pinneado_por_debajo_de_2():
+    """mcp 2.0.0 saco `mcp.server.fastmcp`, que es lo que importa
+    mvdg/mcp_server.py. Sin tope superior, una instalacion limpia agarraba
+    2.0.0 y el servidor MCP moria con ModuleNotFoundError — lo detecto el CI,
+    no el entorno de desarrollo (que ya tenia 1.28 instalada)."""
+    ruta = os.path.join(_repo_root(), "requirements.txt")
+    with open(ruta, encoding="utf-8") as fh:
+        lineas = [ln.strip() for ln in fh if ln.strip().startswith("mcp")]
+    assert lineas, "mcp no esta declarado"
+    assert "<2" in lineas[0], f"mcp sin tope de version mayor: {lineas[0]}"
+    # y la API que usamos tiene que seguir existiendo con lo instalado
+    from mcp.server.fastmcp import FastMCP  # noqa: F401
+
+
 def test_ci_corre_tests_en_cada_push():
     ruta = os.path.join(_repo_root(), ".github", "workflows", "tests.yml")
     assert os.path.exists(ruta), "no hay workflow de CI"

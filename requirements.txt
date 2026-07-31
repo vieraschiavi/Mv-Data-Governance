@@ -10,7 +10,11 @@ xlsxwriter>=3.1
 pyarrow>=14.0
 sqlalchemy>=2.0
 keyring>=24.0
-mcp>=1.28
+# Tope en <2 a propósito: mcp 2.0.0 sacó `mcp.server.fastmcp`, que es lo que
+# importa mvdg/mcp_server.py. Sin el tope, una instalación nueva agarraba 2.0.0
+# y el servidor MCP moría con ModuleNotFoundError. Para subir a 2.x hay que
+# migrar mvdg/mcp_server.py a la API nueva primero.
+mcp>=1.28,<2
 # Verificación de la firma Ed25519 de las licencias (mvdg/licensing.py). Ya
 # venía instalada de arriba como dependencia de keyring en Linux/macOS, pero
 # acá es de uso DIRECTO y en Windows keyring no la arrastra: sin declararla, el
