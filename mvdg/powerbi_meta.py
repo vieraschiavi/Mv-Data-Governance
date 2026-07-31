@@ -154,9 +154,89 @@ def _source_label_from_mquery(text: str) -> str | None:
     return None
 
 
+def _parse_measure_block(lines: list[str], i: int, table_name: str,
+                         pending_desc: list[str]) -> tuple[Measure, int]:
+    """Una medida y su DAX, que puede seguir en líneas más indentadas.
+
+    Devuelve la medida y el índice de la primera línea que ya no le pertenece."""
+    line = lines[i]
+    m = _MEASURE_RE.match(line)
+    base_indent = _indent(line)
+    name = _unquote(m.group(1))
+    dax_parts = [m.group(2).rstrip()]
+    folder, desc = "", " ".join(pending_desc).strip()
+    j = i + 1
+    while j < len(lines):
+        nxt = lines[j]
+        if not nxt.strip():
+            j += 1
+            continue
+        low = nxt.strip()
+        if _indent(nxt) <= base_indent:
+            break  # nuevo objeto de la tabla
+        # propiedades conocidas de la medida
+        if low.startswith("displayFolder:"):
+            folder = low.split(":", 1)[1].strip()
+        elif low.startswith("description:"):
+            desc = low.split(":", 1)[1].strip()   # explícita: pisa el "///" si había
+        elif low.startswith(("annotation", "changedProperty", "isHidden")) or \
+                _TMDL_TRAIT_RE.match(low):
+            pass   # metadato TMDL (formatString, lineageTag, sourceLineageTag,
+                   # dataCategory, summarizeBy, etc.) — no es DAX
+        else:
+            dax_parts.append(low)  # continuación real del DAX
+        j += 1
+    dax = " ".join(p for p in dax_parts if p).strip()
+    return Measure(table_name, name, dax, folder, desc), j
+
+
+def _parse_column_block(lines: list[str], i: int,
+                        table_name: str) -> tuple[Column, int]:
+    """Una columna con su dataType / sourceColumn / expresión si es calculada."""
+    line = lines[i]
+    base_indent = _indent(line)
+    name = _unquote(_COLUMN_RE.match(line).group(1))
+    dtype, src, cdax, is_calc = "", "", "", False
+    j = i + 1
+    while j < len(lines):
+        nxt = lines[j]
+        if not nxt.strip():
+            j += 1
+            continue
+        if _indent(nxt) <= base_indent:
+            break
+        low = nxt.strip()
+        if low.startswith("dataType:"):
+            dtype = low.split(":", 1)[1].strip()
+        elif low.startswith("sourceColumn:"):
+            src = low.split(":", 1)[1].strip()
+        elif low.startswith("expression"):
+            is_calc = True
+            cdax = low.split("=", 1)[1].strip() if "=" in low else ""
+        j += 1
+    return Column(table_name, name, dtype, src, is_calc, cdax), j
+
+
+def _parse_partition_block(lines: list[str], i: int) -> tuple[str | None, int]:
+    """El bloque de partición (expresión M): de acá sale el origen real."""
+    base_indent = _indent(lines[i])
+    block_lines = []
+    j = i + 1
+    while j < len(lines):
+        nxt = lines[j]
+        if nxt.strip() and _indent(nxt) <= base_indent:
+            break
+        block_lines.append(nxt)
+        j += 1
+    return _source_label_from_mquery("\n".join(block_lines)), j
+
+
 def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str | None]:
     """Parsea un archivo TMDL de tabla: devuelve (nombre_tabla, columnas, medidas,
-    fuente detectada de la partición — SQL Server u otro conector, o None)."""
+    fuente detectada de la partición — SQL Server u otro conector, o None).
+
+    Este bucle solo decide QUÉ tipo de bloque empieza en cada línea; el detalle
+    de cada uno vive en su propio parser arriba."""
     lines = text.splitlines()
     table_name = ""
     columns: list[Column] = []
@@ -184,84 +264,23 @@ def _parse_table_tmdl(text: str) -> tuple[str, list[Column], list[Measure], str 
             i += 1
             continue
 
-        # ----- medida (el DAX puede continuar en líneas más indentadas)
-        m = _MEASURE_RE.match(line)
-        if m:
-            base_indent = _indent(line)
-            name = _unquote(m.group(1))
-            dax_parts = [m.group(2).rstrip()]
-            folder, desc = "", " ".join(pending_desc).strip()
+        if _MEASURE_RE.match(line):
+            medida, i = _parse_measure_block(lines, i, table_name, pending_desc)
+            measures.append(medida)
             pending_desc = []
-            j = i + 1
-            while j < len(lines):
-                nxt = lines[j]
-                if not nxt.strip():
-                    j += 1
-                    continue
-                ind = _indent(nxt)
-                low = nxt.strip()
-                if ind <= base_indent:
-                    break  # nuevo objeto de la tabla
-                # propiedades conocidas de la medida
-                if low.startswith("displayFolder:"):
-                    folder = low.split(":", 1)[1].strip()
-                elif low.startswith("description:"):
-                    desc = low.split(":", 1)[1].strip()   # explícita: pisa el "///" si había
-                elif low.startswith(("annotation", "changedProperty", "isHidden")) or \
-                        _TMDL_TRAIT_RE.match(low):
-                    pass   # metadato TMDL (formatString, lineageTag, sourceLineageTag,
-                           # dataCategory, summarizeBy, etc.) — no es DAX
-                else:
-                    dax_parts.append(nxt.strip())  # continuación real del DAX
-                j += 1
-            dax = " ".join(p for p in dax_parts if p).strip()
-            measures.append(Measure(table_name, name, dax, folder, desc))
-            i = j
             continue
 
-        # ----- columna (leemos dataType / sourceColumn / expresión si es calculada)
-        m = _COLUMN_RE.match(line)
-        if m:
-            base_indent = _indent(line)
-            name = _unquote(m.group(1))
-            dtype, src, cdax, is_calc = "", "", "", False
+        if _COLUMN_RE.match(line):
+            columna, i = _parse_column_block(lines, i, table_name)
+            columns.append(columna)
             pending_desc = []
-            j = i + 1
-            while j < len(lines):
-                nxt = lines[j]
-                if not nxt.strip():
-                    j += 1
-                    continue
-                if _indent(nxt) <= base_indent:
-                    break
-                low = nxt.strip()
-                if low.startswith("dataType:"):
-                    dtype = low.split(":", 1)[1].strip()
-                elif low.startswith("sourceColumn:"):
-                    src = low.split(":", 1)[1].strip()
-                elif low.startswith("expression"):
-                    is_calc = True
-                    cdax = low.split("=", 1)[1].strip() if "=" in low else ""
-                j += 1
-            columns.append(Column(table_name, name, dtype, src, is_calc, cdax))
-            i = j
             continue
 
-        # ----- partición (expresión M): de acá sale el origen real de la tabla
         if _PARTITION_RE.match(line):
-            base_indent = _indent(line)
-            block_lines = []
-            pending_desc = []
-            j = i + 1
-            while j < len(lines):
-                nxt = lines[j]
-                if nxt.strip() and _indent(nxt) <= base_indent:
-                    break
-                block_lines.append(nxt)
-                j += 1
+            fuente, i = _parse_partition_block(lines, i)
             if table_source is None:
-                table_source = _source_label_from_mquery("\n".join(block_lines))
-            i = j
+                table_source = fuente
+            pending_desc = []
             continue
 
         pending_desc = []   # línea suelta que no es "///" ni una declaración: corta la racha

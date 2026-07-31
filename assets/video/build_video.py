@@ -113,7 +113,6 @@ def badge(d: ImageDraw.ImageDraw, cx: int, y: int, text: str, f):
 def scene_intro(p: float) -> Image.Image:
     img = base_frame()
     d = ImageDraw.Draw(img)
-    a = ease(p * 3)  # aparece rápido
     # logo MV
     size = 74
     d.rounded_rectangle([W / 2 - size, 150, W / 2 + size, 150 + size * 2],
@@ -184,7 +183,7 @@ def scene_catalog(p: float) -> Image.Image:
     headers = ["DATASET", "DOMINIO", "STEWARD", "CLASIFICACIÓN", "CALIDAD"]
     xs = [x0, x0 + 280, x0 + 500, x0 + 700, x0 + 960]
     d.rounded_rectangle([x0 - 20, y - 16, W - 90, y + 24], radius=10, fill=(15, 33, 53))
-    for hx, htxt in zip(xs, headers):
+    for hx, htxt in zip(xs, headers, strict=True):
         d.text((hx, y - 4), htxt, font=font(15), fill=AMBER)
     y += 56
     for i, (ds, dom, stw, cls, qc, q) in enumerate(rows):
@@ -227,7 +226,7 @@ def scene_lineage(p: float) -> Image.Image:
     pos = {}
     for li, layer in enumerate(layers):
         n = len(layer)
-        for ni, (name,) in enumerate(layer):
+        for ni, _ in enumerate(layer):
             y = 380 + (ni - (n - 1) / 2) * 150
             pos[(li, ni)] = (cols_x[li], y)
     edges = [((0, 0), (1, 0)), ((0, 1), (1, 1)), ((0, 2), (1, 2)),
@@ -486,7 +485,7 @@ def build_one(lang: str, tmpdir: str) -> tuple[str, bool]:
                                 quality=7, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
     black = Image.new("RGB", (W, H), (0, 0, 0))
-    for (scene, _, _), secs in zip(SCENES, secs_list):
+    for (scene, _, _), secs in zip(SCENES, secs_list, strict=True):
         n = int(round(secs * FPS))
         for f_i in range(n):
             p = f_i / max(1, n - 1)

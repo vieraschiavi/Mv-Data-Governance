@@ -463,7 +463,7 @@ def test_build_compiled_excludes_module_whose_source_the_selfcheck_audits():
 
 # ----------------------------------------------------- modo servidor (web)
 def test_server_authorization_modes():
-    from mvdg.server import authorization_status, parse_authorized
+    from mvdg.server import authorization_status
 
     # sin lista -> modo abierto
     assert authorization_status([])["mode"] == "open"
@@ -619,7 +619,7 @@ def test_connectors_save_connection_persists_extra(tmp_path, monkeypatch):
     profile = {"name": "sf-demo", "engine": "snowflake", "user": "u",
               "database": "DB", "password": "pw",
               "extra": {"account": "xy123", "warehouse": "WH"}}
-    saved = C.save_connection(profile, save_password=True)
+    C.save_connection(profile, save_password=True)
     reloaded = C.load_connections()[0]
     assert reloaded["extra"] == {"account": "xy123", "warehouse": "WH"}
 
@@ -647,7 +647,7 @@ def test_workspace_list_summary_and_delete(tmp_path, monkeypatch):
     df1 = pd.DataFrame({"a": [1, 2]})
     df2 = pd.DataFrame({"b": [1, 2, 3]})
     s1 = ws.save_stage(cid, "Etapa 1", {"t1": df1})
-    s2 = ws.save_stage(cid, "Etapa 2", {"t2": df2, "t1": df1})
+    ws.save_stage(cid, "Etapa 2", {"t2": df2, "t1": df1})
     stages = ws.list_stages(cid)
     assert [s["name"] for s in stages] == ["Etapa 2", "Etapa 1"]  # más nueva primero
     summ = ws.project_summary(cid)
@@ -1388,6 +1388,90 @@ def test_landing_escapa_datos_antes_de_inyectar_html():
             f"{archivo}: quedo un escapado parcial de '<'")
 
 
+# --------------------------------------------- calidad de codigo / tooling
+def test_dependencias_de_test_declaradas():
+    """pytest y httpx tienen que estar DECLARADAS, no ser un paso manual que
+    solo aparece en la documentacion."""
+    ruta = os.path.join(_repo_root(), "requirements-dev.txt")
+    assert os.path.exists(ruta), "falta requirements-dev.txt"
+    with open(ruta, encoding="utf-8") as fh:
+        dev = fh.read()
+    assert "-r requirements.txt" in dev      # un solo install alcanza
+    for paquete in ("pytest", "httpx", "ruff"):
+        assert paquete in dev, f"{paquete} sin declarar"
+
+
+def test_un_solo_comando_instala_y_testea():
+    """`make test` tiene que instalar dependencias Y correr la suite: en una
+    maquina limpia `pytest` solo no alcanza."""
+    ruta = os.path.join(_repo_root(), "Makefile")
+    assert os.path.exists(ruta), "falta el Makefile"
+    with open(ruta, encoding="utf-8") as fh:
+        mk = fh.read()
+    assert "test: install" in mk             # testear depende de instalar
+    assert "requirements-dev.txt" in mk
+    assert "pytest tests/" in mk
+    # `--upgrade pip` rompe en Pythons administrados por la distro
+    assert "--upgrade pip" not in mk
+
+
+def test_ci_corre_tests_en_cada_push():
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "tests.yml")
+    assert os.path.exists(ruta), "no hay workflow de CI"
+    with open(ruta, encoding="utf-8") as fh:
+        ci = fh.read()
+    assert "on:" in ci and "push:" in ci and "pull_request:" in ci
+    assert "pytest tests/" in ci             # corre la suite
+    assert "ruff check" in ci                # y el linter
+    assert "requirements-dev.txt" in ci
+    assert "--upgrade pip" not in ci
+
+
+def test_linter_configurado():
+    ruta = os.path.join(_repo_root(), "pyproject.toml")
+    assert os.path.exists(ruta), "falta pyproject.toml con la config del linter"
+    with open(ruta, encoding="utf-8") as fh:
+        cfg = fh.read()
+    assert "[tool.ruff]" in cfg and "[tool.ruff.lint]" in cfg
+    assert "select" in cfg
+
+
+def test_sin_funciones_gigantes_en_el_motor():
+    """Ninguna funcion de mas de 100 lineas en el motor ni en la API.
+
+    Este test es el que evita que run_checks() (que llego a tener 822 lineas)
+    vuelva a crecer sin que nadie lo note."""
+    import ast
+    largas = []
+    for carpeta in ("mvdg", "bi_api"):
+        base = os.path.join(_repo_root(), carpeta)
+        for dirpath, _, archivos in os.walk(base):
+            for archivo in archivos:
+                if not archivo.endswith(".py"):
+                    continue
+                ruta = os.path.join(dirpath, archivo)
+                with open(ruta, encoding="utf-8") as fh:
+                    arbol = ast.parse(fh.read())
+                for nodo in ast.walk(arbol):
+                    if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        n = nodo.end_lineno - nodo.lineno + 1
+                        if n > 100:
+                            rel = os.path.relpath(ruta, _repo_root())
+                            largas.append(f"{rel}:{nodo.lineno} {nodo.name} ({n})")
+    assert not largas, "funciones de mas de 100 lineas: " + ", ".join(largas)
+
+
+def test_selfcheck_expone_los_chequeos_como_registro():
+    """El auto-diagnostico dejo de ser una funcion monolitica: cada chequeo es
+    una funcion propia registrada, y run_checks solo los recorre."""
+    from mvdg import selfcheck
+    assert len(selfcheck.CHECKS) >= 40
+    assert all(isinstance(nombre, str) and callable(fn)
+               for nombre, fn in selfcheck.CHECKS)
+    nombres = [n for n, _ in selfcheck.CHECKS]
+    assert len(nombres) == len(set(nombres)), "hay chequeos con nombre repetido"
+
+
 # ------------------------------------------- sugerencias de correccion (IA)
 @pytest.mark.parametrize("lang", LANGS)
 def test_remediation_covers_all_demo_rules(lang):
@@ -1943,13 +2027,13 @@ def test_powerbi_lineage_dynamic_figure(tmp_path):
     fig = lineage_figure(nodes=nodes, edges=edges)     # no debe romper con grafo dinámico
     assert fig is not None and len(fig.data) > 0
     model_id = f"model_{out['_model'].name}"
-    assert downstream(f"tbl_Ventas", edges) & {model_id}   # tabla → modelo
+    assert downstream("tbl_Ventas", edges) & {model_id}   # tabla → modelo
     assert upstream(model_id, edges)                        # el modelo tiene ancestros
 
 
 def test_lineage_demo_still_works():
     # el grafo de demo (sin args) sigue funcionando igual que antes
-    from mvdg.lineage import EDGES, lineage_figure, upstream
+    from mvdg.lineage import lineage_figure, upstream
     fig = lineage_figure()
     assert fig is not None and len(fig.data) > 0
     assert upstream("mart_sales")  # ancestros del mart de demo
@@ -2617,7 +2701,6 @@ def test_mip_plan_skips_datasets_without_mapped_file():
     from mvdg import mip_labels as mip
     cat, dic, glo = _sample_gov_tables()
     file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
-    labels = [{"id": "l1", "name": "Confidencial"}]
     r = mip.push_labels(cat, file_map, dry_run=True)
     assert len(r["plan"]) == 1 and r["plan"][0]["dataset"] == "dim_customers"
     assert set(r["skipped_no_file"]) == set(cat["dataset"]) - {"dim_customers"}
@@ -2732,8 +2815,8 @@ def test_azure_discovery_query_covers_all_data_types():
     from mvdg import azure_discovery as az
     q = az.build_query()
     assert q.startswith("Resources | where type in~ (")
-    for t in az.DATA_RESOURCE_TYPES:
-        assert f"'{t}'" in q
+    for tipo in az.DATA_RESOURCE_TYPES:
+        assert f"'{tipo}'" in q
 
 
 def test_azure_discovery_suggest_connection_profile_maps_known_types():
@@ -3466,7 +3549,6 @@ def test_purview_retries_429_with_backoff_then_succeeds(monkeypatch):
     monkeypatch.setattr(pv.time, "sleep", lambda s: sleeps.append(s))
 
     attempts = {"n": 0}
-    real_urlopen = pv.urllib.request.urlopen
 
     class FakeResp:
         def __init__(self, payload):
@@ -3662,7 +3744,8 @@ def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
     db = tmp_path / "ventas.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL, tel_cli TEXT)")
-    con.commit(); con.close()
+    con.commit()
+    con.close()
 
     from mvdg import curation, glossary_auto, imported
     profile = {"conn_id": "sqlt1", "engine": "sqlite", "database": str(db)}
@@ -3699,7 +3782,8 @@ def test_glossary_auto_broken_table_does_not_stop_the_rest(tmp_path, monkeypatch
     db = tmp_path / "x.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE ok_tbl (cod_prod TEXT)")
-    con.commit(); con.close()
+    con.commit()
+    con.close()
     profile = {"conn_id": "c1", "engine": "sqlite", "database": str(db)}
 
     real_list_columns = connectors.list_columns

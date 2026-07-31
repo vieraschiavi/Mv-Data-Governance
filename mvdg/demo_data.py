@@ -35,11 +35,11 @@ def make_customers(n: int = 800) -> pd.DataFrame:
     ids = np.arange(1, n + 1)
     first = rng.choice(_FIRST, n)
     last = rng.choice(_LAST, n)
-    emails = np.array([f"{f.lower()}.{l.lower()}{i}@mail.com"
-                       for f, l, i in zip(first, last, ids)], dtype=object)
+    emails = np.array([f"{nom.lower()}.{ape.lower()}{i}@mail.com"
+                       for nom, ape, i in zip(first, last, ids, strict=True)], dtype=object)
     df = pd.DataFrame({
         "customer_id": ids,
-        "full_name": [f"{f} {l}" for f, l in zip(first, last)],
+        "full_name": [f"{nom} {ape}" for nom, ape in zip(first, last, strict=True)],
         "email": emails,
         "document_id": [f"{rng.integers(10_000_000, 60_000_000)}" for _ in ids],
         "country": rng.choice(_COUNTRIES, n, p=[0.35, 0.25, 0.2, 0.12, 0.08]),

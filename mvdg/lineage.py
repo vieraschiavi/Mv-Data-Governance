@@ -83,8 +83,8 @@ def downstream(node_id: str, edges: list[tuple[str, str]] | None = None) -> set[
 def _layer_order(nodes: list[dict]) -> list[str]:
     """Capas presentes, en el orden canónico (LAYERS) primero y luego extras."""
     present = list(dict.fromkeys(n["layer"] for n in nodes))
-    known = [l for l in LAYERS if l in present]
-    extra = [l for l in present if l not in LAYERS]
+    known = [capa for capa in LAYERS if capa in present]
+    extra = [capa for capa in present if capa not in LAYERS]
     return known + extra
 
 
@@ -151,7 +151,9 @@ def lineage_figure(focus: str | None = None,
     xs, ys, texts, colors, opac = [], [], [], [], []
     for n in nodes:
         x, y = pos[n["id"]]
-        xs.append(x); ys.append(y); texts.append(n["label"])
+        xs.append(x)
+        ys.append(y)
+        texts.append(n["label"])
         colors.append(layer_color.get(n["layer"], "#6c7f99"))
         opac.append(1.0 if (hi is None or n["id"] in hi) else 0.25)
     fig.add_trace(go.Scatter(

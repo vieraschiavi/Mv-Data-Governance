@@ -145,7 +145,7 @@ if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
     # puntual disparaba un segfault nativo reproducible en las pruebas.
     _tables()
     _results(lang)
-    st.markdown(f"<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
+    st.markdown("<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
     st.title(f"🔒 {t('auth_title', lang)}")
     st.caption(t("auth_intro", lang))
     _auth_pwd = st.text_input(t("auth_prompt", lang), type="password", key="auth_pwd_input")
@@ -157,7 +157,7 @@ if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
             st.error(t("auth_wrong", lang))
     st.stop()
 
-st.markdown(f"<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
+st.markdown("<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
 st.title(APP_NAME)
 st.caption(t("app_tagline", lang))
 
@@ -1239,7 +1239,7 @@ with tab_pr:
         extra_raw = ""
         if is_sqlite:
             database = st.text_input(t("db_sqlite_path", lang), (editing or {}).get("database", ""))
-            host = ""; port = None; user = ""; pwd = ""
+            host, port, user, pwd = "", None, "", ""
         else:
             if is_cloud:
                 e3.caption(t("db_cloud_no_port", lang))

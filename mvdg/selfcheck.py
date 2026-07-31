@@ -16,828 +16,844 @@ import importlib
 import sys
 
 
+
+# Cada chequeo es una funcion independiente registrada aca abajo con @check.
+# Antes vivian todos dentro de un unico run_checks() de 822 lineas: agregar o
+# leer un chequeo obligaba a navegar la funcion entera. El registro conserva
+# el orden de definicion, que es el orden en que se muestran en pantalla.
+CHECKS: list[tuple[str, object]] = []
+
+
+def check(name):
+    """Registra una funcion como chequeo con nombre visible."""
+    def deco(fn):
+        CHECKS.append((name, fn))
+        return fn
+    return deco
+
+
 def run_checks() -> list[tuple[str, bool, str]]:
-    """Ejecuta todos los chequeos y devuelve (nombre, ok, detalle)."""
+    """Ejecuta todos los chequeos registrados y devuelve (nombre, ok, detalle).
+
+    Un chequeo que revienta no corta los demas: se reporta como fallo con su
+    excepcion y se sigue, para que el diagnostico salga completo de una vez."""
     results: list[tuple[str, bool, str]] = []
-
-    def check(name):
-        def deco(fn):
-            try:
-                detail = fn()
-                results.append((name, True, detail))
-            except Exception as exc:  # noqa: BLE001 - reportamos cualquier fallo
-                results.append((name, False, f"{type(exc).__name__}: {exc}"))
-        return deco
-
-    @check("Dependencias (pandas, plotly, streamlit, fastapi)")
-    def _():
-        for mod in ("pandas", "numpy", "plotly", "streamlit", "fastapi"):
-            importlib.import_module(mod)
-        return "todas presentes"
-
-    @check("i18n trilingüe (paridad ES/EN/PT)")
-    def _():
-        from .i18n import LANGS, _T
-        faltan = [(k, lang) for k, e in _T.items()
-                  for lang in LANGS if not e.get(lang)]
-        if faltan:
-            raise AssertionError(f"faltan {len(faltan)} traducciones")
-        return f"{len(_T)} claves × {len(LANGS)} idiomas"
-
-    @check("Datos de demo (deterministas)")
-    def _():
-        from .demo_data import load_demo_tables
-        t = load_demo_tables()
-        assert set(t) == {"dim_customers", "dim_products", "fct_sales", "fct_payments"}
-        return f"{len(t)} datasets, {sum(len(v) for v in t.values())} filas"
-
-    @check("Motor de calidad (17 reglas, 6 dimensiones)")
-    def _():
-        from .quality import DIMENSIONS, RULES, overall_index, run_rules
-        res = run_rules()
-        assert {r.dimension for r in RULES} == set(DIMENSIONS)
-        idx = overall_index(res)
-        assert 0 < idx <= 100
-        return f"{len(RULES)} reglas, índice {idx}"
-
-    @check("Catálogo y PII")
-    def _():
-        from .catalog import catalog_df, pii_columns
-        assert len(catalog_df("es")) == 4
-        return f"{len(pii_columns())} columnas PII marcadas"
-
-    @check("Linaje (grafo consistente)")
-    def _():
-        from .lineage import EDGES, NODES, downstream
-        ids = {n["id"] for n in NODES}
-        assert all(a in ids and b in ids for a, b in EDGES)
-        assert "bi_dashboard" in downstream("crm")
-        return f"{len(NODES)} nodos, {len(EDGES)} aristas"
-
-    @check("Glosario y políticas")
-    def _():
-        from .glossary import term_count
-        from .policies import policies_df
-        assert len(policies_df("es")) == 6
-        return f"{term_count()} términos, 6 políticas"
-
-    @check("Exportadores (CSV/Excel/JSON/Parquet)")
-    def _():
-        from .exporters import (bi_bundle_xlsx, governance_tables,
-                                to_csv_bytes, to_parquet_bytes)
-        tabs = governance_tables("es")
-        assert len(tabs) == 9
-        assert to_csv_bytes(tabs["catalog"]).startswith(b"dataset".decode().encode("utf-8-sig"))
-        assert bi_bundle_xlsx("es")[:2] == b"PK"
-        pq = "sí" if to_parquet_bytes(tabs["kpis"]) else "no disponible"
-        return f"{len(tabs)} tablas · Parquet: {pq}"
-
-    @check("Fichas de empresas (persistencia)")
-    def _():
-        from .clients import recommended_pack
-        assert recommended_pack("exe_ok") == "A"
-        return "CRM de clientes operativo"
-
-    @check("Conectores a base de datos (SQL + cloud DW/lake)")
-    def _():
-        from .connectors import CLOUD_ENGINES, ENGINES, build_url, test_connection
-        assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite",
-               "synapse", "snowflake", "bigquery", "databricks"} <= set(ENGINES)
-        ok, _msg = test_connection({"engine": "sqlite", "database": ":memory:"})
-        assert ok
-        # build_url() de los 3 motores cloud: lógica pura, sin conexión real
-        # (no probado contra una cuenta real de Snowflake/BigQuery/Databricks
-        # en este entorno — ver docs/CLOUD_CONNECTORS.md)
-        for eng in CLOUD_ENGINES:
-            url = str(build_url({"engine": eng, "extra": {
-                "account": "acc", "warehouse": "wh", "role": "r", "schema": "s",
-                "project": "p", "dataset": "d", "server_hostname": "h", "http_path": "/x",
-                "catalog": "c",
-            }, "database": "db", "user": "u"}, password="pw"))
-            assert url.startswith(eng if eng != "bigquery" else "bigquery")
-        return f"{len(ENGINES)} motores ({len(CLOUD_ENGINES)} cloud DW/lake), SQLite verificado"
-
-    @check("Proyecto por cliente (etapas persistentes + export/import ZIP)")
-    def _():
-        import os
-        import tempfile
-
-        import pandas as pd
-        from . import workspace as ws
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                cid = "selfcheck"
-                df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
-                m = ws.save_stage(cid, "Etapa 1", {"dataset": df}, kind="dataset")
-                loaded = ws.load_stage(cid, m["stage_id"])
-                assert loaded["loaded_tables"]["dataset"].equals(df)
-                blob = ws.export_project(cid)
-                assert ws.delete_project(cid) is True
-                assert ws.import_project(cid, blob, replace=True) == 1
-                summ = ws.project_summary(cid)
-                assert summ["stages"] == 1 and summ["rows"] == 3
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return "guardar → cargar → exportar ZIP → importar, verificado (local)"
-
-    @check("Curaduría: definiciones pre-establecidas + validación del responsable")
-    def _():
-        import os
-        import tempfile
-
-        from . import curation
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                df = curation.list_items("es")
-                total = len(df)
-                assert total > 100 and (df["status"] == "sugerido_ia").all()
-                assert (df["proposed"].str.len() > 0).all()
-                item = df.iloc[0]["item_id"]
-                curation.save_validation(item, "es", "modificado",
-                                         "Texto oficial.", "Resp. Selfcheck",
-                                         "Data Steward")
-                assert curation.effective_text(item, "es", "x") == "Texto oficial."
-                assert curation.summary("es")["modificado"] == 1
-                assert curation.reset_item(item, "es")
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return (f"{total} definiciones pre-establecidas; validar/modificar/"
-                "resetear con responsable, verificado (local)")
-
-    @check("Organigrama -> responsables por defecto (owner/steward por dataset)")
-    def _():
-        import os
-        import tempfile
-
-        import pandas as pd
-        from . import orgchart as oc
-        org = oc.parse_org_table(pd.DataFrame({
-            "Department": ["Sales", "Sales", "Finance", "Quality", "Marketing"],
-            "Name": ["A. Uno", "B. Dos", "C. Tres", "D. Cuatro", "E. Cinco"],
-            "Job Title": ["Sales Manager", "Analyst", "Finance Director",
-                          "Quality Director", "Marketing Lead"],
-        }))
-        asg = oc.suggest_assignments(org)
-        assert (asg["owner_name"].str.len() > 0).all()
-        assert (asg["owner_role"].str.len() > 0).all()
-        n_ds = len(asg)
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                oc.save_org(org)
-                oc.save_assignments(asg)
-                assert oc.load_org().equals(org)
-                assert oc.load_assignments().equals(asg)
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return (f"encabezados detectados (ES/EN/PT) -> {n_ds} datasets con "
-                "owner+steward sugeridos por área y jerarquía, editable y persistente")
-
-    @check("Migración a Purview/Collibra (acelerador, apagado por defecto)")
-    def _():
-        from . import collibra_export as cb
-        from . import purview_export as pv
-        from .exporters import governance_tables
-        gov = governance_tables("es")
-        cat, dic, glo = gov["catalog"], gov["dictionary"], gov["glossary"]
-        assert pv.configured() is False and cb.configured() is False
-        pr = pv.push_all(cat, dic, glo, dry_run=True)
-        assert pr["catalog"]["entity_count"] == len(cat) + len(dic)
-        assert pr["pii"]["classification_count"] > 0
-        cr = cb.push_all(cat, dic, glo, dry_run=True)
-        assert cr["catalog"]["asset_count"] == len(cat) + len(dic)
-        return (f"dry-run sin credenciales: {pr['catalog']['entity_count']} entidades "
-                f"Purview + {cr['catalog']['asset_count']} assets Collibra previsualizados")
-
-    @check("Enforcement de acceso: DDL generado (GRANT/REVOKE + masking), nunca ejecutado")
-    def _():
-        from . import enforcement as en
-        from .exporters import governance_tables
-        gov = governance_tables("es")
-        cat, dic = gov["catalog"], gov["dictionary"]
-        plan = en.enforcement_plan(cat, dic, {"PII": ["rol_rrhh"], "Confidencial": ["rol_fin"]},
-                                   engine="postgresql")
-        assert plan["grant_statements"] > 0 and plan["masking_statements"] > 0
-        assert "NO ejecutado" in plan["script"]
-        src = open(en.__file__, encoding="utf-8").read()
-        assert "sqlalchemy" not in src and ".execute(" not in src  # texto puro, no conecta a nada
-        en.build_row_level_security_ddl("dim_customers", "steward", "rol_x", engine="sqlserver")
-        return (f"{plan['grant_statements']} GRANT/REVOKE + {plan['masking_statements']} "
-                "de enmascaramiento generados (PostgreSQL/SQL Server) — texto DDL, no ejecuta nada")
-
-    @check("Etiquetas MIP (Graph API real, apagado por defecto)")
-    def _():
-        from . import mip_labels as mip
-        from .exporters import governance_tables
-        assert mip.configured() is False
-        assert mip.list_labels() == []
-        cat = governance_tables("es")["catalog"]
-        file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
-        r = mip.push_labels(cat, file_map, dry_run=True)
-        assert len(r["skipped_no_file"]) == len(cat) - 1
-        return ("apagado por defecto; solo aplica a datasets con archivo mapeado en "
-                "OneDrive/SharePoint — el resto queda listado, no se saltea en silencio")
-
-    @check("Escaneo batch de todas las conexiones guardadas")
-    def _():
-        import os
-        import sqlite3
-        import tempfile
-
-        import pandas as pd
-        from . import connectors as C
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                db = os.path.join(tmp, "ok.db")
-                con = sqlite3.connect(db)
-                pd.DataFrame({"id": [1]}).to_sql("t1", con, index=False)
-                con.close()
-                C.save_connection({"name": "OK", "engine": "sqlite", "database": db,
-                                   "user": "", "password": ""}, save_password=False)
-                C.save_connection({"name": "Rota", "engine": "sqlite",
-                                   "database": "/no/existe.db", "user": "", "password": ""},
-                                  save_password=False)
-                df = C.scan_all_connections()
-                assert set(df["name"]) == {"OK", "Rota"}
-                assert df[df["name"] == "Rota"]["error"].notna().all()
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return "una conexión caída no frena el escaneo de las demás, verificado"
-
-    @check("Descubrimiento en Azure Resource Graph (apagado por defecto, con mock)")
-    def _():
-        from . import azure_discovery as az
-        assert az.configured() is False
-        q = az.build_query()
-        assert all(f"'{t}'" in q for t in az.DATA_RESOURCE_TYPES)
-
-        prev_token, prev_http = az._get_token, az._http_json
+    for name, fn in CHECKS:
         try:
-            az._get_token = lambda: "tok"
-            az._http_json = lambda url, headers, body: {"data": [
-                {"name": "srv1/db1", "type": "microsoft.sql/servers/databases",
-                 "resourceGroup": "rg1", "location": "eastus",
-                 "subscriptionId": "sub1", "id": "/x/1"}]}
-            import os
-            os.environ.update({"AZURE_TENANT_ID": "t", "AZURE_CLIENT_ID": "c",
-                               "AZURE_CLIENT_SECRET": "s", "AZURE_SUBSCRIPTION_ID": "sub1"})
-            df = az.discover_data_resources()
-            assert len(df) == 1 and df.iloc[0]["category"] == "Azure SQL Database"
+            results.append((name, True, fn()))
+        except Exception as exc:  # noqa: BLE001 - reportamos cualquier fallo
+            results.append((name, False, f"{type(exc).__name__}: {exc}"))
+    return results
+
+
+@check("Dependencias (pandas, plotly, streamlit, fastapi)")
+def _check_01():
+    for mod in ("pandas", "numpy", "plotly", "streamlit", "fastapi"):
+        importlib.import_module(mod)
+    return "todas presentes"
+
+@check("i18n trilingüe (paridad ES/EN/PT)")
+def _check_02():
+    from .i18n import LANGS, _T
+    faltan = [(k, lang) for k, e in _T.items()
+              for lang in LANGS if not e.get(lang)]
+    if faltan:
+        raise AssertionError(f"faltan {len(faltan)} traducciones")
+    return f"{len(_T)} claves × {len(LANGS)} idiomas"
+
+@check("Datos de demo (deterministas)")
+def _check_03():
+    from .demo_data import load_demo_tables
+    t = load_demo_tables()
+    assert set(t) == {"dim_customers", "dim_products", "fct_sales", "fct_payments"}
+    return f"{len(t)} datasets, {sum(len(v) for v in t.values())} filas"
+
+@check("Motor de calidad (17 reglas, 6 dimensiones)")
+def _check_04():
+    from .quality import DIMENSIONS, RULES, overall_index, run_rules
+    res = run_rules()
+    assert {r.dimension for r in RULES} == set(DIMENSIONS)
+    idx = overall_index(res)
+    assert 0 < idx <= 100
+    return f"{len(RULES)} reglas, índice {idx}"
+
+@check("Catálogo y PII")
+def _check_05():
+    from .catalog import catalog_df, pii_columns
+    assert len(catalog_df("es")) == 4
+    return f"{len(pii_columns())} columnas PII marcadas"
+
+@check("Linaje (grafo consistente)")
+def _check_06():
+    from .lineage import EDGES, NODES, downstream
+    ids = {n["id"] for n in NODES}
+    assert all(a in ids and b in ids for a, b in EDGES)
+    assert "bi_dashboard" in downstream("crm")
+    return f"{len(NODES)} nodos, {len(EDGES)} aristas"
+
+@check("Glosario y políticas")
+def _check_07():
+    from .glossary import term_count
+    from .policies import policies_df
+    assert len(policies_df("es")) == 6
+    return f"{term_count()} términos, 6 políticas"
+
+@check("Exportadores (CSV/Excel/JSON/Parquet)")
+def _check_08():
+    from .exporters import (bi_bundle_xlsx, governance_tables,
+                            to_csv_bytes, to_parquet_bytes)
+    tabs = governance_tables("es")
+    assert len(tabs) == 9
+    assert to_csv_bytes(tabs["catalog"]).startswith(b"dataset".decode().encode("utf-8-sig"))
+    assert bi_bundle_xlsx("es")[:2] == b"PK"
+    pq = "sí" if to_parquet_bytes(tabs["kpis"]) else "no disponible"
+    return f"{len(tabs)} tablas · Parquet: {pq}"
+
+@check("Fichas de empresas (persistencia)")
+def _check_09():
+    from .clients import recommended_pack
+    assert recommended_pack("exe_ok") == "A"
+    return "CRM de clientes operativo"
+
+@check("Conectores a base de datos (SQL + cloud DW/lake)")
+def _check_10():
+    from .connectors import CLOUD_ENGINES, ENGINES, build_url, test_connection
+    assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite",
+           "synapse", "snowflake", "bigquery", "databricks"} <= set(ENGINES)
+    ok, _msg = test_connection({"engine": "sqlite", "database": ":memory:"})
+    assert ok
+    # build_url() de los 3 motores cloud: lógica pura, sin conexión real
+    # (no probado contra una cuenta real de Snowflake/BigQuery/Databricks
+    # en este entorno — ver docs/CLOUD_CONNECTORS.md)
+    for eng in CLOUD_ENGINES:
+        url = str(build_url({"engine": eng, "extra": {
+            "account": "acc", "warehouse": "wh", "role": "r", "schema": "s",
+            "project": "p", "dataset": "d", "server_hostname": "h", "http_path": "/x",
+            "catalog": "c",
+        }, "database": "db", "user": "u"}, password="pw"))
+        assert url.startswith(eng if eng != "bigquery" else "bigquery")
+    return f"{len(ENGINES)} motores ({len(CLOUD_ENGINES)} cloud DW/lake), SQLite verificado"
+
+@check("Proyecto por cliente (etapas persistentes + export/import ZIP)")
+def _check_11():
+    import os
+    import tempfile
+
+    import pandas as pd
+    from . import workspace as ws
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            cid = "selfcheck"
+            df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]})
+            m = ws.save_stage(cid, "Etapa 1", {"dataset": df}, kind="dataset")
+            loaded = ws.load_stage(cid, m["stage_id"])
+            assert loaded["loaded_tables"]["dataset"].equals(df)
+            blob = ws.export_project(cid)
+            assert ws.delete_project(cid) is True
+            assert ws.import_project(cid, blob, replace=True) == 1
+            summ = ws.project_summary(cid)
+            assert summ["stages"] == 1 and summ["rows"] == 3
         finally:
-            az._get_token, az._http_json = prev_token, prev_http
-            for v in ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
-                     "AZURE_SUBSCRIPTION_ID"):
-                os.environ.pop(v, None)
-        return ("inventario de 9 tipos de recurso de datos (SQL/Storage/Synapse/Cosmos/"
-                "Databricks...) en una sola consulta a la suscripción, con mock del transporte")
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return "guardar → cargar → exportar ZIP → importar, verificado (local)"
 
-    @check("Conector inverso Collibra (pull, apagado por defecto)")
-    def _():
-        from . import collibra_pull as cbp
-        assert cbp.table_pull_configured() is False
+@check("Curaduría: definiciones pre-establecidas + validación del responsable")
+def _check_12():
+    import os
+    import tempfile
+
+    from . import curation
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
         try:
-            cbp.pull_glossary()
-            raise AssertionError("debería haber levantado RuntimeError sin credenciales")
-        except RuntimeError:
-            pass
-        return "sin credenciales -> RuntimeError; no reimplementa Responsibility (owner/steward) sin verificar la API primero"
-
-    @check("Conector inverso Purview (pull, apagado por defecto)")
-    def _():
-        from . import purview_pull as pvp
-        assert pvp.configured() is False
-        try:
-            pvp.pull_glossary()
-            raise AssertionError("debería haber levantado RuntimeError sin credenciales")
-        except RuntimeError:
-            pass
-        return "sin credenciales -> RuntimeError; cubre glosario y catálogo (Discovery API vigente)"
-
-    @check("Persistencia de lo importado (Purview/Collibra) + entra a Curaduría")
-    def _():
-        import os
-        import tempfile
-
-        from . import curation, imported
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                n = imported.save_terms("collibra", [{"collibra_id": "sc-1", "name": "Selfcheck",
-                                                       "definition": "Definición de prueba."}])
-                assert n == 1
-                df = curation.list_items("es")
-                assert (df["item_id"] == "glossary:imported:collibra:sc-1").any()
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return "lo traído se guarda en disco y aparece en 🖊️ Curaduría con su origen visible"
-
-    @check("Contraseñas de conexión: keyring del SO con respaldo ofuscado")
-    def _():
-        from . import connectors as c
-        result = c._keyring_usable()
-        assert isinstance(result, bool)
-        return (f"keyring del SO {'disponible' if result else 'no disponible en este entorno'} "
-                "-> nunca se cae el guardado, solo cambia el respaldo (keyring real u ofuscado)")
-
-    @check("Login del modo servidor (MVDG_SERVER_PASSWORD)")
-    def _():
-        import os
-        from . import server
-        prev_mode = os.environ.pop("MVDG_SERVER_MODE", None)
-        prev_pwd = os.environ.pop("MVDG_SERVER_PASSWORD", None)
-        try:
-            assert server.auth_required() is False  # sin modo servidor, no pide login
-            os.environ["MVDG_SERVER_MODE"] = "1"
-            os.environ["MVDG_SERVER_PASSWORD"] = "selfcheck-pw"
-            assert server.auth_required() is True
-            assert server.check_password("selfcheck-pw") is True
-            assert server.check_password("otra") is False
+            df = curation.list_items("es")
+            total = len(df)
+            assert total > 100 and (df["status"] == "sugerido_ia").all()
+            assert (df["proposed"].str.len() > 0).all()
+            item = df.iloc[0]["item_id"]
+            curation.save_validation(item, "es", "modificado",
+                                     "Texto oficial.", "Resp. Selfcheck",
+                                     "Data Steward")
+            assert curation.effective_text(item, "es", "x") == "Texto oficial."
+            assert curation.summary("es")["modificado"] == 1
+            assert curation.reset_item(item, "es")
         finally:
-            os.environ.pop("MVDG_SERVER_MODE", None)
-            os.environ.pop("MVDG_SERVER_PASSWORD", None)
-            if prev_mode is not None:
-                os.environ["MVDG_SERVER_MODE"] = prev_mode
-            if prev_pwd is not None:
-                os.environ["MVDG_SERVER_PASSWORD"] = prev_pwd
-        return "sin MVDG_SERVER_PASSWORD no pide login (como antes); con ella, gate real antes del dashboard"
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return (f"{total} definiciones pre-establecidas; validar/modificar/"
+            "resetear con responsable, verificado (local)")
 
-    @check("Glosario automático desde la base (abreviaturas -> palabra completa, editable)")
-    def _():
-        import os
-        import sqlite3
-        import tempfile
+@check("Organigrama -> responsables por defecto (owner/steward por dataset)")
+def _check_13():
+    import os
+    import tempfile
 
-        from . import glossary_auto
-        with tempfile.TemporaryDirectory() as tmp:
-            db = os.path.join(tmp, "sc.db")
+    import pandas as pd
+    from . import orgchart as oc
+    org = oc.parse_org_table(pd.DataFrame({
+        "Department": ["Sales", "Sales", "Finance", "Quality", "Marketing"],
+        "Name": ["A. Uno", "B. Dos", "C. Tres", "D. Cuatro", "E. Cinco"],
+        "Job Title": ["Sales Manager", "Analyst", "Finance Director",
+                      "Quality Director", "Marketing Lead"],
+    }))
+    asg = oc.suggest_assignments(org)
+    assert (asg["owner_name"].str.len() > 0).all()
+    assert (asg["owner_role"].str.len() > 0).all()
+    n_ds = len(asg)
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            oc.save_org(org)
+            oc.save_assignments(asg)
+            assert oc.load_org().equals(org)
+            assert oc.load_assignments().equals(asg)
+        finally:
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return (f"encabezados detectados (ES/EN/PT) -> {n_ds} datasets con "
+            "owner+steward sugeridos por área y jerarquía, editable y persistente")
+
+@check("Migración a Purview/Collibra (acelerador, apagado por defecto)")
+def _check_14():
+    from . import collibra_export as cb
+    from . import purview_export as pv
+    from .exporters import governance_tables
+    gov = governance_tables("es")
+    cat, dic, glo = gov["catalog"], gov["dictionary"], gov["glossary"]
+    assert pv.configured() is False and cb.configured() is False
+    pr = pv.push_all(cat, dic, glo, dry_run=True)
+    assert pr["catalog"]["entity_count"] == len(cat) + len(dic)
+    assert pr["pii"]["classification_count"] > 0
+    cr = cb.push_all(cat, dic, glo, dry_run=True)
+    assert cr["catalog"]["asset_count"] == len(cat) + len(dic)
+    return (f"dry-run sin credenciales: {pr['catalog']['entity_count']} entidades "
+            f"Purview + {cr['catalog']['asset_count']} assets Collibra previsualizados")
+
+@check("Enforcement de acceso: DDL generado (GRANT/REVOKE + masking), nunca ejecutado")
+def _check_15():
+    from . import enforcement as en
+    from .exporters import governance_tables
+    gov = governance_tables("es")
+    cat, dic = gov["catalog"], gov["dictionary"]
+    plan = en.enforcement_plan(cat, dic, {"PII": ["rol_rrhh"], "Confidencial": ["rol_fin"]},
+                               engine="postgresql")
+    assert plan["grant_statements"] > 0 and plan["masking_statements"] > 0
+    assert "NO ejecutado" in plan["script"]
+    src = open(en.__file__, encoding="utf-8").read()
+    assert "sqlalchemy" not in src and ".execute(" not in src  # texto puro, no conecta a nada
+    en.build_row_level_security_ddl("dim_customers", "steward", "rol_x", engine="sqlserver")
+    return (f"{plan['grant_statements']} GRANT/REVOKE + {plan['masking_statements']} "
+            "de enmascaramiento generados (PostgreSQL/SQL Server) — texto DDL, no ejecuta nada")
+
+@check("Etiquetas MIP (Graph API real, apagado por defecto)")
+def _check_16():
+    from . import mip_labels as mip
+    from .exporters import governance_tables
+    assert mip.configured() is False
+    assert mip.list_labels() == []
+    cat = governance_tables("es")["catalog"]
+    file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
+    r = mip.push_labels(cat, file_map, dry_run=True)
+    assert len(r["skipped_no_file"]) == len(cat) - 1
+    return ("apagado por defecto; solo aplica a datasets con archivo mapeado en "
+            "OneDrive/SharePoint — el resto queda listado, no se saltea en silencio")
+
+@check("Escaneo batch de todas las conexiones guardadas")
+def _check_17():
+    import os
+    import sqlite3
+    import tempfile
+
+    import pandas as pd
+    from . import connectors as C
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            db = os.path.join(tmp, "ok.db")
             con = sqlite3.connect(db)
-            con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL)")
-            con.commit(); con.close()
-            terms = glossary_auto.build_from_connection(
-                {"conn_id": "sc", "engine": "sqlite", "database": db}, "es")
-            names = {t["column"]: t["name"] for t in terms}
-            assert names == {"fec_pag": "fecha pago", "imp_tot": "importe total"}
-        return ("esquema SQLite real leído (solo metadata), fec_pag -> \"fecha pago\" — "
-                "borrador editable a mano y validable en Curaduría")
-
-    @check("Alcance combinado: los casos de Mis datos fluyen por todas las pestañas")
-    def _():
-        from . import samples, scope
-        from .exporters import governance_tables
-        from .policies import policies_df
-        cat = scope.combined_catalog("es")
-        assert len(cat) == 4 + len(samples.sample_keys())
-        res = scope.combined_results("es")
-        assert res["dataset"].nunique() == len(cat)
-        nodes, edges = scope.combined_lineage("es")
-        assert all((f"src_{k}", k) in edges and (k, "bi_dashboard") in edges
-                   for k in samples.sample_keys())
-        pdf = policies_df("es", res, catalog=cat,
-                          dictionary=scope.combined_dictionary("es"))
-        assert "8/8" in pdf.iloc[0]["evidence"]
-        assert len(governance_tables("es", include_samples=True)["catalog"]) == len(cat)
-        return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
-                "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
-
-    @check("📦 Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
-    def _():
-        import os
-        import tempfile
-
-        from . import deliverable
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                for key in deliverable.case_keys():
-                    d = deliverable.build_deliverable(key, "es")
-                    assert d["kpis"]["rows"] > 0
-                    assert d["migration"]["purview_entities"] == 1 + d["kpis"]["columns"]
-                assert len(deliverable.deliverable_xlsx_bytes("medicamentos_openfda", "es")) > 5000
-                assert "Entregable" in deliverable.executive_summary_md("medicamentos_openfda", "es")
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return ("4 entregables con KPIs reales + migración en dry-run con los conectores "
-                "reales + Excel multi-hoja y resumen ejecutivo descargables")
-
-    @check("Insights de gobierno (índice 0-100, estilo Purview, local)")
-    def _():
-        import os
-        import tempfile
-
-        from . import insights
-        prev = os.environ.get("MVDG_DATA_DIR")
-        with tempfile.TemporaryDirectory() as tmp:
-            os.environ["MVDG_DATA_DIR"] = tmp
-            try:
-                s = insights.governance_summary("es")
-                assert s["datasets"] == 8
-                assert 0 <= s["governance_index"] <= 100
-                df = insights.governance_coverage("es")
-                assert len(df) == 8 and df["classified"].all()
-            finally:
-                if prev is None:
-                    os.environ.pop("MVDG_DATA_DIR", None)
-                else:
-                    os.environ["MVDG_DATA_DIR"] = prev
-        return (f"8 datasets, índice de gobierno {s['governance_index']}/100 "
-                "(sube al usar Responsables y Curaduría)")
-
-    @check("Centro de ayuda (speeches IA)")
-    def _():
-        from .help_center import SPEECHES, automation_rows
-        assert len(SPEECHES) == 5 and len(automation_rows("es")) >= 6
-        return f"{len(SPEECHES)} speeches, matriz de automatización"
-
-    @check("Tutorial DAMA-DMBOK (11 áreas + teoría)")
-    def _():
-        from . import dmbok
-        assert len(dmbok.areas("es")) == 11
-        assert len(dmbok.principles("es")) == 6
-        assert len(dmbok.concepts("es")) >= 12
-        assert len(dmbok.maturity("es")) == 5 and len(dmbok.lifecycle("es")) == 6
-        cov = dmbok.coverage_summary()
-        assert cov["covered"] + cov["partial"] + cov["out"] == 11
-        return (f"11 áreas, {len(dmbok.concepts('es'))} conceptos, "
-                f"{cov['covered']} cubiertas / {cov['partial']} parciales")
-
-    @check("Referencia COBIT 2019 + ISO/IEC 38505")
-    def _():
-        from . import cobit_iso as ci
-        for lang in ("es", "en", "pt"):
-            assert len(ci.cobit_objectives(lang)) == 8
-            assert len(ci.iso_principles(lang)) == 6
-            assert len(ci.iso_vrc(lang)) == 3
-        ccov = ci.cobit_coverage_summary()
-        icov = ci.iso_coverage_summary()
-        assert ccov["covered"] + ccov["partial"] + ccov["out"] == 8
-        assert icov["covered"] + icov["partial"] + icov["out"] == 6
-        return (f"COBIT: 8 objetivos ({ccov['covered']} cubiertos) · "
-               f"ISO 38505: 6 principios ({icov['covered']} cubiertos) + modelo VRC")
-
-    @check("MDM: duplicados + golden record (probado contra la demo real)")
-    def _():
-        from . import mdm
-        from .demo_data import load_demo_tables
-        df = load_demo_tables()["dim_customers"]
-        rules = mdm.suggest_rules(df, ["document_id", "email", "full_name", "birth_date"])
-        clusters = mdm.find_duplicate_clusters(df, rules, min_confidence=0.5, block_column="country")
-        assert len(clusters) == 8, "la demo trae 8 colisiones reales de document_id/email"
-        assert all(c.confidence == 1.0 for c in clusters)
-        # anti falso-positivo: "Ana Costa" x4 personas distintas no debe aparecer
-        ana_ids = set(df.loc[df["full_name"] == "Ana Costa", "customer_id"])
-        flagged = {df.loc[i, "customer_id"] for c in clusters for i in c.row_indices}
-        assert not (ana_ids & flagged), "nombre común sin ID/email coincidente no debe marcarse"
-        golden = mdm.build_golden_record(df, clusters[0])
-        assert all(golden.values())
-        return f"{len(clusters)} clusters reales detectados, 0 falsos positivos por nombre común"
-
-    @check("API REST importable")
-    def _():
-        from bi_api.main import SAMPLE_TABLES, TABLES, app  # noqa: F401
-        assert len(TABLES) == 9
-        assert len(SAMPLE_TABLES) == 4
-        return f"FastAPI OK, {len(TABLES)} tablas + {len(SAMPLE_TABLES)} tablas por dataset de ejemplo"
-
-    @check("Modo servidor web (hosts autorizados)")
-    def _():
-        from .server import (authorization_status, parse_authorized,
-                             run_server)
-        assert authorization_status([])["mode"] == "open"
-        assert authorization_status(["*"])["mode"] == "authorized"
-        assert authorization_status(["nope"], identities={"x"})["mode"] == "denied"
-        assert parse_authorized("a, b\n# comentario, con coma\nd") == ["a", "b", "d"]
-        argv: list = []
-        run_server(argv_out=argv)  # dry-run: no lanza el servidor
-        assert "--server.address" in argv and "--server.port" in argv
-        return "autorización por host + arranque server OK"
-
-    @check("Dataset de ejemplo real (rotulado de alimentos)")
-    def _():
-        import os
-        import pandas as pd
-        from .profiler import profile_table, summary
-        root = getattr(sys, "_MEIPASS", None) or os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(root, "assets", "samples",
-                            "rotulado_de_alimentos_2026.csv")
-        assert os.path.exists(path), "falta el CSV de ejemplo"
-        df = pd.read_csv(path)
-        info = summary(df)
-        assert info["rows"] == 284 and info["columns"] == 12
-        assert len(profile_table(df)) == 12
-        return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
-
-    @check("IA externa opcional (apagada por defecto, con fallback local)")
-    def _():
-        import os
-        from . import ai_provider
-        # verificamos el comportamiento por defecto (sin keys) sin alterar
-        # una configuracion real del usuario mas alla de la duracion del check
-        saved = {v: os.environ.pop(v, None) for v in
-                ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER")}
-        try:
-            assert ai_provider.configured_provider() is None
-            assert ai_provider.ai_suggest_fix("ds", "col", "completeness", "desc", 1, "es") is None
+            pd.DataFrame({"id": [1]}).to_sql("t1", con, index=False)
+            con.close()
+            C.save_connection({"name": "OK", "engine": "sqlite", "database": db,
+                               "user": "", "password": ""}, save_password=False)
+            C.save_connection({"name": "Rota", "engine": "sqlite",
+                               "database": "/no/existe.db", "user": "", "password": ""},
+                              save_password=False)
+            df = C.scan_all_connections()
+            assert set(df["name"]) == {"OK", "Rota"}
+            assert df[df["name"] == "Rota"]["error"].notna().all()
         finally:
-            for k, v in saved.items():
-                if v is not None:
-                    os.environ[k] = v
-        return "sin API key configurada -> asistencia local (comportamiento por defecto verificado)"
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return "una conexión caída no frena el escaneo de las demás, verificado"
 
-    @check("Sugerencias de correccion (IA) para cada falla detectada")
-    def _():
-        from . import quality, samples
-        from .remediation import suggest_fix
-        n_checked = 0
-        for r in quality.RULES:
+@check("Descubrimiento en Azure Resource Graph (apagado por defecto, con mock)")
+def _check_18():
+    from . import azure_discovery as az
+    assert az.configured() is False
+    q = az.build_query()
+    assert all(f"'{t}'" in q for t in az.DATA_RESOURCE_TYPES)
+
+    prev_token, prev_http = az._get_token, az._http_json
+    try:
+        az._get_token = lambda: "tok"
+        az._http_json = lambda url, headers, body: {"data": [
+            {"name": "srv1/db1", "type": "microsoft.sql/servers/databases",
+             "resourceGroup": "rg1", "location": "eastus",
+             "subscriptionId": "sub1", "id": "/x/1"}]}
+        import os
+        os.environ.update({"AZURE_TENANT_ID": "t", "AZURE_CLIENT_ID": "c",
+                           "AZURE_CLIENT_SECRET": "s", "AZURE_SUBSCRIPTION_ID": "sub1"})
+        df = az.discover_data_resources()
+        assert len(df) == 1 and df.iloc[0]["category"] == "Azure SQL Database"
+    finally:
+        az._get_token, az._http_json = prev_token, prev_http
+        for v in ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
+                 "AZURE_SUBSCRIPTION_ID"):
+            os.environ.pop(v, None)
+    return ("inventario de 9 tipos de recurso de datos (SQL/Storage/Synapse/Cosmos/"
+            "Databricks...) en una sola consulta a la suscripción, con mock del transporte")
+
+@check("Conector inverso Collibra (pull, apagado por defecto)")
+def _check_19():
+    from . import collibra_pull as cbp
+    assert cbp.table_pull_configured() is False
+    try:
+        cbp.pull_glossary()
+        raise AssertionError("debería haber levantado RuntimeError sin credenciales")
+    except RuntimeError:
+        pass
+    return "sin credenciales -> RuntimeError; no reimplementa Responsibility (owner/steward) sin verificar la API primero"
+
+@check("Conector inverso Purview (pull, apagado por defecto)")
+def _check_20():
+    from . import purview_pull as pvp
+    assert pvp.configured() is False
+    try:
+        pvp.pull_glossary()
+        raise AssertionError("debería haber levantado RuntimeError sin credenciales")
+    except RuntimeError:
+        pass
+    return "sin credenciales -> RuntimeError; cubre glosario y catálogo (Discovery API vigente)"
+
+@check("Persistencia de lo importado (Purview/Collibra) + entra a Curaduría")
+def _check_21():
+    import os
+    import tempfile
+
+    from . import curation, imported
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            n = imported.save_terms("collibra", [{"collibra_id": "sc-1", "name": "Selfcheck",
+                                                   "definition": "Definición de prueba."}])
+            assert n == 1
+            df = curation.list_items("es")
+            assert (df["item_id"] == "glossary:imported:collibra:sc-1").any()
+        finally:
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return "lo traído se guarda en disco y aparece en 🖊️ Curaduría con su origen visible"
+
+@check("Contraseñas de conexión: keyring del SO con respaldo ofuscado")
+def _check_22():
+    from . import connectors as c
+    result = c._keyring_usable()
+    assert isinstance(result, bool)
+    return (f"keyring del SO {'disponible' if result else 'no disponible en este entorno'} "
+            "-> nunca se cae el guardado, solo cambia el respaldo (keyring real u ofuscado)")
+
+@check("Login del modo servidor (MVDG_SERVER_PASSWORD)")
+def _check_23():
+    import os
+    from . import server
+    prev_mode = os.environ.pop("MVDG_SERVER_MODE", None)
+    prev_pwd = os.environ.pop("MVDG_SERVER_PASSWORD", None)
+    try:
+        assert server.auth_required() is False  # sin modo servidor, no pide login
+        os.environ["MVDG_SERVER_MODE"] = "1"
+        os.environ["MVDG_SERVER_PASSWORD"] = "selfcheck-pw"
+        assert server.auth_required() is True
+        assert server.check_password("selfcheck-pw") is True
+        assert server.check_password("otra") is False
+    finally:
+        os.environ.pop("MVDG_SERVER_MODE", None)
+        os.environ.pop("MVDG_SERVER_PASSWORD", None)
+        if prev_mode is not None:
+            os.environ["MVDG_SERVER_MODE"] = prev_mode
+        if prev_pwd is not None:
+            os.environ["MVDG_SERVER_PASSWORD"] = prev_pwd
+    return "sin MVDG_SERVER_PASSWORD no pide login (como antes); con ella, gate real antes del dashboard"
+
+@check("Glosario automático desde la base (abreviaturas -> palabra completa, editable)")
+def _check_24():
+    import os
+    import sqlite3
+    import tempfile
+
+    from . import glossary_auto
+    with tempfile.TemporaryDirectory() as tmp:
+        db = os.path.join(tmp, "sc.db")
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL)")
+        con.commit()
+        con.close()
+        terms = glossary_auto.build_from_connection(
+            {"conn_id": "sc", "engine": "sqlite", "database": db}, "es")
+        names = {t["column"]: t["name"] for t in terms}
+        assert names == {"fec_pag": "fecha pago", "imp_tot": "importe total"}
+    return ("esquema SQLite real leído (solo metadata), fec_pag -> \"fecha pago\" — "
+            "borrador editable a mano y validable en Curaduría")
+
+@check("Alcance combinado: los casos de Mis datos fluyen por todas las pestañas")
+def _check_25():
+    from . import samples, scope
+    from .exporters import governance_tables
+    from .policies import policies_df
+    cat = scope.combined_catalog("es")
+    assert len(cat) == 4 + len(samples.sample_keys())
+    res = scope.combined_results("es")
+    assert res["dataset"].nunique() == len(cat)
+    nodes, edges = scope.combined_lineage("es")
+    assert all((f"src_{k}", k) in edges and (k, "bi_dashboard") in edges
+               for k in samples.sample_keys())
+    pdf = policies_df("es", res, catalog=cat,
+                      dictionary=scope.combined_dictionary("es"))
+    assert "8/8" in pdf.iloc[0]["evidence"]
+    assert len(governance_tables("es", include_samples=True)["catalog"]) == len(cat)
+    return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
+            "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
+
+@check("📦 Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
+def _check_26():
+    import os
+    import tempfile
+
+    from . import deliverable
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            for key in deliverable.case_keys():
+                d = deliverable.build_deliverable(key, "es")
+                assert d["kpis"]["rows"] > 0
+                assert d["migration"]["purview_entities"] == 1 + d["kpis"]["columns"]
+            assert len(deliverable.deliverable_xlsx_bytes("medicamentos_openfda", "es")) > 5000
+            assert "Entregable" in deliverable.executive_summary_md("medicamentos_openfda", "es")
+        finally:
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return ("4 entregables con KPIs reales + migración en dry-run con los conectores "
+            "reales + Excel multi-hoja y resumen ejecutivo descargables")
+
+@check("Insights de gobierno (índice 0-100, estilo Purview, local)")
+def _check_27():
+    import os
+    import tempfile
+
+    from . import insights
+    prev = os.environ.get("MVDG_DATA_DIR")
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["MVDG_DATA_DIR"] = tmp
+        try:
+            s = insights.governance_summary("es")
+            assert s["datasets"] == 8
+            assert 0 <= s["governance_index"] <= 100
+            df = insights.governance_coverage("es")
+            assert len(df) == 8 and df["classified"].all()
+        finally:
+            if prev is None:
+                os.environ.pop("MVDG_DATA_DIR", None)
+            else:
+                os.environ["MVDG_DATA_DIR"] = prev
+    return (f"8 datasets, índice de gobierno {s['governance_index']}/100 "
+            "(sube al usar Responsables y Curaduría)")
+
+@check("Centro de ayuda (speeches IA)")
+def _check_28():
+    from .help_center import SPEECHES, automation_rows
+    assert len(SPEECHES) == 5 and len(automation_rows("es")) >= 6
+    return f"{len(SPEECHES)} speeches, matriz de automatización"
+
+@check("Tutorial DAMA-DMBOK (11 áreas + teoría)")
+def _check_29():
+    from . import dmbok
+    assert len(dmbok.areas("es")) == 11
+    assert len(dmbok.principles("es")) == 6
+    assert len(dmbok.concepts("es")) >= 12
+    assert len(dmbok.maturity("es")) == 5 and len(dmbok.lifecycle("es")) == 6
+    cov = dmbok.coverage_summary()
+    assert cov["covered"] + cov["partial"] + cov["out"] == 11
+    return (f"11 áreas, {len(dmbok.concepts('es'))} conceptos, "
+            f"{cov['covered']} cubiertas / {cov['partial']} parciales")
+
+@check("Referencia COBIT 2019 + ISO/IEC 38505")
+def _check_30():
+    from . import cobit_iso as ci
+    for lang in ("es", "en", "pt"):
+        assert len(ci.cobit_objectives(lang)) == 8
+        assert len(ci.iso_principles(lang)) == 6
+        assert len(ci.iso_vrc(lang)) == 3
+    ccov = ci.cobit_coverage_summary()
+    icov = ci.iso_coverage_summary()
+    assert ccov["covered"] + ccov["partial"] + ccov["out"] == 8
+    assert icov["covered"] + icov["partial"] + icov["out"] == 6
+    return (f"COBIT: 8 objetivos ({ccov['covered']} cubiertos) · "
+           f"ISO 38505: 6 principios ({icov['covered']} cubiertos) + modelo VRC")
+
+@check("MDM: duplicados + golden record (probado contra la demo real)")
+def _check_31():
+    from . import mdm
+    from .demo_data import load_demo_tables
+    df = load_demo_tables()["dim_customers"]
+    rules = mdm.suggest_rules(df, ["document_id", "email", "full_name", "birth_date"])
+    clusters = mdm.find_duplicate_clusters(df, rules, min_confidence=0.5, block_column="country")
+    assert len(clusters) == 8, "la demo trae 8 colisiones reales de document_id/email"
+    assert all(c.confidence == 1.0 for c in clusters)
+    # anti falso-positivo: "Ana Costa" x4 personas distintas no debe aparecer
+    ana_ids = set(df.loc[df["full_name"] == "Ana Costa", "customer_id"])
+    flagged = {df.loc[i, "customer_id"] for c in clusters for i in c.row_indices}
+    assert not (ana_ids & flagged), "nombre común sin ID/email coincidente no debe marcarse"
+    golden = mdm.build_golden_record(df, clusters[0])
+    assert all(golden.values())
+    return f"{len(clusters)} clusters reales detectados, 0 falsos positivos por nombre común"
+
+@check("API REST importable")
+def _check_32():
+    from bi_api.main import SAMPLE_TABLES, TABLES, app  # noqa: F401
+    assert len(TABLES) == 9
+    assert len(SAMPLE_TABLES) == 4
+    return f"FastAPI OK, {len(TABLES)} tablas + {len(SAMPLE_TABLES)} tablas por dataset de ejemplo"
+
+@check("Modo servidor web (hosts autorizados)")
+def _check_33():
+    from .server import (authorization_status, parse_authorized,
+                         run_server)
+    assert authorization_status([])["mode"] == "open"
+    assert authorization_status(["*"])["mode"] == "authorized"
+    assert authorization_status(["nope"], identities={"x"})["mode"] == "denied"
+    assert parse_authorized("a, b\n# comentario, con coma\nd") == ["a", "b", "d"]
+    argv: list = []
+    run_server(argv_out=argv)  # dry-run: no lanza el servidor
+    assert "--server.address" in argv and "--server.port" in argv
+    return "autorización por host + arranque server OK"
+
+@check("Dataset de ejemplo real (rotulado de alimentos)")
+def _check_34():
+    import os
+    import pandas as pd
+    from .profiler import profile_table, summary
+    root = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "assets", "samples",
+                        "rotulado_de_alimentos_2026.csv")
+    assert os.path.exists(path), "falta el CSV de ejemplo"
+    df = pd.read_csv(path)
+    info = summary(df)
+    assert info["rows"] == 284 and info["columns"] == 12
+    assert len(profile_table(df)) == 12
+    return f"{info['rows']} filas × {info['columns']} columnas perfiladas"
+
+@check("IA externa opcional (apagada por defecto, con fallback local)")
+def _check_35():
+    import os
+    from . import ai_provider
+    # verificamos el comportamiento por defecto (sin keys) sin alterar
+    # una configuracion real del usuario mas alla de la duracion del check
+    saved = {v: os.environ.pop(v, None) for v in
+            ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "MVDG_AI_PROVIDER")}
+    try:
+        assert ai_provider.configured_provider() is None
+        assert ai_provider.ai_suggest_fix("ds", "col", "completeness", "desc", 1, "es") is None
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+    return "sin API key configurada -> asistencia local (comportamiento por defecto verificado)"
+
+@check("Sugerencias de correccion (IA) para cada falla detectada")
+def _check_36():
+    from . import quality, samples
+    from .remediation import suggest_fix
+    n_checked = 0
+    for r in quality.RULES:
+        for lang in ("es", "en", "pt"):
+            fix = suggest_fix(r.rule_id, r.dimension, r.column, 12, lang)
+            assert all(fix.values()), r.rule_id
+            n_checked += 1
+    for key in samples.sample_keys():
+        for r in samples.SAMPLES[key]["rules"]:
             for lang in ("es", "en", "pt"):
-                fix = suggest_fix(r.rule_id, r.dimension, r.column, 12, lang)
+                fix = suggest_fix(r.rule_id, r.dimension, r.column, 5, lang)
                 assert all(fix.values()), r.rule_id
                 n_checked += 1
-        for key in samples.sample_keys():
-            for r in samples.SAMPLES[key]["rules"]:
-                for lang in ("es", "en", "pt"):
-                    fix = suggest_fix(r.rule_id, r.dimension, r.column, 5, lang)
-                    assert all(fix.values()), r.rule_id
-                    n_checked += 1
-        # regla desconocida -> repuesto generico, no debe romper
-        generic = suggest_fix("ZZZ-99", "completeness", "col_x", 3, "es")
-        assert all(generic.values())
-        return f"{n_checked} combinaciones regla×idioma con sugerencia completa"
+    # regla desconocida -> repuesto generico, no debe romper
+    generic = suggest_fix("ZZZ-99", "completeness", "col_x", 3, "es")
+    assert all(generic.values())
+    return f"{n_checked} combinaciones regla×idioma con sugerencia completa"
 
-    @check("Datasets de ejemplo gobernados de punta a punta (catálogo+reglas+glosario+BI)")
-    def _():
-        from . import samples
-        keys = samples.sample_keys()
-        assert len(keys) >= 2
-        total_rows = 0
-        for key in keys:
-            for lang in ("es", "en", "pt"):
-                meta = samples.sample_meta(key, lang)
-                assert meta["name"] and meta["owner"] and meta["steward"]
-                results = samples.sample_quality_results(key, lang)
-                assert len(results) >= 5
-                gloss = samples.sample_glossary_df(key, lang)
-                assert len(gloss) >= 3
-            gov = samples.sample_governance_tables(key, "es")
-            assert set(gov) == {"data", "dictionary", "quality_results", "glossary"}
-            total_rows += len(gov["data"])
-        return f"{len(keys)} datasets, {total_rows:,} filas gobernadas (catálogo, reglas, glosario, BI)"
+@check("Datasets de ejemplo gobernados de punta a punta (catálogo+reglas+glosario+BI)")
+def _check_37():
+    from . import samples
+    keys = samples.sample_keys()
+    assert len(keys) >= 2
+    total_rows = 0
+    for key in keys:
+        for lang in ("es", "en", "pt"):
+            meta = samples.sample_meta(key, lang)
+            assert meta["name"] and meta["owner"] and meta["steward"]
+            results = samples.sample_quality_results(key, lang)
+            assert len(results) >= 5
+            gloss = samples.sample_glossary_df(key, lang)
+            assert len(gloss) >= 3
+        gov = samples.sample_governance_tables(key, "es")
+        assert set(gov) == {"data", "dictionary", "quality_results", "glossary"}
+        total_rows += len(gov["data"])
+    return f"{len(keys)} datasets, {total_rows:,} filas gobernadas (catálogo, reglas, glosario, BI)"
 
-    @check("Conector de metadata Power BI (.pbip -> catálogo+linaje SQL->reporte+DAX)")
-    def _():
-        import os
-        import tempfile
-        from . import powerbi_meta as pbi
+@check("Conector de metadata Power BI (.pbip -> catálogo+linaje SQL->reporte+DAX)")
+def _check_38():
+    import os
+    import tempfile
+    from . import powerbi_meta as pbi
 
-        root = os.path.join(tempfile.mkdtemp(prefix="mvdg_selfcheck_pbip_"), "Demo.SemanticModel")
-        dfn = os.path.join(root, "definition")
-        os.makedirs(os.path.join(dfn, "tables"))
-        with open(os.path.join(dfn, "tables", "Ventas.tmdl"), "w", encoding="utf-8") as fh:
-            fh.write(
-                "table Ventas\n"
-                "\tmeasure Total = SUM ( Ventas[Monto] )\n"
-                "\tcolumn Monto\n"
-                "\t\tdataType: double\n"
-                "\tpartition Ventas = m\n"
-                "\t\tsource =\n"
-                "\t\t\tlet\n"
-                "\t\t\t\tSource = Sql.Database(\"Srv\", \"Db\")\n"
-                "\t\t\tin\n"
-                "\t\t\t\tSource\n"
-            )
-        out = pbi.ingest_pbip(root)
-        model = out["_model"]
-        assert model.table_sources.get("Ventas") == "SQL Server · Srv/Db"
-        chain = out["lineage"]
-        assert (chain["source_layer"] == "source").any(), "falta el tramo SQL -> tabla"
-        assert (chain["target_layer"] == "bi").any(), "falta el tramo dataset -> reporte"
-        assert set(out) >= {"catalog", "dictionary", "glossary", "lineage", "quality", "sources"}
-        return "SQL Server -> tabla -> dataset -> reporte, cableado end-to-end (offline, sin filas)"
+    root = os.path.join(tempfile.mkdtemp(prefix="mvdg_selfcheck_pbip_"), "Demo.SemanticModel")
+    dfn = os.path.join(root, "definition")
+    os.makedirs(os.path.join(dfn, "tables"))
+    with open(os.path.join(dfn, "tables", "Ventas.tmdl"), "w", encoding="utf-8") as fh:
+        fh.write(
+            "table Ventas\n"
+            "\tmeasure Total = SUM ( Ventas[Monto] )\n"
+            "\tcolumn Monto\n"
+            "\t\tdataType: double\n"
+            "\tpartition Ventas = m\n"
+            "\t\tsource =\n"
+            "\t\t\tlet\n"
+            "\t\t\t\tSource = Sql.Database(\"Srv\", \"Db\")\n"
+            "\t\t\tin\n"
+            "\t\t\t\tSource\n"
+        )
+    out = pbi.ingest_pbip(root)
+    model = out["_model"]
+    assert model.table_sources.get("Ventas") == "SQL Server · Srv/Db"
+    chain = out["lineage"]
+    assert (chain["source_layer"] == "source").any(), "falta el tramo SQL -> tabla"
+    assert (chain["target_layer"] == "bi").any(), "falta el tramo dataset -> reporte"
+    assert set(out) >= {"catalog", "dictionary", "glossary", "lineage", "quality", "sources"}
+    return "SQL Server -> tabla -> dataset -> reporte, cableado end-to-end (offline, sin filas)"
 
-    @check("Power BI tenant-wide (Scanner API, apagado por defecto, con mock del transporte)")
-    def _():
-        import os
-        from unittest import mock
+@check("Power BI tenant-wide (Scanner API, apagado por defecto, con mock del transporte)")
+def _check_39():
+    import os
+    from unittest import mock
 
-        from . import powerbi_meta as pbi
+    from . import powerbi_meta as pbi
 
-        saved = {v: os.environ.pop(v, None) for v in
-                ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET")}
+    saved = {v: os.environ.pop(v, None) for v in
+            ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET")}
+    try:
+        assert pbi.tenant_configured() is False
         try:
-            assert pbi.tenant_configured() is False
-            try:
-                pbi.read_scanner()
-                raise AssertionError("read_scanner() debería fallar sin credenciales")
-            except RuntimeError:
-                pass
+            pbi.read_scanner()
+            raise AssertionError("read_scanner() debería fallar sin credenciales")
+        except RuntimeError:
+            pass
 
-            def fake_form(url, form):
-                return {"access_token": "tok"}
+        def fake_form(url, form):
+            return {"access_token": "tok"}
 
-            def fake_json(url, headers, method="GET", body=None):
-                if "admin/groups" in url:
-                    return {"value": [{"id": "ws-1", "name": "Demo"}]}
-                if "getInfo" in url:
-                    return {"id": "scan-1"}
-                if "scanStatus" in url:
-                    return {"status": "Succeeded"}
-                if "scanResult" in url:
-                    return {"workspaces": [{"name": "Demo", "datasets": [{
-                        "id": "ds-1", "name": "VentasDemo",
-                        "tables": [{"name": "Ventas",
-                                   "columns": [{"name": "Monto", "dataType": "double"}],
-                                   "measures": [{"name": "Total", "expression": "SUM(Ventas[Monto])"}],
-                                   "source": [{"expression": 'Sql.Database("Srv","Db")'}]}]}],
-                        "reports": [{"name": "Rep", "datasetId": "ds-1"}]}]}
-                raise AssertionError(url)
+        def fake_json(url, headers, method="GET", body=None):
+            if "admin/groups" in url:
+                return {"value": [{"id": "ws-1", "name": "Demo"}]}
+            if "getInfo" in url:
+                return {"id": "scan-1"}
+            if "scanStatus" in url:
+                return {"status": "Succeeded"}
+            if "scanResult" in url:
+                return {"workspaces": [{"name": "Demo", "datasets": [{
+                    "id": "ds-1", "name": "VentasDemo",
+                    "tables": [{"name": "Ventas",
+                               "columns": [{"name": "Monto", "dataType": "double"}],
+                               "measures": [{"name": "Total", "expression": "SUM(Ventas[Monto])"}],
+                               "source": [{"expression": 'Sql.Database("Srv","Db")'}]}]}],
+                    "reports": [{"name": "Rep", "datasetId": "ds-1"}]}]}
+            raise AssertionError(url)
 
-            with mock.patch.object(pbi, "_http_form", fake_form), \
-                mock.patch.object(pbi, "_http_json", fake_json):
-                out = pbi.ingest_tenant(tenant_id="t", client_id="c", client_secret="s")
-            assert len(out["_models"]) == 1
-            assert out["_models"][0].table_sources.get("Ventas") == "SQL Server · Srv/Db"
-        finally:
-            for k, v in saved.items():
-                if v is not None:
-                    os.environ[k] = v
-        return "sin credenciales -> RuntimeError; con credenciales (mock) -> tenant escaneado end-to-end"
+        with mock.patch.object(pbi, "_http_form", fake_form), \
+            mock.patch.object(pbi, "_http_json", fake_json):
+            out = pbi.ingest_tenant(tenant_id="t", client_id="c", client_secret="s")
+        assert len(out["_models"]) == 1
+        assert out["_models"][0].table_sources.get("Ventas") == "SQL Server · Srv/Db"
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+    return "sin credenciales -> RuntimeError; con credenciales (mock) -> tenant escaneado end-to-end"
 
-    @check("Tableau Metadata API (apagado por defecto, con mock del transporte)")
-    def _():
-        import os
-        from unittest import mock
+@check("Tableau Metadata API (apagado por defecto, con mock del transporte)")
+def _check_40():
+    import os
+    from unittest import mock
 
-        from . import tableau_meta as tabl
+    from . import tableau_meta as tabl
 
-        saved = {v: os.environ.pop(v, None) for v in
-                ("TABLEAU_SERVER_URL", "TABLEAU_TOKEN_NAME", "TABLEAU_TOKEN_SECRET")}
+    saved = {v: os.environ.pop(v, None) for v in
+            ("TABLEAU_SERVER_URL", "TABLEAU_TOKEN_NAME", "TABLEAU_TOKEN_SECRET")}
+    try:
+        assert tabl.configured() is False
         try:
-            assert tabl.configured() is False
-            try:
-                tabl.read_site()
-                raise AssertionError("read_site() debería fallar sin credenciales")
-            except RuntimeError:
-                pass
+            tabl.read_site()
+            raise AssertionError("read_site() debería fallar sin credenciales")
+        except RuntimeError:
+            pass
 
-            def fake_json(url, headers, method="GET", body=None):
-                if url.endswith("/auth/signin"):
-                    return {"credentials": {"token": "sess", "site": {"id": "s1"}}}
-                if url.endswith("/auth/signout"):
-                    return {}
-                if url.endswith("/api/metadata/graphql"):
-                    return {"data": {"workbooks": [{"name": "WB", "projectName": "P",
-                        "upstreamDatasources": [{"name": "DS",
-                            "fields": [{"name": "Margen", "description": "",
-                                       "formula": "SUM([X])/SUM([Y])"}],
-                            "upstreamTables": [{"name": "ventas", "schema": "dbo",
-                                               "database": {"connectionType": "sqlserver"}}]}]}]}}
-                raise AssertionError(url)
+        def fake_json(url, headers, method="GET", body=None):
+            if url.endswith("/auth/signin"):
+                return {"credentials": {"token": "sess", "site": {"id": "s1"}}}
+            if url.endswith("/auth/signout"):
+                return {}
+            if url.endswith("/api/metadata/graphql"):
+                return {"data": {"workbooks": [{"name": "WB", "projectName": "P",
+                    "upstreamDatasources": [{"name": "DS",
+                        "fields": [{"name": "Margen", "description": "",
+                                   "formula": "SUM([X])/SUM([Y])"}],
+                        "upstreamTables": [{"name": "ventas", "schema": "dbo",
+                                           "database": {"connectionType": "sqlserver"}}]}]}]}}
+            raise AssertionError(url)
 
-            with mock.patch.object(tabl, "_http_json", fake_json):
-                out = tabl.ingest_site(server="https://t.example.com",
-                                       token_name="n", token_secret="s")
-            assert out["_model"].workbooks == ["WB"]
-            assert len(out["glossary"]) == 1
-        finally:
-            for k, v in saved.items():
-                if v is not None:
-                    os.environ[k] = v
-        return "sin credenciales -> RuntimeError; con credenciales (mock) -> sitio escaneado end-to-end"
+        with mock.patch.object(tabl, "_http_json", fake_json):
+            out = tabl.ingest_site(server="https://t.example.com",
+                                   token_name="n", token_secret="s")
+        assert out["_model"].workbooks == ["WB"]
+        assert len(out["glossary"]) == 1
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+    return "sin credenciales -> RuntimeError; con credenciales (mock) -> sitio escaneado end-to-end"
 
-    @check("Ejemplos incluidos de Power BI (real, GitHub MIT) y Tableau (original)")
-    def _():
-        from . import powerbi_meta as pbi
-        from . import tableau_meta as tabl
+@check("Ejemplos incluidos de Power BI (real, GitHub MIT) y Tableau (original)")
+def _check_41():
+    from . import powerbi_meta as pbi
+    from . import tableau_meta as tabl
 
-        pbi_out = pbi.ingest_example()
-        pbi_model = pbi_out["_model"]
-        assert len(pbi_model.tables) == 10 and len(pbi_model.measures) == 17
-        assert all(m.description for m in pbi_model.measures), "descripciones /// no se capturaron"
+    pbi_out = pbi.ingest_example()
+    pbi_model = pbi_out["_model"]
+    assert len(pbi_model.tables) == 10 and len(pbi_model.measures) == 17
+    assert all(m.description for m in pbi_model.measures), "descripciones /// no se capturaron"
 
-        tenant_out = pbi.ingest_example_tenant()
-        assert len(tenant_out["_models"]) == 4
-        assert all("ilustrativo" in m.source.lower() for m in tenant_out["_models"])
+    tenant_out = pbi.ingest_example_tenant()
+    assert len(tenant_out["_models"]) == 4
+    assert all("ilustrativo" in m.source.lower() for m in tenant_out["_models"])
 
-        tab_out = tabl.ingest_example()
-        tab_model = tab_out["_model"]
-        assert tab_model.workbooks == ["VentasGlobalDemo"]
-        assert sum(1 for f in tab_model.fields if f.is_calculated) == 3
+    tab_out = tabl.ingest_example()
+    tab_model = tab_out["_model"]
+    assert tab_model.workbooks == ["VentasGlobalDemo"]
+    assert sum(1 for f in tab_model.fields if f.is_calculated) == 3
 
-        return (f"Power BI: {len(pbi_model.tables)} tablas reales (MIT) + 4 workspaces "
-               f"ilustrativos · Tableau: {len(tab_model.workbooks)} workbook original, "
-               f"{len(tab_model.datasources)} datasources")
+    return (f"Power BI: {len(pbi_model.tables)} tablas reales (MIT) + 4 workspaces "
+           f"ilustrativos · Tableau: {len(tab_model.workbooks)} workbook original, "
+           f"{len(tab_model.datasources)} datasources")
 
-    @check("Lanzadores de las 3 versiones (.exe / .bat / web)")
-    def _():
-        import os
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        launchers = ["MV_DataGovernance.bat", "MV_DataGovernance_Server.bat",
-                     "MV_Instalar_Accesos.bat",
-                     "run.sh", "run_server.sh",
-                     os.path.join("packaging", "mvdg_launcher.py"),
-                     os.path.join("packaging", "mvdg.spec")]
-        missing = [f for f in launchers if not os.path.exists(os.path.join(root, f))]
-        assert not missing, f"faltan lanzadores: {missing}"
-        return (".exe (PyInstaller) · .bat portable · web servidor · accesos "
-                "directos opcionales (escritorio/menú inicio) — presentes")
+@check("Lanzadores de las 3 versiones (.exe / .bat / web)")
+def _check_42():
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    launchers = ["MV_DataGovernance.bat", "MV_DataGovernance_Server.bat",
+                 "MV_Instalar_Accesos.bat",
+                 "run.sh", "run_server.sh",
+                 os.path.join("packaging", "mvdg_launcher.py"),
+                 os.path.join("packaging", "mvdg.spec")]
+    missing = [f for f in launchers if not os.path.exists(os.path.join(root, f))]
+    assert not missing, f"faltan lanzadores: {missing}"
+    return (".exe (PyInstaller) · .bat portable · web servidor · accesos "
+            "directos opcionales (escritorio/menú inicio) — presentes")
 
-    @check("Data Products, contratos de datos y alarmística sobre linaje")
-    def _():
-        import tempfile
-        from unittest import mock
-        from . import contracts
-        from .scope import combined_results
-        res = combined_results("es")
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.dict("os.environ", {"MVDG_DATA_DIR": tmp}):
-            con = contracts.contracts_df("es", res)
-            assert len(con) == 8, f"esperaba 8 productos, hay {len(con)}"
-            assert set(con["compliance"]) <= set(contracts.COMPLIANCE)
-            assert (con["domain_owner"] != "").all() and (con["producer"] != "").all()
-            ale = contracts.alerts_df("es", res)
-            no_pass = int((res[res["dataset"].isin(con["dataset"])]["status"] != "pass").sum())
-            assert len(ale) == no_pass, f"alertas {len(ale)} != reglas no aprobadas {no_pass}"
-            assert ale["impact_downstream"].str.len().gt(0).all()
-            # firma de acuerdo persiste y cambia el estado
-            contracts.save_agreement("fct_sales", "L. Santos", "Data Product Owner")
-            assert contracts.contracts_df("es", res).set_index("dataset").loc[
-                "fct_sales", "agreement"] == "vigente"
-            for lg in ("es", "en", "pt"):
-                assert len(contracts.theory(lg)) == 8
-                assert contracts.contracts_xlsx_bytes(lg, res)[:2] == b"PK"
-        return (f"{len(con)} contratos evaluados con reglas reales · "
-                f"{len(ale)} alertas con impacto aguas abajo · firma auditable · teoría x3 idiomas")
+@check("Data Products, contratos de datos y alarmística sobre linaje")
+def _check_43():
+    import tempfile
+    from unittest import mock
+    from . import contracts
+    from .scope import combined_results
+    res = combined_results("es")
+    with tempfile.TemporaryDirectory() as tmp, \
+            mock.patch.dict("os.environ", {"MVDG_DATA_DIR": tmp}):
+        con = contracts.contracts_df("es", res)
+        assert len(con) == 8, f"esperaba 8 productos, hay {len(con)}"
+        assert set(con["compliance"]) <= set(contracts.COMPLIANCE)
+        assert (con["domain_owner"] != "").all() and (con["producer"] != "").all()
+        ale = contracts.alerts_df("es", res)
+        no_pass = int((res[res["dataset"].isin(con["dataset"])]["status"] != "pass").sum())
+        assert len(ale) == no_pass, f"alertas {len(ale)} != reglas no aprobadas {no_pass}"
+        assert ale["impact_downstream"].str.len().gt(0).all()
+        # firma de acuerdo persiste y cambia el estado
+        contracts.save_agreement("fct_sales", "L. Santos", "Data Product Owner")
+        assert contracts.contracts_df("es", res).set_index("dataset").loc[
+            "fct_sales", "agreement"] == "vigente"
+        for lg in ("es", "en", "pt"):
+            assert len(contracts.theory(lg)) == 8
+            assert contracts.contracts_xlsx_bytes(lg, res)[:2] == b"PK"
+    return (f"{len(con)} contratos evaluados con reglas reales · "
+            f"{len(ale)} alertas con impacto aguas abajo · firma auditable · teoría x3 idiomas")
 
-    @check("Servidor MCP de gobernanza (roundtrip real por stdio)")
-    def _():
-        import importlib.util
-        if importlib.util.find_spec("mcp") is None:
-            raise AssertionError("SDK 'mcp' no instalado (pip install mcp)")
-        import json
-        import os
-        import sys
-        import tempfile
-        from . import mcp_client
-        with tempfile.TemporaryDirectory() as tmp:
-            env = {**os.environ, "MVDG_DATA_DIR": tmp}
-            cmd, args = sys.executable, ["-m", "mvdg.mcp_server"]
-            tools = mcp_client.list_tools(cmd, args, env=env)
-            assert len(tools) == 9, f"esperaba 9 herramientas, hay {len(tools)}"
-            cat = json.loads(mcp_client.call_tool(
-                cmd, args, "mvdg_catalog", {"lang": "es"}, env=env))
-            assert len(cat) == 8
-            con = json.loads(mcp_client.call_tool(
-                cmd, args, "mvdg_contracts", {}, env=env))
-            assert {c["compliance"] for c in con} <= {"cumple", "en_riesgo",
-                                                     "incumple"}
-        return ("9 herramientas · catálogo y contratos consultados por el "
-                "protocolo real (cliente y servidor propios, stdio local)")
+@check("Servidor MCP de gobernanza (roundtrip real por stdio)")
+def _check_44():
+    import importlib.util
+    if importlib.util.find_spec("mcp") is None:
+        raise AssertionError("SDK 'mcp' no instalado (pip install mcp)")
+    import json
+    import os
+    import sys
+    import tempfile
+    from . import mcp_client
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "MVDG_DATA_DIR": tmp}
+        cmd, args = sys.executable, ["-m", "mvdg.mcp_server"]
+        tools = mcp_client.list_tools(cmd, args, env=env)
+        assert len(tools) == 9, f"esperaba 9 herramientas, hay {len(tools)}"
+        cat = json.loads(mcp_client.call_tool(
+            cmd, args, "mvdg_catalog", {"lang": "es"}, env=env))
+        assert len(cat) == 8
+        con = json.loads(mcp_client.call_tool(
+            cmd, args, "mvdg_contracts", {}, env=env))
+        assert {c["compliance"] for c in con} <= {"cumple", "en_riesgo",
+                                                 "incumple"}
+    return ("9 herramientas · catálogo y contratos consultados por el "
+            "protocolo real (cliente y servidor propios, stdio local)")
 
-    @check("Integridad de la instalación (app.py <-> mvdg coherentes)")
-    def _():
-        from . import integrity
-        missing = integrity.check_install()
-        assert not missing, f"piezas faltantes: {missing}"
-        # el mensaje del cartel existe en los 3 idiomas
-        assert set(integrity.MESSAGE) == {"es", "en", "pt"}
-        return (f"{len(integrity._CANARY_I18N)} claves canario + "
-                f"{len(integrity._CANARY_ATTRS)} atributos de motor: todo presente")
+@check("Integridad de la instalación (app.py <-> mvdg coherentes)")
+def _check_45():
+    from . import integrity
+    missing = integrity.check_install()
+    assert not missing, f"piezas faltantes: {missing}"
+    # el mensaje del cartel existe en los 3 idiomas
+    assert set(integrity.MESSAGE) == {"es", "en", "pt"}
+    return (f"{len(integrity._CANARY_I18N)} claves canario + "
+            f"{len(integrity._CANARY_ATTRS)} atributos de motor: todo presente")
 
-    @check("Dashboard importable (sin errores)")
-    def _():
-        import importlib
-        importlib.import_module("app.app")
-        return "app/app.py carga sin errores"
-
-    return results
+@check("Dashboard importable (sin errores)")
+def _check_46():
+    import importlib
+    importlib.import_module("app.app")
+    return "app/app.py carga sin errores"
 
 
 def main() -> int:
