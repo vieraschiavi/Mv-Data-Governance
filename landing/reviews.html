@@ -170,6 +170,11 @@ function setLang(lang){
   document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
   render();
 }
+// Escapa TODO lo que se inyecta como HTML. Hoy las reseñas vienen de
+// reviews-data.js (archivo propio), pero si mañana se alimenta de envíos
+// reales de usuarios el escapado tiene que estar puesto de antemano.
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function stars(n){return '★★★★★☆☆☆☆☆'.slice(5-Math.round(n),10-Math.round(n));}
 function exLabel(){var l=document.documentElement.lang||'es';return l==='en'?'Example':l==='pt'?'Exemplo':'Ejemplo';}
 function initials(name){return (name||'?').split(/\s+/).map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();}
@@ -197,10 +202,10 @@ function render(){
       '<div class="card">'+
         (r.example?'<span class="ex">'+exLabel()+'</span>':'')+
         '<div class="cstars">'+stars(r.rating)+'</div>'+
-        '<div class="cc">“'+(r.comment||'').replace(/</g,'&lt;')+'”</div>'+
-        '<div class="who"><span class="av">'+initials(r.name)+'</span>'+
-          '<span><b>'+(r.name||'').replace(/</g,'&lt;')+'</b>'+
-          '<span>'+(r.role||'').replace(/</g,'&lt;')+(r.date?' · '+r.date:'')+'</span></span></div>'+
+        '<div class="cc">“'+esc(r.comment)+'”</div>'+
+        '<div class="who"><span class="av">'+esc(initials(r.name))+'</span>'+
+          '<span><b>'+esc(r.name)+'</b>'+
+          '<span>'+esc(r.role)+(r.date?' · '+esc(r.date):'')+'</span></span></div>'+
       '</div>');
   });
 }

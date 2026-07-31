@@ -1281,6 +1281,113 @@ def test_bi_api_serves_sample_datasets():
     assert client.get("/api/samples/cafe_sales_kaggle/no-existe").status_code == 404
 
 
+# --------------------------------------------------- seguridad de la API BI
+def test_bi_api_rate_limits_por_ip_y_exime_health():
+    """El limitador corta al pasarse y devuelve 429 accionable, pero /health
+    (el ping de las herramientas BI) nunca consume cuota."""
+    from fastapi.testclient import TestClient
+    from bi_api import main as bm
+    monkeys = bm.RATE_LIMIT_REQUESTS
+    bm.RATE_LIMIT_REQUESTS = 5
+    try:
+        bm._reset_rate_limit()
+        c = TestClient(bm.app)
+        for _ in range(5):
+            assert c.get("/health").status_code == 200   # exento: no gasta
+        for _ in range(5):
+            assert c.get("/api/catalog").status_code == 200
+        r = c.get("/api/catalog")
+        assert r.status_code == 429
+        assert r.headers["Retry-After"] == "60"
+        cuerpo = r.json()
+        assert cuerpo["error"] == "rate_limit"
+        # mensaje accionable en los 3 idiomas, no un traceback
+        for pista in ("ES:", "EN:", "PT:", "MVDG_API_RATE_LIMIT"):
+            assert pista in cuerpo["detail"]
+        assert c.get("/health").status_code == 200       # sigue respondiendo
+    finally:
+        bm.RATE_LIMIT_REQUESTS = monkeys
+        bm._reset_rate_limit()
+
+
+def test_bi_api_token_opcional_pero_se_exige_cuando_esta_definido(monkeypatch):
+    """Sin MVDG_API_TOKEN la API queda abierta en localhost (integracion BI
+    documentada). Con token definido, TODA ruta de datos lo exige."""
+    from fastapi.testclient import TestClient
+    from bi_api import main as bm
+    bm._reset_rate_limit()
+    c = TestClient(bm.app)
+    assert c.get("/api/catalog").status_code == 200      # sin token: abierto
+
+    monkeypatch.setenv("MVDG_API_TOKEN", "s3creto")
+    bm._reset_rate_limit()
+    r = c.get("/api/catalog")
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Bearer"
+    assert "Authorization: Bearer" in r.json()["detail"]
+
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "Bearer mal"}).status_code == 401
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "s3creto"}).status_code == 401
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "Bearer s3creto"}).status_code == 200
+    # health sigue abierto para que un monitor externo no necesite el secreto
+    assert c.get("/health").status_code == 200
+    bm._reset_rate_limit()
+
+
+def test_bi_api_no_publica_fuera_de_loopback_sin_token(monkeypatch):
+    """Falla cerrado: exponer la API en 0.0.0.0 sin token aborta con un
+    mensaje accionable en vez de servir el gobierno a toda la red."""
+    from bi_api import main as bm
+    monkeypatch.setenv("MVDG_API_HOST", "0.0.0.0")
+    monkeypatch.delenv("MVDG_API_TOKEN", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        bm.main()
+    assert exc.value.code == 1
+    assert bm._is_loopback("127.0.0.1") and bm._is_loopback("::1")
+    assert not bm._is_loopback("0.0.0.0")
+
+
+def test_bi_api_cors_no_trae_comodin_por_defecto():
+    """allow_origins=['*'] en un puerto local dejaria que cualquier web
+    abierta en el navegador leyera las tablas de gobierno."""
+    from bi_api import main as bm
+    assert "*" not in bm.CORS_ORIGINS
+    assert all(o.startswith("http://127.0.0.1") or o.startswith("http://localhost")
+               for o in bm.CORS_ORIGINS)
+
+
+def test_landing_tiene_headers_de_seguridad():
+    """CSP, nosniff y Referrer-Policy configurados para el sitio publico."""
+    import json as _json
+    with open(os.path.join(_repo_root(), "vercel.json"), encoding="utf-8") as fh:
+        cfg = _json.load(fh)
+    catch_all = [h for h in cfg["headers"] if h["source"] == "/(.*)"]
+    assert catch_all, "falta el bloque de headers que cubre todo el sitio"
+    hs = {h["key"]: h["value"] for h in catch_all[0]["headers"]}
+    assert hs["X-Content-Type-Options"] == "nosniff"
+    assert hs["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    csp = hs["Content-Security-Policy"]
+    for directiva in ("default-src 'self'", "object-src 'none'",
+                      "frame-ancestors 'none'", "base-uri 'self'"):
+        assert directiva in csp
+
+
+def test_landing_escapa_datos_antes_de_inyectar_html():
+    """Las resenas se inyectan con innerHTML/insertAdjacentHTML: tienen que
+    pasar por un escapado completo, no por un .replace solo de '<'."""
+    for archivo in ("index.html", "reviews.html"):
+        ruta = os.path.join(_repo_root(), "landing", archivo)
+        with open(ruta, encoding="utf-8") as fh:
+            html = fh.read()
+        assert "/[&<>\"']/g" in html, f"{archivo}: falta el escapado completo"
+        # el patron viejo (solo '<') no debe quedar en el render de resenas
+        assert ".replace(/</g,'&lt;')" not in html, (
+            f"{archivo}: quedo un escapado parcial de '<'")
+
+
 # ------------------------------------------- sugerencias de correccion (IA)
 @pytest.mark.parametrize("lang", LANGS)
 def test_remediation_covers_all_demo_rules(lang):

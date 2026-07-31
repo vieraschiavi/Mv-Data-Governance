@@ -986,6 +986,9 @@ function setVideoLang(lang){
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 
 /* --- Reseñas: promedio + 3 destacadas (datos en reviews-data.js) --- */
+// Escapa todo lo que se inyecta como HTML (ver nota en reviews.html).
+function rvEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function rvStars(n){return '★★★★★☆☆☆☆☆'.slice(5-Math.round(n),10-Math.round(n));}
 function renderReviews(){
   var R=(window.MVDG_REVIEWS||[]);var n=R.length;if(!document.getElementById('rvGrid'))return;
@@ -1003,9 +1006,9 @@ function renderReviews(){
     g.insertAdjacentHTML('beforeend','<div class="rvcard">'+
       (r.example?'<span class="rex">'+exW+'</span>':'')+
       '<div class="rs">'+rvStars(r.rating)+'</div>'+
-      '<div class="rc">“'+(r.comment||'').replace(/</g,'&lt;')+'”</div>'+
-      '<div class="rw"><span class="rav">'+ini+'</span><span><b>'+(r.name||'').replace(/</g,'&lt;')+
-      '</b><span>'+(r.role||'').replace(/</g,'&lt;')+'</span></span></div></div>');
+      '<div class="rc">“'+rvEsc(r.comment)+'”</div>'+
+      '<div class="rw"><span class="rav">'+rvEsc(ini)+'</span><span><b>'+rvEsc(r.name)+
+      '</b><span>'+rvEsc(r.role)+'</span></span></div></div>');
   });
 }
 renderReviews();

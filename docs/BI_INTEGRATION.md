@@ -24,6 +24,27 @@ GET http://127.0.0.1:8600/api/quality_results?lang=en&format=csv
 GET http://127.0.0.1:8600/docs        ← documentación interactiva (Swagger)
 ```
 
+### Seguridad de la API
+
+Por defecto la API escucha **solo en `127.0.0.1`**: no es accesible desde la
+red, y la integración con Power BI / Tableau / Excel no necesita ninguna
+configuración extra. Sobre eso hay tres controles:
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `MVDG_API_RATE_LIMIT` | `240` (req/min por IP) | Corta un cliente en loop. `/health` no consume cuota. Al pasarse: `429` + `Retry-After`. `0` lo desactiva. |
+| `MVDG_API_TOKEN` | *(vacío)* | Si lo definís, toda ruta de datos exige `Authorization: Bearer <token>`. `/health` sigue abierto para monitoreo. |
+| `MVDG_API_HOST` | `127.0.0.1` | Publicar fuera de loopback. **Exige `MVDG_API_TOKEN`**: sin token la API no arranca (falla cerrado en vez de exponer el gobierno a la red). |
+| `MVDG_API_CORS_ORIGINS` | app local | Orígenes permitidos para clientes **en el navegador**, separados por coma. No trae comodín: un `*` dejaría que cualquier web abierta leyera tus tablas desde el puerto local. Las herramientas BI de escritorio no son navegadores y no dependen de esto. |
+
+Ejemplo publicando la API a la red con token:
+
+```bash
+MVDG_API_HOST=0.0.0.0 MVDG_API_TOKEN=un-secreto-largo python -m bi_api.main
+# y desde el BI / curl:
+curl -H "Authorization: Bearer un-secreto-largo" http://<host>:8600/api/catalog
+```
+
 ### Datasets de ejemplo (reales), gobernados de punta a punta
 
 Además de las 4 tablas sintéticas de demo, la pestaña **🔎 Mis datos → 🧪
