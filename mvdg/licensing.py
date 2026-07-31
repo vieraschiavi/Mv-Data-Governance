@@ -61,8 +61,24 @@ _ARCHIVO = "licencia.json"
 
 # Planes conocidos, de menor a mayor. "demo" es el piso: sin licencia válida,
 # el programa funciona igual pero con las funciones marcadas abajo apagadas.
+#
+# "owner" es el plan del dueño del producto: no se vende, se AUTO-EMITE. Con
+# el par de claves generado por `packaging/licencias.py keygen`, el dueño se
+# firma a sí mismo una licencia perpetua:
+#
+#     python packaging/licencias.py firmar --plan owner --email <tu-email>
+#
+# y la activa en la pestaña Ayuda como cualquier cliente activaría la suya.
+# Es el mismo circuito verificado (Ed25519, firma cerrada) que ya cubren los
+# tests — no un atajo aparte: hace falta la clave PRIVADA (que nunca sale del
+# dueño) para emitir un token "owner" válido, así que no es algo que alguien
+# pueda activarse leyendo el código fuente, aunque viaje en texto plano en la
+# versión portable. has_feature() la trata como comodín: desbloquea todo,
+# incluso funciones que se agreguen a FUNCIONES_PAGAS más adelante y a las que
+# se olvide sumar "owner" a mano.
 PLAN_DEMO = "demo"
-PLANES = (PLAN_DEMO, "licencia", "professional", "enterprise")
+PLAN_OWNER = "owner"
+PLANES = (PLAN_DEMO, "licencia", "professional", "enterprise", PLAN_OWNER)
 
 # ---------------------------------------------------------------------------
 # POLÍTICA COMERCIAL — qué necesita licencia paga.
@@ -196,7 +212,10 @@ def has_feature(funcion: str) -> bool:
     """¿El plan vigente habilita esta función?
 
     Una función que no figura en FUNCIONES_PAGAS está disponible para todos —
-    el default es abierto, y lo pago se declara explícitamente."""
+    el default es abierto, y lo pago se declara explícitamente. El plan
+    "owner" siempre pasa: es el dueño del producto, no un plan que se venda."""
+    if plan() == PLAN_OWNER:
+        return True
     requeridos = FUNCIONES_PAGAS.get(funcion)
     if not requeridos:
         return True
