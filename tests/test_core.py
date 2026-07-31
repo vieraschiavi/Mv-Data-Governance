@@ -1388,6 +1388,167 @@ def test_landing_escapa_datos_antes_de_inyectar_html():
             f"{archivo}: quedo un escapado parcial de '<'")
 
 
+# ----------------------------------- errores accionables (no stack traces)
+def test_errores_de_archivo_dan_consejo_no_traceback(tmp_path):
+    """Cada falla real de carga de archivo se traduce a algo que el usuario
+    puede accionar. El detalle tecnico va aparte, no como respuesta."""
+    import json as _json
+    import zipfile
+    from mvdg.errors import friendly_error
+
+    casos = []
+    mal = tmp_path / "latin1.csv"
+    mal.write_bytes("nombre,ciudad\nJosé,Montevideo\n".encode("latin-1"))
+    try:
+        pd.read_csv(mal, encoding="utf-8")
+    except Exception as exc:
+        casos.append(("encoding", exc, ("UTF-8",)))
+
+    vacio = tmp_path / "vacio.csv"
+    vacio.write_text("")
+    try:
+        pd.read_csv(vacio)
+    except Exception as exc:
+        casos.append(("vacio", exc, ("vacío", "encabezados")))
+
+    roto = tmp_path / "roto.csv"
+    roto.write_text("a\n1,2,3\n4,5,6,7\n")
+    try:
+        pd.read_csv(roto)
+    except Exception as exc:
+        casos.append(("csv", exc, ("columnas", "separador")))
+
+    nozip = tmp_path / "no.zip"
+    nozip.write_text("esto no es un zip")
+    try:
+        zipfile.ZipFile(nozip)
+    except Exception as exc:
+        casos.append(("zip", exc, ("ZIP",)))
+
+    try:
+        _json.loads("{roto:")
+    except Exception as exc:
+        casos.append(("json", exc, ("JSON",)))
+
+    try:
+        open(str(tmp_path / "no" / "existe.csv"))
+    except Exception as exc:
+        casos.append(("no_existe", exc, ("encontró", "encontr")))
+
+    assert len(casos) == 6, "no se reprodujeron todos los fallos esperados"
+    for nombre, exc, pistas in casos:
+        msg, detalle = friendly_error(exc, "es", "archivo")
+        # el mensaje aconseja algo, y NO es el texto crudo de la excepcion
+        assert msg and msg != str(exc), nombre
+        assert len(msg) > 40, f"{nombre}: mensaje demasiado escueto"
+        assert any(p.lower() in msg.lower() for p in pistas), f"{nombre}: {msg}"
+        # el detalle tecnico se conserva, pero aparte
+        assert type(exc).__name__ in detalle
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_errores_traducidos_a_los_tres_idiomas(lang):
+    from mvdg.errors import friendly_error
+    exc = UnicodeDecodeError("utf-8", b"", 0, 1, "invalid")
+    msg, _ = friendly_error(exc, lang, "archivo")
+    assert msg and msg != "err_encoding"          # la clave existe traducida
+    assert "UTF-8" in msg
+    # y el generico tambien esta en los 3
+    assert t("err_generico", lang) != "err_generico"
+    assert t("err_detalle", lang) != "err_detalle"
+
+
+def test_errores_de_conexion_distinguen_credencial_de_host():
+    """Un usuario que se equivoco de contrasena y otro que no tiene VPN
+    necesitan consejos distintos, no el mismo texto generico."""
+    from mvdg.errors import friendly_error
+
+    class OperationalError(Exception):
+        pass
+
+    cred = OperationalError("FATAL: password authentication failed for user 'x'")
+    host = OperationalError("could not translate host name 'db.interno' to address")
+    m_cred, _ = friendly_error(cred, "es", "conexion")
+    m_host, _ = friendly_error(host, "es", "conexion")
+    assert m_cred != m_host
+    assert "contraseña" in m_cred.lower() or "credencial" in m_cred.lower()
+    assert "host" in m_host.lower() or "servidor" in m_host.lower()
+
+
+def test_app_no_muestra_excepciones_crudas():
+    """Ningun st.error debe volcar la excepcion tal cual: para eso esta el
+    helper _error(), que traduce y deja el detalle plegado."""
+    import ast
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    crudos = []
+    for nodo in ast.walk(arbol):
+        # solo llamadas reales st.error(...) / st.warning(...): asi los
+        # comentarios y docstrings que citan el patron viejo no cuentan
+        if not (isinstance(nodo, ast.Call)
+                and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr in ("error", "warning")
+                and isinstance(nodo.func.value, ast.Name)
+                and nodo.func.value.id == "st"):
+            continue
+        for arg in nodo.args:
+            texto = ast.get_source_segment(fuente, arg) or ""
+            # volcar la excepcion tal cual, sin pasarla por friendly_error
+            if "{exc}" in texto or texto.strip() in ("str(exc)", "exc"):
+                crudos.append(f"linea {nodo.lineno}: {texto[:70]}")
+    assert not crudos, "excepciones crudas en pantalla: " + " | ".join(crudos[:4])
+    assert "def _error(" in fuente
+
+
+# ------------------------------------- primer valor sin registro ni pagos
+def test_demo_abre_con_valor_real_sin_licencia_ni_registro():
+    """Un usuario nuevo ve el producto funcionando: nada del nucleo esta
+    detras de un login, un registro o una licencia."""
+    from mvdg import licensing
+    assert licensing.plan() == licensing.PLAN_DEMO
+    for funcion in ("catalogo", "calidad", "linaje", "glosario", "politicas",
+                    "perfilado", "mdm", "export_bi", "api_bi"):
+        assert licensing.has_feature(funcion), f"{funcion} bloqueada en demo"
+    # solo los aceleradores de migracion y el escaneo de tenant son pagos
+    assert set(licensing.FUNCIONES_PAGAS) == {
+        "migracion_purview", "migracion_collibra", "escaneo_tenant_bi"}
+
+
+def test_flujo_principal_funciona_sin_red_ni_servicio_de_pago(monkeypatch):
+    """El producto no depende de MercadoPago ni de ningun servidor: con la
+    red caida, catalogo, calidad, linaje, glosario y export siguen andando."""
+    import socket as _socket
+
+    def sin_red(*a, **k):
+        raise OSError("red bloqueada (prueba offline)")
+
+    monkeypatch.setattr(_socket.socket, "connect", sin_red, raising=False)
+    monkeypatch.setattr(_socket, "create_connection", sin_red)
+
+    from mvdg import licensing, profiler
+    from mvdg.catalog import catalog_df, dictionary_df
+    from mvdg.exporters import governance_tables
+    from mvdg.glossary import glossary_df
+    from mvdg.lineage import lineage_figure
+    from mvdg.policies import policies_df
+    from mvdg.quality import run_rules
+
+    tablas = load_demo_tables()
+    assert len(catalog_df("es")) > 0
+    assert len(dictionary_df("es")) > 0
+    assert len(run_rules(lang="es")) == 17
+    assert lineage_figure() is not None
+    assert len(glossary_df("es")) > 0
+    assert len(policies_df("es")) > 0
+    assert len(governance_tables("es")) == 9
+    assert len(profiler.profile_table(tablas["dim_customers"])) > 0
+    # la licencia se verifica localmente: no hay llamada a ningun servidor
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
 # ------------------------------------------------ landing: SEO / a11y / UX
 _LANDING_PAGES = ("index.html", "descargas.html", "guia.html",
                   "pago.html", "reviews.html")

@@ -30,6 +30,7 @@ from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
                              load_connections, load_table, run_query,
                              save_connection, scan_all_connections,
                              stored_password, test_connection)
+from mvdg.errors import friendly_error
 from mvdg.help_center import automation_rows, purview_collibra_faq, speeches
 from mvdg import licensing
 from mvdg.lab_case import lab_measure, lab_steps
@@ -185,6 +186,21 @@ _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
                "timeliness", "accuracy"]}
 _STATUS_LABEL = {"pass": t("q_pass", lang), "warn": t("q_warn", lang),
                  "fail": t("q_fail", lang)}
+
+
+def _error(exc: Exception, lang: str, contexto: str = "generico",
+           prefijo: str = "") -> None:
+    """Muestra un error que se entiende y dice qué hacer.
+
+    Antes esto era ``st.error(f"⚠️ {exc}")`` repartido por toda la pantalla:
+    al usuario le llegaba el texto crudo de pandas o de sqlalchemy ("Error
+    tokenizing data. C error: Expected 1 fields in line 3, saw 2"), sin
+    traducir y sin decirle qué corregir. El detalle técnico sigue disponible,
+    plegado, para poder reportarlo."""
+    mensaje, detalle = friendly_error(exc, lang, contexto)
+    st.error(f"{prefijo}{mensaje}" if prefijo else mensaje, icon="⚠️")
+    with st.expander(t("err_detalle", lang)):
+        st.code(detalle, language=None)
 
 
 def _licencia_ok(funcion: str, lang: str) -> bool:
@@ -707,7 +723,7 @@ with tab_mdm:
             st.session_state["mdm_clusters"] = mdm_clusters
             st.session_state["mdm_df_key"] = mdm_pick
         except ValueError as exc:
-            st.error(str(exc), icon="⚠️")
+            _error(exc, lang)
 
     mdm_report = st.session_state.get("mdm_report")
     mdm_clusters = st.session_state.get("mdm_clusters")
@@ -813,7 +829,7 @@ with tab_g:
                         _ga_conn, lang, password=stored_password(_ga_conn) or None)
                     st.session_state["ga_draft"] = pd.DataFrame(_draft)
                 except Exception as exc:  # noqa: BLE001
-                    st.error(f"⚠️ {exc}")
+                    _error(exc, lang, "generico")
         _ga_draft = st.session_state.get("ga_draft")
         if _ga_draft is not None and len(_ga_draft):
             n_exp = int(_ga_draft["expanded"].sum())
@@ -983,9 +999,9 @@ with tab_resp:
                 st.session_state["rs_org"] = org_df
                 st.success(t("rs_parsed", lang).format(n=len(org_df)))
             except ValueError as exc:
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
             except Exception as exc:  # noqa: BLE001 - archivo corrupto
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
     elif rs_src == "photo":
         _rs_provider = configured_provider()
         if not _rs_provider:
@@ -1215,7 +1231,7 @@ with tab_pr:
                 user_df = (pd.read_csv(up) if up.name.lower().endswith(".csv")
                            else pd.read_excel(up))
             except Exception as exc:  # archivo corrupto / formato raro
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
                 user_df = None
             _render_profile(user_df, dataset_name=up.name if up is not None else None)
     else:
@@ -1306,7 +1322,7 @@ with tab_pr:
                 tables = list_tables(active, password=pwd or None)
             except Exception as exc:  # noqa: BLE001
                 tables = []
-                st.warning(f"⚠️ {exc}")
+                _error(exc, lang, "conexion")
             if tables:
                 lim = st.number_input(t("db_limit", lang), 100, 100000, 10000, step=100)
                 p1, p2 = st.columns([2, 1])
@@ -1316,14 +1332,14 @@ with tab_pr:
                         _render_profile(load_table(active, table, int(lim), password=pwd or None),
                                         dataset_name=table)
                     except Exception as exc:  # noqa: BLE001
-                        st.error(f"⚠️ {exc}")
+                        _error(exc, lang, "generico")
                 sql = st.text_area(t("db_query", lang), "")
                 if sql.strip() and st.button(t("db_run_query", lang)):
                     try:
                         _render_profile(run_query(active, sql, int(lim), password=pwd or None),
                                         dataset_name="query_result")
                     except Exception as exc:  # noqa: BLE001
-                        st.error(f"⚠️ {exc}")
+                        _error(exc, lang, "generico")
             else:
                 st.caption(t("db_connect_first", lang))
 
@@ -1404,7 +1420,7 @@ with tab_bi:
                         _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=False)
                     st.success(t("mig_done", lang))
                 except Exception as exc:  # noqa: BLE001
-                    st.error(f"⚠️ {exc}")
+                    _error(exc, lang, "generico")
     else:
         _mig_ready = collibra_export.catalog_configured()
         st.caption(t("mig_collibra_env", lang) if not _mig_ready else t("mig_configured", lang))
@@ -1419,7 +1435,7 @@ with tab_bi:
                         _mig_cat, _mig_dic, _mig_glo, curation_lookup=_mig_lookup, dry_run=False)
                     st.success(t("mig_done", lang))
                 except Exception as exc:  # noqa: BLE001
-                    st.error(f"⚠️ {exc}")
+                    _error(exc, lang, "generico")
 
     _mig_res = st.session_state.get("mig_result")
     if _mig_res is not None:
@@ -1483,7 +1499,7 @@ with tab_bi:
         try:
             resolved = mip_labels.resolve_share_url(url) if _mip_ready else None
         except Exception as exc:  # noqa: BLE001
-            st.error(f"⚠️ {ds}: {exc}")
+            _error(exc, lang, "archivo", prefijo=f"{ds}: ")
             resolved = None
         if resolved and resolved.get("itemId"):
             _mip_file_map[ds] = resolved
@@ -1498,7 +1514,7 @@ with tab_bi:
                     _mig_cat, _mip_file_map, dry_run=False)
                 st.success(t("mig_done", lang))
             except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
     _mip_res = st.session_state.get("mip_result")
     if _mip_res is not None:
         st.dataframe(pd.DataFrame(_mip_res["plan"]) if _mip_res["plan"] else pd.DataFrame(),
@@ -1536,7 +1552,7 @@ with tab_bi:
             try:
                 st.session_state["azd_result"] = azure_discovery.discover_data_resources()
             except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
     _azd_res = st.session_state.get("azd_result")
     if _azd_res is not None:
         if len(_azd_res):
@@ -1556,7 +1572,7 @@ with tab_bi:
             try:
                 st.session_state["cbp_result"] = collibra_pull.pull_all()
             except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
     _cbp_res = st.session_state.get("cbp_result")
     if _cbp_res is not None:
         h1, h2 = st.columns(2)
@@ -1590,7 +1606,7 @@ with tab_bi:
             try:
                 st.session_state["pvp_result"] = purview_pull.pull_all()
             except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
     _pvp_res = st.session_state.get("pvp_result")
     if _pvp_res is not None:
         pv1, pv2 = st.columns(2)
@@ -1814,7 +1830,7 @@ with tab_ws:
                     st.success(t("ws_saved_ok", lang).format(
                         name=_m["name"], n=len(_m["tables"])))
                 except ValueError as exc:
-                    st.error(str(exc), icon="⚠️")
+                    _error(exc, lang)
 
         # --- Etapas guardadas ---
         st.subheader(t("ws_stages_title", lang))
@@ -1867,7 +1883,7 @@ with tab_ws:
                 _n = ws.import_project(ws_cid, _up_zip.read(), replace=_ws_replace)
                 st.success(t("ws_imported_ok", lang).format(n=_n))
             except Exception as exc:  # noqa: BLE001
-                st.error(f"⚠️ {exc}")
+                _error(exc, lang, "generico")
 
         st.caption(t("ws_where", lang).format(path=ws.client_root(ws_cid)))
 
@@ -2315,7 +2331,7 @@ with tab_tab:
                     st.session_state["tab_scan_result"] = tab_out
             except Exception as exc:  # noqa: BLE001
                 st.session_state["tab_scan_result"] = None
-                st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
+                _error(exc, lang, "archivo", prefijo=f"{t('tab_err', lang)}: ")
     elif tab_mode == "example":
         st.caption(t("tab_example_note", lang))
         st.session_state["tab_scan_result"] = tabl.ingest_example(lang)
@@ -2330,7 +2346,7 @@ with tab_tab:
                     st.session_state["tab_scan_result"] = tab_out
                 except Exception as exc:  # noqa: BLE001
                     st.session_state["tab_scan_result"] = None
-                    st.error(f"{t('tab_err', lang)}: {exc}", icon="⚠️")
+                    _error(exc, lang, "archivo", prefijo=f"{t('tab_err', lang)}: ")
 
     tab_out = st.session_state.get("tab_scan_result")
     if tab_out is None:
