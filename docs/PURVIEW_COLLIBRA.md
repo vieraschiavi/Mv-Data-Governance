@@ -11,6 +11,9 @@ local-first para PyMEs), también se dice.
 
 ## Tabla de capacidades
 
+<!-- Esta tabla se publica tambien en la landing (seccion #honesta de landing/index.html).
+     Si cambias una fila aca, cambiala alla: tests/test_core.py verifica que sigan alineadas. -->
+
 | Capacidad | Purview / Collibra | MV Data Governance |
 |---|---|---|
 | Catálogo de datos con dueño/steward/clasificación | ✅ | ✅ pestañas 📚 Catálogo + 🔎 Mis datos |
@@ -24,7 +27,7 @@ local-first para PyMEs), también se dice.
 | Detección/clasificación de datos sensibles | ✅ (clasificadores gestionados + etiquetas MIP) | 🟡 detección heurística de PII + clasificación por dataset + **conector real a Microsoft Graph para aplicar etiquetas MIP de verdad** (🏷️ pestaña nueva) — con el límite honesto de que solo aplica a archivos que ya viven en OneDrive/SharePoint, ver detalle abajo |
 | MDM / deduplicación | ➖ (Collibra parcial, Purview no) | ✅ pestaña 🔗 MDM con golden record — acá el programa cubre algo que Purview no trae |
 | **Enforcement de acceso a datos** (políticas que bloquean consultas) | ✅ Purview (en el stack Azure) | 🟡 **Generador de DDL real** (🔒 pestaña nueva): GRANT/REVOKE por clasificación + enmascaramiento de columnas PII, para PostgreSQL y SQL Server — el programa arma la receta, un DBA (o Purview) la ejecuta. Sigue sin bloquear nada por sí mismo — ver el porqué abajo |
-| Data sharing / contratos de datos | ✅ | ❌ Fuera de alcance: aplica a organizaciones que publican datos entre unidades/empresas |
+| **Contratos de datos** y alarmas sobre linaje | ✅ | ✅ pestaña 📜 **Contratos**: SLA por dataset evaluado contra las corridas reales de calidad, con impacto aguas abajo y responsable notificado |
 | Precio y despliegue | Suscripción cloud, por capacidad; requiere tenant/infra | Licencia única o suscripción chica; corre en una notebook, sin nube, sin telemetría |
 
 ## Lo que este programa cubre y ellas no (o no igual)

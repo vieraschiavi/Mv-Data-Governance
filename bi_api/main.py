@@ -11,15 +11,19 @@ Levantar:
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import socket
 import sys
+import threading
+import time
+from collections import deque
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from mvdg import APP_NAME, __version__
 from mvdg.exporters import governance_tables
@@ -27,6 +31,71 @@ from mvdg.i18n import LANGS
 from mvdg.samples import sample_governance_tables, sample_keys, sample_meta
 
 DEFAULT_PORT = 8600
+
+# --------------------------------------------------------------- seguridad
+# Esta API sirve metadatos de gobierno (catálogo, calidad, glosario). Por
+# defecto escucha SOLO en 127.0.0.1, así que no queda expuesta a internet a
+# menos que alguien la publique a propósito. Aun así, tres controles:
+#
+#   1) Rate limiting SIEMPRE activo (defensa contra un cliente BI en loop o
+#      una pestaña del navegador martillando el puerto local).
+#   2) Token opcional en localhost, OBLIGATORIO si se publica fuera de
+#      loopback — mismo criterio de "falla cerrado" que mvdg/server.py.
+#   3) CORS sin comodín por defecto: un `allow_origins=["*"]` en un puerto
+#      local significa que CUALQUIER web que visites puede leer tus tablas
+#      de gobierno desde el navegador. Se puede ampliar por variable de
+#      entorno para el Power BI service, pero no viene abierto de fábrica.
+#
+# Nada de esto necesita una dependencia nueva ni cambia las URLs que
+# docs/BI_INTEGRATION.md ya documenta para Power BI / Tableau / Excel.
+
+# Ventana de rate limit: 240 req/min por IP. Un refresh de Power BI baja 9
+# tablas; Tableau y Excel son parecidos. 240 deja margen de sobra para un
+# refresh manual repetido y aun así corta un loop descontrolado.
+RATE_LIMIT_REQUESTS = int(os.environ.get("MVDG_API_RATE_LIMIT", "240"))
+RATE_LIMIT_WINDOW_S = 60.0
+# Rutas que no consumen cuota: son las que un BI usa para "ping".
+RATE_LIMIT_EXEMPT = frozenset({"/health"})
+
+_rate_lock = threading.Lock()
+_rate_hits: dict[str, deque] = {}
+
+
+def _api_token() -> str:
+    """Token compartido. Vacío = sin login (solo aceptable en loopback)."""
+    return os.environ.get("MVDG_API_TOKEN", "").strip()
+
+
+def _is_loopback(host: str) -> bool:
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
+def _rate_limited(client_ip: str) -> bool:
+    """Ventana deslizante por IP, en memoria del proceso.
+
+    Sin dependencia externa a propósito: un solo proceso uvicorn sirve esta
+    API, así que un contador en memoria es exacto para este despliegue."""
+    if RATE_LIMIT_REQUESTS <= 0:          # 0 = desactivado explícitamente
+        return False
+    ahora = time.monotonic()
+    with _rate_lock:
+        hits = _rate_hits.setdefault(client_ip, deque())
+        while hits and ahora - hits[0] > RATE_LIMIT_WINDOW_S:
+            hits.popleft()
+        if len(hits) >= RATE_LIMIT_REQUESTS:
+            return True
+        hits.append(ahora)
+        # Higiene: no acumular IPs muertas para siempre.
+        if len(_rate_hits) > 1024:
+            for ip in [k for k, v in _rate_hits.items() if not v]:
+                del _rate_hits[ip]
+    return False
+
+
+def _reset_rate_limit() -> None:
+    """Limpia el estado del limitador (lo usan los tests)."""
+    with _rate_lock:
+        _rate_hits.clear()
 
 app = FastAPI(
     title=f"{APP_NAME} API",
@@ -40,9 +109,65 @@ app = FastAPI(
         "en /api/samples/{dataset}/{table}."
     ),
 )
-# BI tools (Power BI service, Tableau, browsers) llaman desde otros orígenes.
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
+# Las herramientas BI de escritorio (Power BI Desktop, Tableau Desktop, Excel)
+# NO son navegadores y no mandan preflight CORS: no necesitan nada de esto.
+# CORS solo importa para clientes en el browser, y ahí un comodín sería un
+# agujero (cualquier web abierta podría leer el puerto local). Por eso el
+# default es la propia app local, y se amplía a mano si alguien necesita el
+# Power BI service:  MVDG_API_CORS_ORIGINS="https://app.powerbi.com"
+_cors_env = os.environ.get("MVDG_API_CORS_ORIGINS", "").strip()
+CORS_ORIGINS = ([o.strip() for o in _cors_env.split(",") if o.strip()]
+                if _cors_env else
+                ["http://127.0.0.1:8501", "http://localhost:8501"])
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
                    allow_methods=["GET"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def _guard(request: Request, call_next):
+    """Rate limit + autenticación opcional, en el punto de ejecución.
+
+    Va como middleware y no dentro de cada handler a propósito: así una ruta
+    nueva queda protegida por omisión en vez de depender de que alguien se
+    acuerde de agregarle el chequeo."""
+    ruta = request.url.path
+    ip = request.client.host if request.client else "desconocido"
+
+    if ruta not in RATE_LIMIT_EXEMPT and _rate_limited(ip):
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(int(RATE_LIMIT_WINDOW_S))},
+            content={"error": "rate_limit",
+                     "detail": (
+                         f"ES: Demasiadas consultas (máx. {RATE_LIMIT_REQUESTS}/min). "
+                         f"Esperá un minuto o subí el límite con MVDG_API_RATE_LIMIT. · "
+                         f"EN: Too many requests (max {RATE_LIMIT_REQUESTS}/min). "
+                         f"Wait a minute or raise MVDG_API_RATE_LIMIT. · "
+                         f"PT: Muitas consultas (máx. {RATE_LIMIT_REQUESTS}/min). "
+                         f"Aguarde um minuto ou aumente MVDG_API_RATE_LIMIT.")})
+
+    token = _api_token()
+    if token and ruta not in ("/health",):
+        enviado = request.headers.get("authorization", "")
+        prefijo = "bearer "
+        enviado = (enviado[len(prefijo):]
+                   if enviado[:len(prefijo)].lower() == prefijo else "")
+        # compare_digest: comparación de tiempo constante, no filtra el token
+        # carácter a carácter por diferencia de tiempo de respuesta.
+        if not hmac.compare_digest(enviado, token):
+            return JSONResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+                content={"error": "unauthorized",
+                         "detail": (
+                             "ES: Falta el token. Mandá el header "
+                             "'Authorization: Bearer <MVDG_API_TOKEN>'. · "
+                             "EN: Missing token. Send the header "
+                             "'Authorization: Bearer <MVDG_API_TOKEN>'. · "
+                             "PT: Falta o token. Envie o cabeçalho "
+                             "'Authorization: Bearer <MVDG_API_TOKEN>'.")})
+
+    return await call_next(request)
 
 TABLES = ["catalog", "dictionary", "quality_results", "quality_by_dataset",
           "quality_by_dimension", "lineage", "glossary", "policies", "kpis"]
@@ -138,7 +263,22 @@ def _port_free(host: str, port: int) -> bool:
 
 def main():
     port = int(os.environ.get("MVDG_API_PORT", DEFAULT_PORT))
-    host = "127.0.0.1"
+    host = os.environ.get("MVDG_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+    # Publicar esta API fuera de loopback expone catálogo, calidad y glosario
+    # a la red. Sin token eso sería un dataset de gobierno abierto a cualquiera
+    # que llegue al puerto: se corta acá (falla cerrado), no se sirve igual.
+    if not _is_loopback(host) and not _api_token():
+        sys.stderr.write(
+            f"\n  [MV Data Governance] Te pidieron publicar la API en {host} "
+            f"(fuera de 127.0.0.1) SIN token de acceso.\n"
+            f"  ES: Definí MVDG_API_TOKEN=<token secreto> antes de exponerla, o "
+            f"dejá MVDG_API_HOST en 127.0.0.1 para uso local.\n"
+            f"  EN: Set MVDG_API_TOKEN=<secret> before exposing it, or keep "
+            f"MVDG_API_HOST at 127.0.0.1 for local use.\n"
+            f"  PT: Defina MVDG_API_TOKEN=<segredo> antes de expor, ou mantenha "
+            f"MVDG_API_HOST em 127.0.0.1 para uso local.\n\n")
+        sys.exit(1)
 
     # Este puerto es un punto de integración FIJO: Power BI/Tableau/Excel lo
     # tienen configurado como origen de datos, y docs/BI_INTEGRATION.md lo

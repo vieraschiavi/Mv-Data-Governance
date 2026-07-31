@@ -127,10 +127,22 @@ traducciones está cubierta por tests.
 
 ## ✅ Tests
 
+Un solo comando desde un checkout limpio — instala dependencias y corre la suite:
+
 ```bash
-pip install -r requirements.txt pytest httpx
+make test
+```
+
+Otros atajos: `make lint` (ruff), `make check` (linter + tests), `make selfcheck`
+(auto-diagnóstico del motor). Sin `make`, el equivalente son dos pasos:
+
+```bash
+pip install -r requirements-dev.txt   # arrastra requirements.txt
 pytest tests/ -v
 ```
+
+Cada push y cada PR corren linter + tests + auto-diagnóstico en GitHub Actions
+(`.github/workflows/tests.yml`, Python 3.10 y 3.12).
 
 ---
 

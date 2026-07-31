@@ -26,18 +26,22 @@ Tableau, Purview y Collibra (en las dos direcciones).
 
 | Objetivo | Comando |
 |---|---|
-| Instalar deps | `pip install -r requirements.txt` |
-| Instalar deps de test | `pip install pytest httpx` |
+| Instalar deps (runtime + test) | `pip install -r requirements-dev.txt` |
 | Correr la app (dashboard) | `streamlit run app/app.py` |
 | Correr la app (Linux/macOS, crea venv) | `./run.sh` |
 | Levantar la API REST para BI | `python -m bi_api.main` (`http://127.0.0.1:8600`, docs en `/docs`) |
 | Modo servidor web | `python -m mvdg.server` (o `./run_server.sh`) |
-| Tests | `pytest tests/ -v` |
+| Tests (instala + corre, un comando) | `make test` |
+| Tests (deps ya instaladas) | `pytest tests/ -v` |
+| Linter | `make lint` (ruff) |
+| Gate completo (lint + tests) | `make check` |
 | Un test puntual | `pytest tests/test_core.py::<nombre> -v` |
 | Servir la landing local | `cd landing && python -m http.server 8080` |
 | Regenerar el video demo | `python assets/video/build_video.py` |
 
-> No hay linter/formatter configurado en el repo. No introduzcas uno sin pedirlo.
+> Linter: **ruff**, configurado en `pyproject.toml` (`make lint`). No hay
+> formateador automático a propósito: reformatear masivamente destruiría el
+> estilo de comentarios hecho a mano y enterraría el historial de git.
 > Los `.bat` y `packaging/build_exe.bat` son para Windows (PyInstaller + Inno Setup); no corren en este entorno Linux.
 
 ## Estructura

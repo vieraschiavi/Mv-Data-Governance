@@ -1,0 +1,52 @@
+name: tests
+
+# Corre en cada push y en cada PR. Si algo se rompe, el check falla y queda
+# visible en el PR — antes los merges entraban sin ningún gate automático.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Un push nuevo sobre la misma rama cancela la corrida anterior.
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 es el piso declarado en pyproject.toml; 3.12 es lo que corre hoy
+        # el entorno de desarrollo. Ambos tienen que pasar.
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias (runtime + test)
+        # requirements-dev.txt arrastra requirements.txt con `-r`, así que esta
+        # sola línea deja el entorno completo.
+        run: pip install -r requirements-dev.txt
+
+      - name: Linter (ruff)
+        run: python -m ruff check .
+
+      - name: Tests
+        run: python -m pytest tests/ -v
+
+      - name: Auto-diagnóstico del motor
+        # El selfcheck importa el motor entero y el dashboard: si algo quedó
+        # desalineado entre app.py y mvdg/, se cae acá aunque los tests pasen.
+        run: python -m mvdg.selfcheck

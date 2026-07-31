@@ -463,7 +463,7 @@ def test_build_compiled_excludes_module_whose_source_the_selfcheck_audits():
 
 # ----------------------------------------------------- modo servidor (web)
 def test_server_authorization_modes():
-    from mvdg.server import authorization_status, parse_authorized
+    from mvdg.server import authorization_status
 
     # sin lista -> modo abierto
     assert authorization_status([])["mode"] == "open"
@@ -619,7 +619,7 @@ def test_connectors_save_connection_persists_extra(tmp_path, monkeypatch):
     profile = {"name": "sf-demo", "engine": "snowflake", "user": "u",
               "database": "DB", "password": "pw",
               "extra": {"account": "xy123", "warehouse": "WH"}}
-    saved = C.save_connection(profile, save_password=True)
+    C.save_connection(profile, save_password=True)
     reloaded = C.load_connections()[0]
     assert reloaded["extra"] == {"account": "xy123", "warehouse": "WH"}
 
@@ -647,7 +647,7 @@ def test_workspace_list_summary_and_delete(tmp_path, monkeypatch):
     df1 = pd.DataFrame({"a": [1, 2]})
     df2 = pd.DataFrame({"b": [1, 2, 3]})
     s1 = ws.save_stage(cid, "Etapa 1", {"t1": df1})
-    s2 = ws.save_stage(cid, "Etapa 2", {"t2": df2, "t1": df1})
+    ws.save_stage(cid, "Etapa 2", {"t2": df2, "t1": df1})
     stages = ws.list_stages(cid)
     assert [s["name"] for s in stages] == ["Etapa 2", "Etapa 1"]  # más nueva primero
     summ = ws.project_summary(cid)
@@ -1281,6 +1281,630 @@ def test_bi_api_serves_sample_datasets():
     assert client.get("/api/samples/cafe_sales_kaggle/no-existe").status_code == 404
 
 
+# --------------------------------------------------- seguridad de la API BI
+def test_bi_api_rate_limits_por_ip_y_exime_health():
+    """El limitador corta al pasarse y devuelve 429 accionable, pero /health
+    (el ping de las herramientas BI) nunca consume cuota."""
+    from fastapi.testclient import TestClient
+    from bi_api import main as bm
+    monkeys = bm.RATE_LIMIT_REQUESTS
+    bm.RATE_LIMIT_REQUESTS = 5
+    try:
+        bm._reset_rate_limit()
+        c = TestClient(bm.app)
+        for _ in range(5):
+            assert c.get("/health").status_code == 200   # exento: no gasta
+        for _ in range(5):
+            assert c.get("/api/catalog").status_code == 200
+        r = c.get("/api/catalog")
+        assert r.status_code == 429
+        assert r.headers["Retry-After"] == "60"
+        cuerpo = r.json()
+        assert cuerpo["error"] == "rate_limit"
+        # mensaje accionable en los 3 idiomas, no un traceback
+        for pista in ("ES:", "EN:", "PT:", "MVDG_API_RATE_LIMIT"):
+            assert pista in cuerpo["detail"]
+        assert c.get("/health").status_code == 200       # sigue respondiendo
+    finally:
+        bm.RATE_LIMIT_REQUESTS = monkeys
+        bm._reset_rate_limit()
+
+
+def test_bi_api_token_opcional_pero_se_exige_cuando_esta_definido(monkeypatch):
+    """Sin MVDG_API_TOKEN la API queda abierta en localhost (integracion BI
+    documentada). Con token definido, TODA ruta de datos lo exige."""
+    from fastapi.testclient import TestClient
+    from bi_api import main as bm
+    bm._reset_rate_limit()
+    c = TestClient(bm.app)
+    assert c.get("/api/catalog").status_code == 200      # sin token: abierto
+
+    monkeypatch.setenv("MVDG_API_TOKEN", "s3creto")
+    bm._reset_rate_limit()
+    r = c.get("/api/catalog")
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Bearer"
+    assert "Authorization: Bearer" in r.json()["detail"]
+
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "Bearer mal"}).status_code == 401
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "s3creto"}).status_code == 401
+    assert c.get("/api/catalog",
+                 headers={"Authorization": "Bearer s3creto"}).status_code == 200
+    # health sigue abierto para que un monitor externo no necesite el secreto
+    assert c.get("/health").status_code == 200
+    bm._reset_rate_limit()
+
+
+def test_bi_api_no_publica_fuera_de_loopback_sin_token(monkeypatch):
+    """Falla cerrado: exponer la API en 0.0.0.0 sin token aborta con un
+    mensaje accionable en vez de servir el gobierno a toda la red."""
+    from bi_api import main as bm
+    monkeypatch.setenv("MVDG_API_HOST", "0.0.0.0")
+    monkeypatch.delenv("MVDG_API_TOKEN", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        bm.main()
+    assert exc.value.code == 1
+    assert bm._is_loopback("127.0.0.1") and bm._is_loopback("::1")
+    assert not bm._is_loopback("0.0.0.0")
+
+
+def test_bi_api_cors_no_trae_comodin_por_defecto():
+    """allow_origins=['*'] en un puerto local dejaria que cualquier web
+    abierta en el navegador leyera las tablas de gobierno."""
+    from bi_api import main as bm
+    assert "*" not in bm.CORS_ORIGINS
+    assert all(o.startswith("http://127.0.0.1") or o.startswith("http://localhost")
+               for o in bm.CORS_ORIGINS)
+
+
+def test_landing_tiene_headers_de_seguridad():
+    """CSP, nosniff y Referrer-Policy configurados para el sitio publico."""
+    import json as _json
+    with open(os.path.join(_repo_root(), "vercel.json"), encoding="utf-8") as fh:
+        cfg = _json.load(fh)
+    catch_all = [h for h in cfg["headers"] if h["source"] == "/(.*)"]
+    assert catch_all, "falta el bloque de headers que cubre todo el sitio"
+    hs = {h["key"]: h["value"] for h in catch_all[0]["headers"]}
+    assert hs["X-Content-Type-Options"] == "nosniff"
+    assert hs["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    csp = hs["Content-Security-Policy"]
+    for directiva in ("default-src 'self'", "object-src 'none'",
+                      "frame-ancestors 'none'", "base-uri 'self'"):
+        assert directiva in csp
+
+
+def test_landing_escapa_datos_antes_de_inyectar_html():
+    """Las resenas se inyectan con innerHTML/insertAdjacentHTML: tienen que
+    pasar por un escapado completo, no por un .replace solo de '<'."""
+    for archivo in ("index.html", "reviews.html"):
+        ruta = os.path.join(_repo_root(), "landing", archivo)
+        with open(ruta, encoding="utf-8") as fh:
+            html = fh.read()
+        assert "/[&<>\"']/g" in html, f"{archivo}: falta el escapado completo"
+        # el patron viejo (solo '<') no debe quedar en el render de resenas
+        assert ".replace(/</g,'&lt;')" not in html, (
+            f"{archivo}: quedo un escapado parcial de '<'")
+
+
+# ----------------------------------- errores accionables (no stack traces)
+def test_errores_de_archivo_dan_consejo_no_traceback(tmp_path):
+    """Cada falla real de carga de archivo se traduce a algo que el usuario
+    puede accionar. El detalle tecnico va aparte, no como respuesta."""
+    import json as _json
+    import zipfile
+    from mvdg.errors import friendly_error
+
+    casos = []
+    mal = tmp_path / "latin1.csv"
+    mal.write_bytes("nombre,ciudad\nJosé,Montevideo\n".encode("latin-1"))
+    try:
+        pd.read_csv(mal, encoding="utf-8")
+    except Exception as exc:
+        casos.append(("encoding", exc, ("UTF-8",)))
+
+    vacio = tmp_path / "vacio.csv"
+    vacio.write_text("")
+    try:
+        pd.read_csv(vacio)
+    except Exception as exc:
+        casos.append(("vacio", exc, ("vacío", "encabezados")))
+
+    roto = tmp_path / "roto.csv"
+    roto.write_text("a\n1,2,3\n4,5,6,7\n")
+    try:
+        pd.read_csv(roto)
+    except Exception as exc:
+        casos.append(("csv", exc, ("columnas", "separador")))
+
+    nozip = tmp_path / "no.zip"
+    nozip.write_text("esto no es un zip")
+    try:
+        zipfile.ZipFile(nozip)
+    except Exception as exc:
+        casos.append(("zip", exc, ("ZIP",)))
+
+    try:
+        _json.loads("{roto:")
+    except Exception as exc:
+        casos.append(("json", exc, ("JSON",)))
+
+    try:
+        open(str(tmp_path / "no" / "existe.csv"))
+    except Exception as exc:
+        casos.append(("no_existe", exc, ("encontró", "encontr")))
+
+    assert len(casos) == 6, "no se reprodujeron todos los fallos esperados"
+    for nombre, exc, pistas in casos:
+        msg, detalle = friendly_error(exc, "es", "archivo")
+        # el mensaje aconseja algo, y NO es el texto crudo de la excepcion
+        assert msg and msg != str(exc), nombre
+        assert len(msg) > 40, f"{nombre}: mensaje demasiado escueto"
+        assert any(p.lower() in msg.lower() for p in pistas), f"{nombre}: {msg}"
+        # el detalle tecnico se conserva, pero aparte
+        assert type(exc).__name__ in detalle
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_errores_traducidos_a_los_tres_idiomas(lang):
+    from mvdg.errors import friendly_error
+    exc = UnicodeDecodeError("utf-8", b"", 0, 1, "invalid")
+    msg, _ = friendly_error(exc, lang, "archivo")
+    assert msg and msg != "err_encoding"          # la clave existe traducida
+    assert "UTF-8" in msg
+    # y el generico tambien esta en los 3
+    assert t("err_generico", lang) != "err_generico"
+    assert t("err_detalle", lang) != "err_detalle"
+
+
+def test_errores_de_conexion_distinguen_credencial_de_host():
+    """Un usuario que se equivoco de contrasena y otro que no tiene VPN
+    necesitan consejos distintos, no el mismo texto generico."""
+    from mvdg.errors import friendly_error
+
+    class OperationalError(Exception):
+        pass
+
+    cred = OperationalError("FATAL: password authentication failed for user 'x'")
+    host = OperationalError("could not translate host name 'db.interno' to address")
+    m_cred, _ = friendly_error(cred, "es", "conexion")
+    m_host, _ = friendly_error(host, "es", "conexion")
+    assert m_cred != m_host
+    assert "contraseña" in m_cred.lower() or "credencial" in m_cred.lower()
+    assert "host" in m_host.lower() or "servidor" in m_host.lower()
+
+
+def test_app_no_muestra_excepciones_crudas():
+    """Ningun st.error debe volcar la excepcion tal cual: para eso esta el
+    helper _error(), que traduce y deja el detalle plegado."""
+    import ast
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    crudos = []
+    for nodo in ast.walk(arbol):
+        # solo llamadas reales st.error(...) / st.warning(...): asi los
+        # comentarios y docstrings que citan el patron viejo no cuentan
+        if not (isinstance(nodo, ast.Call)
+                and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr in ("error", "warning")
+                and isinstance(nodo.func.value, ast.Name)
+                and nodo.func.value.id == "st"):
+            continue
+        for arg in nodo.args:
+            texto = ast.get_source_segment(fuente, arg) or ""
+            # volcar la excepcion tal cual, sin pasarla por friendly_error
+            if "{exc}" in texto or texto.strip() in ("str(exc)", "exc"):
+                crudos.append(f"linea {nodo.lineno}: {texto[:70]}")
+    assert not crudos, "excepciones crudas en pantalla: " + " | ".join(crudos[:4])
+    assert "def _error(" in fuente
+
+
+# ------------------------------------- primer valor sin registro ni pagos
+def test_demo_abre_con_valor_real_sin_licencia_ni_registro():
+    """Un usuario nuevo ve el producto funcionando: nada del nucleo esta
+    detras de un login, un registro o una licencia."""
+    from mvdg import licensing
+    assert licensing.plan() == licensing.PLAN_DEMO
+    for funcion in ("catalogo", "calidad", "linaje", "glosario", "politicas",
+                    "perfilado", "mdm", "export_bi", "api_bi"):
+        assert licensing.has_feature(funcion), f"{funcion} bloqueada en demo"
+    # solo los aceleradores de migracion y el escaneo de tenant son pagos
+    assert set(licensing.FUNCIONES_PAGAS) == {
+        "migracion_purview", "migracion_collibra", "escaneo_tenant_bi"}
+
+
+def test_flujo_principal_funciona_sin_red_ni_servicio_de_pago(monkeypatch):
+    """El producto no depende de MercadoPago ni de ningun servidor: con la
+    red caida, catalogo, calidad, linaje, glosario y export siguen andando."""
+    import socket as _socket
+
+    def sin_red(*a, **k):
+        raise OSError("red bloqueada (prueba offline)")
+
+    monkeypatch.setattr(_socket.socket, "connect", sin_red, raising=False)
+    monkeypatch.setattr(_socket, "create_connection", sin_red)
+
+    from mvdg import licensing, profiler
+    from mvdg.catalog import catalog_df, dictionary_df
+    from mvdg.exporters import governance_tables
+    from mvdg.glossary import glossary_df
+    from mvdg.lineage import lineage_figure
+    from mvdg.policies import policies_df
+    from mvdg.quality import run_rules
+
+    tablas = load_demo_tables()
+    assert len(catalog_df("es")) > 0
+    assert len(dictionary_df("es")) > 0
+    assert len(run_rules(lang="es")) == 17
+    assert lineage_figure() is not None
+    assert len(glossary_df("es")) > 0
+    assert len(policies_df("es")) > 0
+    assert len(governance_tables("es")) == 9
+    assert len(profiler.profile_table(tablas["dim_customers"])) > 0
+    # la licencia se verifica localmente: no hay llamada a ningun servidor
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
+# ------------------------------------------------ landing: SEO / a11y / UX
+_LANDING_PAGES = ("index.html", "descargas.html", "guia.html",
+                  "pago.html", "reviews.html")
+
+
+def _landing(archivo):
+    with open(os.path.join(_repo_root(), "landing", archivo), encoding="utf-8") as fh:
+        return fh.read()
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_tiene_meta_social_y_seo(archivo):
+    """Sin estas etiquetas el link compartido en LinkedIn/WhatsApp sale sin
+    titulo ni imagen, y Lighthouse SEO no llega a 90."""
+    html = _landing(archivo)
+    for etiqueta in ('name="description"',
+                     'property="og:title"', 'property="og:description"',
+                     'property="og:image"', 'property="og:url"',
+                     'name="twitter:card"', 'name="twitter:image"',
+                     'rel="canonical"'):
+        assert etiqueta in html, f"{archivo}: falta {etiqueta}"
+    assert 'content="summary_large_image"' in html
+    # la imagen social tiene que existir de verdad y declarar su tamano
+    assert 'property="og:image:width" content="1200"' in html
+    assert 'property="og:image:height" content="630"' in html
+
+
+def test_landing_og_image_existe_y_mide_1200x630():
+    ruta = os.path.join(_repo_root(), "landing", "img", "og_cover.jpg")
+    assert os.path.exists(ruta), "falta landing/img/og_cover.jpg"
+    try:
+        from PIL import Image
+    except ImportError:
+        pytest.skip("Pillow no disponible")
+    assert Image.open(ruta).size == (1200, 630)
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_viewport_favicon_y_lang(archivo):
+    html = _landing(archivo)
+    assert 'name="viewport"' in html and "width=device-width" in html
+    assert 'rel="icon"' in html
+    assert 'rel="apple-touch-icon"' in html
+    assert '<html lang="es"' in html      # idioma por defecto del HTML servido
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_imagenes_con_alt_descriptivo(archivo):
+    """Ninguna <img> sin alt, y ningun alt de una sola palabra suelta."""
+    import re
+    for tag in re.findall(r"<img\b[^>]*>", _landing(archivo)):
+        m = re.search(r'\balt="([^"]*)"', tag)
+        assert m, f"{archivo}: <img> sin alt -> {tag[:80]}"
+        assert len(m.group(1).strip()) >= 3, f"{archivo}: alt pobre -> {tag[:80]}"
+
+
+def test_landing_capturas_declaran_tamano_y_traducen_su_alt():
+    """width/height evitan el salto de layout (CLS, penaliza Performance), y
+    el alt de cada captura existe en los 3 idiomas."""
+    import re
+    html = _landing("index.html")
+    shots = re.findall(r'<img\b[^>]*data-shot="([^"]+)"[^>]*>', html)
+    assert len(shots) >= 4
+    for tag in re.findall(r'<img\b[^>]*data-shot="[^"]+"[^>]*>', html):
+        assert 'width="' in tag and 'height="' in tag, f"sin tamano: {tag[:90]}"
+        assert 'loading="lazy"' in tag
+    # el alt de cada captura tiene su clave en ES (explicita), EN y PT
+    for base in set(shots):
+        clave = f"alt_{base}"
+        assert html.count(clave) >= 3, f"{clave} no esta en los 3 idiomas"
+
+
+def test_landing_scripts_no_bloquean_el_parseo():
+    for archivo in ("index.html", "reviews.html"):
+        html = _landing(archivo)
+        for src in ("reviews-data.js", "payments-config.js"):
+            if f'src="{src}"' in html:
+                assert f'src="{src}" defer' in html, f"{archivo}: {src} sin defer"
+        # con defer, pintar en el script inline llega tarde: hay que esperar
+        # a DOMContentLoaded o el grid queda vacio
+        assert "DOMContentLoaded" in html
+
+
+def test_landing_contraste_de_texto_tenue_cumple_aa():
+    """--faint sobre el navy estaba en 4.48:1, abajo del minimo AA de 4.5:1,
+    y se usa en los botones de idioma a 11.5px."""
+    def luminancia(hexcol):
+        def canal(c):
+            c = c / 255
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
+        return .2126 * canal(r) + .7152 * canal(g) + .0722 * canal(b)
+
+    for archivo in _LANDING_PAGES:
+        html = _landing(archivo)
+        import re
+        faint = re.search(r"--faint:(#[0-9a-fA-F]{6})", html).group(1)
+        navy = re.search(r"--navy:(#[0-9a-fA-F]{6})", html).group(1)
+        l1, l2 = sorted([luminancia(faint), luminancia(navy)], reverse=True)
+        ratio = (l1 + .05) / (l2 + .05)
+        assert ratio >= 4.5, f"{archivo}: contraste {ratio:.2f}:1 < 4.5:1"
+
+
+def test_landing_estados_de_error_visibles():
+    """Nada se queda en blanco sin explicacion: el video y las resenas tienen
+    su propio estado de error."""
+    html = _landing("index.html")
+    assert 'id="videoError"' in html
+    assert "function watchVideo" in html and "watchVideo();" in html
+    # el <span> dentro de <video> NO cubre un 404: hace falta escuchar el error
+    assert "NETWORK_NO_SOURCE" in html
+    # y no es fatal que falle un solo <source> habiendo respaldo
+    assert "readyState" in html
+    # poster="" es una referencia vacia: algunos navegadores la intentan cargar
+    # y pintan un primer cuadro roto. Se mira la etiqueta, no todo el archivo.
+    import re
+    tag_video = re.search(r"<video\b[^>]*>", html).group(0)
+    assert 'poster=""' not in tag_video, f"poster vacio en {tag_video}"
+    for archivo in ("index.html", "reviews.html"):
+        assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
+
+
+def test_landing_publica_la_comparativa_honesta():
+    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
+    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
+    un .md del repo no la ve ningun cliente."""
+    import re
+    html = _landing("index.html")
+    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
+    assert tabla, "falta la tabla de la comparativa honesta"
+    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
+    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
+    # se accede desde el nav, no queda enterrada
+    assert 'href="#honesta"' in html
+
+
+def test_landing_comparativa_dice_lo_que_mv_no_hace():
+    """Lo que la hace honesta (y creible) son los limites. Si alguien la
+    'mejora' borrando los parciales, deja de ser una comparativa honesta."""
+    import re
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    parciales = re.findall(r'<td class="part"', tabla)
+    assert len(parciales) >= 4, (
+        f"solo {len(parciales)} limites declarados: la comparativa dejo de ser honesta")
+    # los cuatro techos reales del producto siguen dichos
+    for tema in ("linaje", "conectores", "OneDrive/SharePoint", "DBA"):
+        assert tema.lower() in tabla.lower(), f"ya no se declara el limite: {tema}"
+
+
+def test_landing_y_docs_comparan_las_mismas_capacidades():
+    """La tabla de la landing y la de docs/PURVIEW_COLLIBRA.md no pueden
+    divergir: si una fila cambia en el repo tiene que cambiar en la landing."""
+    import re
+    ruta = os.path.join(_repo_root(), "docs", "PURVIEW_COLLIBRA.md")
+    with open(ruta, encoding="utf-8") as fh:
+        md = fh.read()
+    filas_md = [ln for ln in md.split("\n")
+                if ln.startswith("|") and "Purview / Collibra" not in ln
+                and not ln.startswith("|---")]
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    filas_landing = re.findall(r"<tr><td data-i=\"hon_", tabla)
+    # la landing puede condensar, pero no puede tener menos de la mitad
+    assert len(filas_landing) >= len(filas_md) // 2 > 0
+    # y el .md no puede seguir diciendo que los contratos estan fuera de alcance
+    assert "Fuera de alcance: aplica a organizaciones que publican" not in md, (
+        "docs desactualizado: mvdg/contracts.py existe")
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_landing_comparativa_traducida(lang):
+    """Cada celda de la comparativa tiene su clave en EN y PT, o el cliente
+    que mira en ingles ve la tabla a medio traducir."""
+    import re
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    claves = set(re.findall(r'data-i="(hon_[a-z0-9_]+)"', tabla))
+    assert len(claves) >= 30, f"solo {len(claves)} claves en la tabla"
+    bloque = re.search(r"\n%s:\{(.*?)\n\}" % lang, html, re.S)
+    assert bloque, f"no se encontro el diccionario {lang}"
+    faltan = [k for k in claves if f"{k}:" not in bloque.group(1)]
+    assert not faltan, f"sin traduccion {lang}: {sorted(faltan)[:6]}"
+
+
+# ------------------------------- inyeccion de HTML con datos del cliente
+def test_app_no_inyecta_datos_del_cliente_como_html():
+    """El catalogo del cliente (nombres de tablas y columnas de SU base) NO
+    puede terminar dentro de un st.markdown(unsafe_allow_html=True): ahi un
+    nombre de columna con '<' rompe el render, y con etiquetas inyecta HTML.
+
+    Streamlit escapa por defecto en st.dataframe/st.table, que es como se
+    muestra el catalogo — este test verifica que nadie meta datos por la via
+    insegura mas adelante."""
+    import ast
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    dinamicos = []
+    for nodo in ast.walk(arbol):
+        if not (isinstance(nodo, ast.Call)
+                and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr in ("markdown", "write", "caption")):
+            continue
+        inseguro = any(kw.arg == "unsafe_allow_html"
+                       and isinstance(kw.value, ast.Constant) and kw.value.value
+                       for kw in nodo.keywords)
+        if not inseguro or not nodo.args:
+            continue
+        arg = nodo.args[0]
+        # un literal sin interpolacion es HTML propio y estatico: esta bien
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            continue
+        # Un f-string que solo interpola constantes de marca (la paleta de
+        # BRAND en el bloque de CSS) tampoco mete datos: no viene de la base
+        # del cliente ni de un archivo subido. Cualquier OTRO nombre si.
+        SEGUROS = {"BRAND"}
+        if isinstance(arg, ast.JoinedStr):
+            nombres = {n.id for parte in arg.values
+                       if isinstance(parte, ast.FormattedValue)
+                       for n in ast.walk(parte.value) if isinstance(n, ast.Name)}
+            if nombres and nombres <= SEGUROS:
+                continue
+        dinamicos.append(f"linea {nodo.lineno}: "
+                         f"{(ast.get_source_segment(fuente, arg) or '')[:60]}")
+    assert not dinamicos, (
+        "HTML con valores interpolados y unsafe_allow_html: " + " | ".join(dinamicos))
+
+
+def test_landing_no_inyecta_datos_dinamicos_sin_escapar():
+    """Inventario de innerHTML/insertAdjacentHTML de la landing: los que
+    reciben datos (resenas, respuesta de la API de pago) tienen que pasar por
+    una funcion de escapado."""
+    import re
+    # index.html y reviews.html renderizan resenas
+    for archivo, escapador in (("index.html", "rvEsc"), ("reviews.html", "esc")):
+        html = _landing(archivo)
+        # cada campo de la resena que se inyecta pasa por el escapador
+        for campo in ("comment", "name", "role"):
+            patron = rf"{escapador}\(r\.{campo}\)"
+            assert re.search(patron, html), f"{archivo}: r.{campo} sin {escapador}()"
+        assert f"function {escapador}(" in html, f"{archivo}: falta {escapador}()"
+    # pago.html inyecta lo que devuelve la API de pagos
+    pago = _landing("pago.html")
+    for campo in ("STATE.license", "planName"):
+        assert f"esc({campo})" in pago, f"pago.html: {campo} sin escapar"
+
+
+def test_landing_tiene_landmark_main():
+    html = _landing("index.html")
+    assert html.count("<main>") == 1 and html.count("</main>") == 1
+    assert html.index("<main>") < html.index('<section class="hero"')
+    assert html.index("</main>") < html.index("<footer>")
+
+
+# --------------------------------------------- calidad de codigo / tooling
+def test_dependencias_de_test_declaradas():
+    """pytest y httpx tienen que estar DECLARADAS, no ser un paso manual que
+    solo aparece en la documentacion."""
+    ruta = os.path.join(_repo_root(), "requirements-dev.txt")
+    assert os.path.exists(ruta), "falta requirements-dev.txt"
+    with open(ruta, encoding="utf-8") as fh:
+        dev = fh.read()
+    assert "-r requirements.txt" in dev      # un solo install alcanza
+    for paquete in ("pytest", "httpx", "ruff"):
+        assert paquete in dev, f"{paquete} sin declarar"
+
+
+def test_un_solo_comando_instala_y_testea():
+    """`make test` tiene que instalar dependencias Y correr la suite: en una
+    maquina limpia `pytest` solo no alcanza."""
+    ruta = os.path.join(_repo_root(), "Makefile")
+    assert os.path.exists(ruta), "falta el Makefile"
+    with open(ruta, encoding="utf-8") as fh:
+        mk = fh.read()
+    assert "test: install" in mk             # testear depende de instalar
+    assert "requirements-dev.txt" in mk
+    assert "pytest tests/" in mk
+    # `--upgrade pip` rompe en Pythons administrados por la distro
+    assert "--upgrade pip" not in mk
+
+
+def test_mcp_pinneado_por_debajo_de_2():
+    """mcp 2.0.0 saco `mcp.server.fastmcp`, que es lo que importa
+    mvdg/mcp_server.py. Sin tope superior, una instalacion limpia agarraba
+    2.0.0 y el servidor MCP moria con ModuleNotFoundError — lo detecto el CI,
+    no el entorno de desarrollo (que ya tenia 1.28 instalada)."""
+    ruta = os.path.join(_repo_root(), "requirements.txt")
+    with open(ruta, encoding="utf-8") as fh:
+        lineas = [ln.strip() for ln in fh if ln.strip().startswith("mcp")]
+    assert lineas, "mcp no esta declarado"
+    assert "<2" in lineas[0], f"mcp sin tope de version mayor: {lineas[0]}"
+    # y la API que usamos tiene que seguir existiendo con lo instalado
+    from mcp.server.fastmcp import FastMCP  # noqa: F401
+
+
+def test_ci_corre_tests_en_cada_push():
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "tests.yml")
+    assert os.path.exists(ruta), "no hay workflow de CI"
+    with open(ruta, encoding="utf-8") as fh:
+        ci = fh.read()
+    assert "on:" in ci and "push:" in ci and "pull_request:" in ci
+    assert "pytest tests/" in ci             # corre la suite
+    assert "ruff check" in ci                # y el linter
+    assert "requirements-dev.txt" in ci
+    assert "--upgrade pip" not in ci
+
+
+def test_linter_configurado():
+    ruta = os.path.join(_repo_root(), "pyproject.toml")
+    assert os.path.exists(ruta), "falta pyproject.toml con la config del linter"
+    with open(ruta, encoding="utf-8") as fh:
+        cfg = fh.read()
+    assert "[tool.ruff]" in cfg and "[tool.ruff.lint]" in cfg
+    assert "select" in cfg
+
+
+def test_sin_funciones_gigantes_en_el_motor():
+    """Ninguna funcion de mas de 100 lineas en el motor ni en la API.
+
+    Este test es el que evita que run_checks() (que llego a tener 822 lineas)
+    vuelva a crecer sin que nadie lo note."""
+    import ast
+    largas = []
+    for carpeta in ("mvdg", "bi_api"):
+        base = os.path.join(_repo_root(), carpeta)
+        for dirpath, _, archivos in os.walk(base):
+            for archivo in archivos:
+                if not archivo.endswith(".py"):
+                    continue
+                ruta = os.path.join(dirpath, archivo)
+                with open(ruta, encoding="utf-8") as fh:
+                    arbol = ast.parse(fh.read())
+                for nodo in ast.walk(arbol):
+                    if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        n = nodo.end_lineno - nodo.lineno + 1
+                        if n > 100:
+                            rel = os.path.relpath(ruta, _repo_root())
+                            largas.append(f"{rel}:{nodo.lineno} {nodo.name} ({n})")
+    assert not largas, "funciones de mas de 100 lineas: " + ", ".join(largas)
+
+
+def test_selfcheck_expone_los_chequeos_como_registro():
+    """El auto-diagnostico dejo de ser una funcion monolitica: cada chequeo es
+    una funcion propia registrada, y run_checks solo los recorre."""
+    from mvdg import selfcheck
+    assert len(selfcheck.CHECKS) >= 40
+    assert all(isinstance(nombre, str) and callable(fn)
+               for nombre, fn in selfcheck.CHECKS)
+    nombres = [n for n, _ in selfcheck.CHECKS]
+    assert len(nombres) == len(set(nombres)), "hay chequeos con nombre repetido"
+
+
 # ------------------------------------------- sugerencias de correccion (IA)
 @pytest.mark.parametrize("lang", LANGS)
 def test_remediation_covers_all_demo_rules(lang):
@@ -1836,13 +2460,13 @@ def test_powerbi_lineage_dynamic_figure(tmp_path):
     fig = lineage_figure(nodes=nodes, edges=edges)     # no debe romper con grafo dinámico
     assert fig is not None and len(fig.data) > 0
     model_id = f"model_{out['_model'].name}"
-    assert downstream(f"tbl_Ventas", edges) & {model_id}   # tabla → modelo
+    assert downstream("tbl_Ventas", edges) & {model_id}   # tabla → modelo
     assert upstream(model_id, edges)                        # el modelo tiene ancestros
 
 
 def test_lineage_demo_still_works():
     # el grafo de demo (sin args) sigue funcionando igual que antes
-    from mvdg.lineage import EDGES, lineage_figure, upstream
+    from mvdg.lineage import lineage_figure, upstream
     fig = lineage_figure()
     assert fig is not None and len(fig.data) > 0
     assert upstream("mart_sales")  # ancestros del mart de demo
@@ -2510,7 +3134,6 @@ def test_mip_plan_skips_datasets_without_mapped_file():
     from mvdg import mip_labels as mip
     cat, dic, glo = _sample_gov_tables()
     file_map = {"dim_customers": {"driveId": "d1", "itemId": "i1"}}
-    labels = [{"id": "l1", "name": "Confidencial"}]
     r = mip.push_labels(cat, file_map, dry_run=True)
     assert len(r["plan"]) == 1 and r["plan"][0]["dataset"] == "dim_customers"
     assert set(r["skipped_no_file"]) == set(cat["dataset"]) - {"dim_customers"}
@@ -2625,8 +3248,8 @@ def test_azure_discovery_query_covers_all_data_types():
     from mvdg import azure_discovery as az
     q = az.build_query()
     assert q.startswith("Resources | where type in~ (")
-    for t in az.DATA_RESOURCE_TYPES:
-        assert f"'{t}'" in q
+    for tipo in az.DATA_RESOURCE_TYPES:
+        assert f"'{tipo}'" in q
 
 
 def test_azure_discovery_suggest_connection_profile_maps_known_types():
@@ -3359,7 +3982,6 @@ def test_purview_retries_429_with_backoff_then_succeeds(monkeypatch):
     monkeypatch.setattr(pv.time, "sleep", lambda s: sleeps.append(s))
 
     attempts = {"n": 0}
-    real_urlopen = pv.urllib.request.urlopen
 
     class FakeResp:
         def __init__(self, payload):
@@ -3555,7 +4177,8 @@ def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
     db = tmp_path / "ventas.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE cli_fac (fec_pag TEXT, imp_tot REAL, tel_cli TEXT)")
-    con.commit(); con.close()
+    con.commit()
+    con.close()
 
     from mvdg import curation, glossary_auto, imported
     profile = {"conn_id": "sqlt1", "engine": "sqlite", "database": str(db)}
@@ -3592,7 +4215,8 @@ def test_glossary_auto_broken_table_does_not_stop_the_rest(tmp_path, monkeypatch
     db = tmp_path / "x.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE ok_tbl (cod_prod TEXT)")
-    con.commit(); con.close()
+    con.commit()
+    con.close()
     profile = {"conn_id": "c1", "engine": "sqlite", "database": str(db)}
 
     real_list_columns = connectors.list_columns

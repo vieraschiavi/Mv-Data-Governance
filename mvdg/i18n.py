@@ -1763,6 +1763,153 @@ _T: dict[str, dict[str, str]] = {
     "mdm_cols_label": {"es": "columnas", "en": "columns", "pt": "colunas"},
     "mdm_golden_title": {"es": "✨ Golden record propuesto", "en": "✨ Proposed golden record",
                          "pt": "✨ Golden record proposto"},
+
+    # ------------------------------------------------- errores accionables
+    # Cada uno dice QUE hacer, no solo que fallo. El detalle tecnico
+    # (TipoDeError: texto) se muestra aparte, plegado. Ver mvdg/errors.py.
+    "err_encoding": {
+        "es": "El archivo no está en UTF-8. Abrilo en Excel y guardalo como "
+              "«CSV UTF-8 (delimitado por comas)», o exportalo de nuevo eligiendo UTF-8.",
+        "en": "The file is not UTF-8. Open it in Excel and save it as "
+              "“CSV UTF-8 (comma delimited)”, or export it again choosing UTF-8.",
+        "pt": "O arquivo não está em UTF-8. Abra no Excel e salve como "
+              "“CSV UTF-8 (delimitado por vírgulas)”, ou exporte novamente escolhendo UTF-8.",
+    },
+    "err_vacio": {
+        "es": "El archivo está vacío o no tiene encabezados. Revisá que la "
+              "primera fila tenga los nombres de las columnas.",
+        "en": "The file is empty or has no headers. Check that the first row "
+              "contains the column names.",
+        "pt": "O arquivo está vazio ou não tem cabeçalhos. Verifique se a "
+              "primeira linha tem os nomes das colunas.",
+    },
+    "err_csv_malformado": {
+        "es": "El CSV tiene filas con distinta cantidad de columnas, o usa otro "
+              "separador. Revisá que todas las filas tengan las mismas columnas "
+              "y que el separador sea coma o punto y coma.",
+        "en": "The CSV has rows with different column counts, or uses another "
+              "separator. Check that every row has the same columns and that the "
+              "separator is a comma or semicolon.",
+        "pt": "O CSV tem linhas com quantidades diferentes de colunas, ou usa "
+              "outro separador. Verifique se todas as linhas têm as mesmas colunas "
+              "e se o separador é vírgula ou ponto e vírgula.",
+    },
+    "err_excel_formato": {
+        "es": "No se pudo leer el Excel: el formato no coincide con la extensión. "
+              "Abrilo y volvé a guardarlo como .xlsx.",
+        "en": "Could not read the Excel file: the format does not match the "
+              "extension. Open it and save it again as .xlsx.",
+        "pt": "Não foi possível ler o Excel: o formato não corresponde à extensão. "
+              "Abra e salve novamente como .xlsx.",
+    },
+    "err_zip": {
+        "es": "El archivo no es un ZIP válido o está incompleto. Volvé a "
+              "descargarlo o a exportarlo.",
+        "en": "The file is not a valid ZIP or is incomplete. Download or export "
+              "it again.",
+        "pt": "O arquivo não é um ZIP válido ou está incompleto. Baixe ou exporte "
+              "novamente.",
+    },
+    "err_json": {
+        "es": "El JSON no es válido. Revisá que no falten comas o llaves — "
+              "podés validarlo en cualquier verificador de JSON.",
+        "en": "The JSON is not valid. Check for missing commas or braces — you "
+              "can validate it in any JSON checker.",
+        "pt": "O JSON não é válido. Verifique se faltam vírgulas ou chaves — "
+              "você pode validá-lo em qualquer verificador de JSON.",
+    },
+    "err_permiso": {
+        "es": "No se pudo acceder al archivo. Si lo tenés abierto en Excel, "
+              "cerralo y probá de nuevo.",
+        "en": "Could not access the file. If you have it open in Excel, close it "
+              "and try again.",
+        "pt": "Não foi possível acessar o arquivo. Se estiver aberto no Excel, "
+              "feche e tente novamente.",
+    },
+    "err_no_existe": {
+        "es": "No se encontró el archivo. Puede que lo hayan movido o borrado — "
+              "volvé a seleccionarlo.",
+        "en": "File not found. It may have been moved or deleted — select it again.",
+        "pt": "Arquivo não encontrado. Pode ter sido movido ou excluído — "
+              "selecione novamente.",
+    },
+    "err_memoria": {
+        "es": "El archivo es demasiado grande para procesarlo entero. Probá con "
+              "una muestra, o conectá la base directamente en «Mis datos».",
+        "en": "The file is too large to process at once. Try a sample, or connect "
+              "the database directly under “My data”.",
+        "pt": "O arquivo é grande demais para processar de uma vez. Tente uma "
+              "amostra, ou conecte o banco diretamente em “Meus dados”.",
+    },
+    "err_archivo_generico": {
+        "es": "No se pudo leer el archivo. Revisá que sea un CSV o Excel válido "
+              "y que no esté abierto en otro programa.",
+        "en": "Could not read the file. Check that it is a valid CSV or Excel file "
+              "and that it is not open in another program.",
+        "pt": "Não foi possível ler o arquivo. Verifique se é um CSV ou Excel "
+              "válido e se não está aberto em outro programa.",
+    },
+    "err_falta_driver": {
+        "es": "Falta una dependencia para este formato o motor de base. El detalle "
+              "de abajo dice cuál — se instala con «pip install <nombre>».",
+        "en": "A dependency for this format or database engine is missing. The "
+              "detail below says which one — install it with “pip install <name>”.",
+        "pt": "Falta uma dependência para este formato ou motor de banco. O detalhe "
+              "abaixo indica qual — instale com “pip install <nome>”.",
+    },
+    "err_credenciales": {
+        "es": "Usuario o contraseña incorrectos. Revisá las credenciales de la "
+              "conexión y volvé a probar.",
+        "en": "Wrong username or password. Check the connection credentials and "
+              "try again.",
+        "pt": "Usuário ou senha incorretos. Verifique as credenciais da conexão e "
+              "tente novamente.",
+    },
+    "err_host": {
+        "es": "No se pudo alcanzar el servidor. Revisá el host y el puerto, y que "
+              "haya red o VPN hacia esa base.",
+        "en": "Could not reach the server. Check the host and port, and that you "
+              "have network or VPN access to that database.",
+        "pt": "Não foi possível alcançar o servidor. Verifique o host e a porta, e "
+              "se há rede ou VPN até esse banco.",
+    },
+    "err_base_datos": {
+        "es": "La base rechazó la conexión. Revisá host, puerto, base y permisos "
+              "del usuario.",
+        "en": "The database refused the connection. Check host, port, database and "
+              "user permissions.",
+        "pt": "O banco recusou a conexão. Verifique host, porta, base e permissões "
+              "do usuário.",
+    },
+    "err_consulta": {
+        "es": "La consulta no se pudo ejecutar. Revisá los nombres de tabla y "
+              "columna — el detalle de abajo indica cuál falló.",
+        "en": "The query could not run. Check table and column names — the detail "
+              "below shows which one failed.",
+        "pt": "A consulta não pôde ser executada. Verifique os nomes de tabela e "
+              "coluna — o detalhe abaixo indica qual falhou.",
+    },
+    "err_red": {
+        "es": "No hay conexión con el servicio. Revisá tu red o proxy y volvé a "
+              "intentar — el resto del programa funciona sin conexión.",
+        "en": "No connection to the service. Check your network or proxy and try "
+              "again — the rest of the program works offline.",
+        "pt": "Sem conexão com o serviço. Verifique sua rede ou proxy e tente "
+              "novamente — o resto do programa funciona offline.",
+    },
+    "err_generico": {
+        "es": "No se pudo completar la operación. El detalle técnico está abajo; "
+              "si se repite, mandalo junto con lo que estabas haciendo.",
+        "en": "The operation could not be completed. The technical detail is below; "
+              "if it keeps happening, send it along with what you were doing.",
+        "pt": "Não foi possível concluir a operação. O detalhe técnico está abaixo; "
+              "se persistir, envie junto com o que você estava fazendo.",
+    },
+    "err_detalle": {
+        "es": "Ver detalle técnico",
+        "en": "Show technical detail",
+        "pt": "Ver detalhe técnico",
+    },
 }
 
 

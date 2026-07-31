@@ -3,13 +3,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="google" content="notranslate">
+<meta name="description" content="Qué dicen quienes ya usan MV Data Governance para catálogo, calidad de datos, linaje y publicación a BI.">
+<link rel="canonical" href="https://mv-data-governance.vercel.app/reviews.html">
+<!-- Tarjeta social (og: para Facebook/LinkedIn/WhatsApp, twitter: para X).
+     La imagen es 1200x630, el tamaño que esperan todas las plataformas. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MV Data Governance">
+<meta property="og:url" content="https://mv-data-governance.vercel.app/reviews.html">
+<meta property="og:title" content="MV Data Governance · Reseñas de usuarios">
+<meta property="og:description" content="Qué dicen quienes ya usan MV Data Governance para catálogo, calidad de datos, linaje y publicación a BI.">
+<meta property="og:image" content="https://mv-data-governance.vercel.app/img/og_cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="MV Data Governance — catálogo, calidad, linaje y glosario listos para Power BI y Tableau">
+<meta property="og:locale" content="es_ES">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MV Data Governance · Reseñas de usuarios">
+<meta name="twitter:description" content="Qué dicen quienes ya usan MV Data Governance para catálogo, calidad de datos, linaje y publicación a BI.">
+<meta name="twitter:image" content="https://mv-data-governance.vercel.app/img/og_cover.jpg">
+<meta name="theme-color" content="#081527">
+<link rel="apple-touch-icon" href="mv_icon.png">
 <title>MV Data Governance · Reseñas de usuarios</title>
 <link rel="icon" type="image/png" href="mv_icon.png">
 <style>
 :root{
   --navy:#081527;--navy2:#0c2137;--hero-a:#0d2440;--hero-b:#081324;
   --amber:#f2b441;--amber2:#e39a2e;--amber-ink:#1c1305;
-  --ink:#eaf1fb;--muted:#9db0c8;--faint:#6c7f99;--line:#1d3149;--line2:#2a4160;
+  --ink:#eaf1fb;--muted:#9db0c8;--faint:#8496ae;--line:#1d3149;--line2:#2a4160;
   --paper:#fff;--ink-d:#122238;--muted-d:#586a80;--line-d:#e6ebf2;--tint:#f4f7fb;
   --blue:#2f74c0;--green:#00c896;--star:#f2b441;
   --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -86,11 +108,13 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .rate{display:flex;gap:6px;font-size:30px;cursor:pointer;user-select:none}
 .rate span{color:#d7deea;transition:color .1s}
 .rate span.on{color:var(--star)}
+.rvempty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:13.5px;
+  border:1px dashed var(--line2);border-radius:14px;padding:26px}
 footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center}
 </style>
 
 <nav><div class="wrap">
-  <a class="brand" href="index.html"><img class="mk" src="mv_icon.png" alt="MV">
+  <a class="brand" href="index.html"><img class="mk" src="mv_icon.png" width="30" height="30" alt="MV Data Governance">
     <span><b>MV Data Governance</b> <small data-i="sub">· Reseñas</small></span></a>
   <div class="right">
     <div class="lang"><button data-lang="es" class="on">ES</button><button data-lang="pt">PT</button><button data-lang="en">EN</button></div>
@@ -141,7 +165,7 @@ footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center
 
 <footer><div class="wrap">© 2026 MV Data Governance · <span data-i="ft">Sin APK · 100% web y PC · Español · English · Português</span></div></footer>
 
-<script src="reviews-data.js"></script>
+<script src="reviews-data.js" defer></script>
 <script>
 var I18N={
 en:{sub:"· Reviews",back:"← Home",count:"reviews",
@@ -170,6 +194,11 @@ function setLang(lang){
   document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
   render();
 }
+// Escapa TODO lo que se inyecta como HTML. Hoy las reseñas vienen de
+// reviews-data.js (archivo propio), pero si mañana se alimenta de envíos
+// reales de usuarios el escapado tiene que estar puesto de antemano.
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function stars(n){return '★★★★★☆☆☆☆☆'.slice(5-Math.round(n),10-Math.round(n));}
 function exLabel(){var l=document.documentElement.lang||'es';return l==='en'?'Example':l==='pt'?'Exemplo':'Ejemplo';}
 function initials(name){return (name||'?').split(/\s+/).map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();}
@@ -192,15 +221,24 @@ function render(){
   }
   // tarjetas
   var g=document.getElementById('grid');g.innerHTML='';
+  // Si reviews-data.js no cargo, el grid quedaba vacio y sin explicacion.
+  if(!R.length){
+    var li=document.documentElement.lang||'es';
+    g.innerHTML='<p class="rvempty">'+(li==='en'
+      ?'Reviews could not be loaded right now.'
+      :li==='pt'?'Nao foi possivel carregar as avaliacoes agora.'
+      :'No pudimos cargar las resenas en este momento.')+'</p>';
+    return;
+  }
   R.forEach(function(r){
     g.insertAdjacentHTML('beforeend',
       '<div class="card">'+
         (r.example?'<span class="ex">'+exLabel()+'</span>':'')+
         '<div class="cstars">'+stars(r.rating)+'</div>'+
-        '<div class="cc">“'+(r.comment||'').replace(/</g,'&lt;')+'”</div>'+
-        '<div class="who"><span class="av">'+initials(r.name)+'</span>'+
-          '<span><b>'+(r.name||'').replace(/</g,'&lt;')+'</b>'+
-          '<span>'+(r.role||'').replace(/</g,'&lt;')+(r.date?' · '+r.date:'')+'</span></span></div>'+
+        '<div class="cc">“'+esc(r.comment)+'”</div>'+
+        '<div class="who"><span class="av">'+esc(initials(r.name))+'</span>'+
+          '<span><b>'+esc(r.name)+'</b>'+
+          '<span>'+esc(r.role)+(r.date?' · '+esc(r.date):'')+'</span></span></div>'+
       '</div>');
   });
 }
@@ -221,5 +259,9 @@ document.getElementById('rform').addEventListener('submit',function(ev){
 });
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 document.documentElement.lang='es';
-try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es'){setLang(sv);}else{render();}}catch(e){render();}
+/* reviews-data.js va con defer: sus datos recién están disponibles en
+   DOMContentLoaded, no cuando corre este script inline. */
+document.addEventListener('DOMContentLoaded',function(){
+  try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es'){setLang(sv);}else{render();}}catch(e){render();}
+});
 </script>

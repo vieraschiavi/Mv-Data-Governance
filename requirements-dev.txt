@@ -1,0 +1,19 @@
+# MV Data Governance · Dependencias de desarrollo y test
+# Development / test dependencies · Dependências de desenvolvimento e teste
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Antes estas dos vivían solo en la documentación ("pip install pytest httpx"),
+# así que un checkout limpio no podía correr la suite sin leer el README.
+
+-r requirements.txt
+
+pytest>=8.0
+# httpx lo exige fastapi.testclient.TestClient: sin él los tests de la API BI
+# fallan con error de import, no con un skip.
+httpx>=0.27
+# starlette ya deprecó httpx a favor de httpx2 para su TestClient. Sin esto la
+# suite pasa igual, pero con un DeprecationWarning en cada corrida.
+httpx2>=0.1
+# Linter (configurado en pyproject.toml). Sin formateo automático: solo revisa.
+ruff>=0.6
