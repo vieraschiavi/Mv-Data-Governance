@@ -1388,6 +1388,135 @@ def test_landing_escapa_datos_antes_de_inyectar_html():
             f"{archivo}: quedo un escapado parcial de '<'")
 
 
+# ------------------------------------------------ landing: SEO / a11y / UX
+_LANDING_PAGES = ("index.html", "descargas.html", "guia.html",
+                  "pago.html", "reviews.html")
+
+
+def _landing(archivo):
+    with open(os.path.join(_repo_root(), "landing", archivo), encoding="utf-8") as fh:
+        return fh.read()
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_tiene_meta_social_y_seo(archivo):
+    """Sin estas etiquetas el link compartido en LinkedIn/WhatsApp sale sin
+    titulo ni imagen, y Lighthouse SEO no llega a 90."""
+    html = _landing(archivo)
+    for etiqueta in ('name="description"',
+                     'property="og:title"', 'property="og:description"',
+                     'property="og:image"', 'property="og:url"',
+                     'name="twitter:card"', 'name="twitter:image"',
+                     'rel="canonical"'):
+        assert etiqueta in html, f"{archivo}: falta {etiqueta}"
+    assert 'content="summary_large_image"' in html
+    # la imagen social tiene que existir de verdad y declarar su tamano
+    assert 'property="og:image:width" content="1200"' in html
+    assert 'property="og:image:height" content="630"' in html
+
+
+def test_landing_og_image_existe_y_mide_1200x630():
+    ruta = os.path.join(_repo_root(), "landing", "img", "og_cover.jpg")
+    assert os.path.exists(ruta), "falta landing/img/og_cover.jpg"
+    try:
+        from PIL import Image
+    except ImportError:
+        pytest.skip("Pillow no disponible")
+    assert Image.open(ruta).size == (1200, 630)
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_viewport_favicon_y_lang(archivo):
+    html = _landing(archivo)
+    assert 'name="viewport"' in html and "width=device-width" in html
+    assert 'rel="icon"' in html
+    assert 'rel="apple-touch-icon"' in html
+    assert '<html lang="es"' in html      # idioma por defecto del HTML servido
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_imagenes_con_alt_descriptivo(archivo):
+    """Ninguna <img> sin alt, y ningun alt de una sola palabra suelta."""
+    import re
+    for tag in re.findall(r"<img\b[^>]*>", _landing(archivo)):
+        m = re.search(r'\balt="([^"]*)"', tag)
+        assert m, f"{archivo}: <img> sin alt -> {tag[:80]}"
+        assert len(m.group(1).strip()) >= 3, f"{archivo}: alt pobre -> {tag[:80]}"
+
+
+def test_landing_capturas_declaran_tamano_y_traducen_su_alt():
+    """width/height evitan el salto de layout (CLS, penaliza Performance), y
+    el alt de cada captura existe en los 3 idiomas."""
+    import re
+    html = _landing("index.html")
+    shots = re.findall(r'<img\b[^>]*data-shot="([^"]+)"[^>]*>', html)
+    assert len(shots) >= 4
+    for tag in re.findall(r'<img\b[^>]*data-shot="[^"]+"[^>]*>', html):
+        assert 'width="' in tag and 'height="' in tag, f"sin tamano: {tag[:90]}"
+        assert 'loading="lazy"' in tag
+    # el alt de cada captura tiene su clave en ES (explicita), EN y PT
+    for base in set(shots):
+        clave = f"alt_{base}"
+        assert html.count(clave) >= 3, f"{clave} no esta en los 3 idiomas"
+
+
+def test_landing_scripts_no_bloquean_el_parseo():
+    for archivo in ("index.html", "reviews.html"):
+        html = _landing(archivo)
+        for src in ("reviews-data.js", "payments-config.js"):
+            if f'src="{src}"' in html:
+                assert f'src="{src}" defer' in html, f"{archivo}: {src} sin defer"
+        # con defer, pintar en el script inline llega tarde: hay que esperar
+        # a DOMContentLoaded o el grid queda vacio
+        assert "DOMContentLoaded" in html
+
+
+def test_landing_contraste_de_texto_tenue_cumple_aa():
+    """--faint sobre el navy estaba en 4.48:1, abajo del minimo AA de 4.5:1,
+    y se usa en los botones de idioma a 11.5px."""
+    def luminancia(hexcol):
+        def canal(c):
+            c = c / 255
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
+        return .2126 * canal(r) + .7152 * canal(g) + .0722 * canal(b)
+
+    for archivo in _LANDING_PAGES:
+        html = _landing(archivo)
+        import re
+        faint = re.search(r"--faint:(#[0-9a-fA-F]{6})", html).group(1)
+        navy = re.search(r"--navy:(#[0-9a-fA-F]{6})", html).group(1)
+        l1, l2 = sorted([luminancia(faint), luminancia(navy)], reverse=True)
+        ratio = (l1 + .05) / (l2 + .05)
+        assert ratio >= 4.5, f"{archivo}: contraste {ratio:.2f}:1 < 4.5:1"
+
+
+def test_landing_estados_de_error_visibles():
+    """Nada se queda en blanco sin explicacion: el video y las resenas tienen
+    su propio estado de error."""
+    html = _landing("index.html")
+    assert 'id="videoError"' in html
+    assert "function watchVideo" in html and "watchVideo();" in html
+    # el <span> dentro de <video> NO cubre un 404: hace falta escuchar el error
+    assert "NETWORK_NO_SOURCE" in html
+    # y no es fatal que falle un solo <source> habiendo respaldo
+    assert "readyState" in html
+    # poster="" es una referencia vacia: algunos navegadores la intentan cargar
+    # y pintan un primer cuadro roto. Se mira la etiqueta, no todo el archivo.
+    import re
+    tag_video = re.search(r"<video\b[^>]*>", html).group(0)
+    assert 'poster=""' not in tag_video, f"poster vacio en {tag_video}"
+    for archivo in ("index.html", "reviews.html"):
+        assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
+
+
+def test_landing_tiene_landmark_main():
+    html = _landing("index.html")
+    assert html.count("<main>") == 1 and html.count("</main>") == 1
+    assert html.index("<main>") < html.index('<section class="hero"')
+    assert html.index("</main>") < html.index("<footer>")
+
+
 # --------------------------------------------- calidad de codigo / tooling
 def test_dependencias_de_test_declaradas():
     """pytest y httpx tienen que estar DECLARADAS, no ser un paso manual que
