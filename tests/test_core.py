@@ -1671,6 +1671,135 @@ def test_landing_estados_de_error_visibles():
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
 
 
+def test_landing_publica_la_comparativa_honesta():
+    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
+    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
+    un .md del repo no la ve ningun cliente."""
+    import re
+    html = _landing("index.html")
+    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
+    assert tabla, "falta la tabla de la comparativa honesta"
+    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
+    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
+    # se accede desde el nav, no queda enterrada
+    assert 'href="#honesta"' in html
+
+
+def test_landing_comparativa_dice_lo_que_mv_no_hace():
+    """Lo que la hace honesta (y creible) son los limites. Si alguien la
+    'mejora' borrando los parciales, deja de ser una comparativa honesta."""
+    import re
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    parciales = re.findall(r'<td class="part"', tabla)
+    assert len(parciales) >= 4, (
+        f"solo {len(parciales)} limites declarados: la comparativa dejo de ser honesta")
+    # los cuatro techos reales del producto siguen dichos
+    for tema in ("linaje", "conectores", "OneDrive/SharePoint", "DBA"):
+        assert tema.lower() in tabla.lower(), f"ya no se declara el limite: {tema}"
+
+
+def test_landing_y_docs_comparan_las_mismas_capacidades():
+    """La tabla de la landing y la de docs/PURVIEW_COLLIBRA.md no pueden
+    divergir: si una fila cambia en el repo tiene que cambiar en la landing."""
+    import re
+    ruta = os.path.join(_repo_root(), "docs", "PURVIEW_COLLIBRA.md")
+    with open(ruta, encoding="utf-8") as fh:
+        md = fh.read()
+    filas_md = [ln for ln in md.split("\n")
+                if ln.startswith("|") and "Purview / Collibra" not in ln
+                and not ln.startswith("|---")]
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    filas_landing = re.findall(r"<tr><td data-i=\"hon_", tabla)
+    # la landing puede condensar, pero no puede tener menos de la mitad
+    assert len(filas_landing) >= len(filas_md) // 2 > 0
+    # y el .md no puede seguir diciendo que los contratos estan fuera de alcance
+    assert "Fuera de alcance: aplica a organizaciones que publican" not in md, (
+        "docs desactualizado: mvdg/contracts.py existe")
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_landing_comparativa_traducida(lang):
+    """Cada celda de la comparativa tiene su clave en EN y PT, o el cliente
+    que mira en ingles ve la tabla a medio traducir."""
+    import re
+    html = _landing("index.html")
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S).group(0)
+    claves = set(re.findall(r'data-i="(hon_[a-z0-9_]+)"', tabla))
+    assert len(claves) >= 30, f"solo {len(claves)} claves en la tabla"
+    bloque = re.search(r"\n%s:\{(.*?)\n\}" % lang, html, re.S)
+    assert bloque, f"no se encontro el diccionario {lang}"
+    faltan = [k for k in claves if f"{k}:" not in bloque.group(1)]
+    assert not faltan, f"sin traduccion {lang}: {sorted(faltan)[:6]}"
+
+
+# ------------------------------- inyeccion de HTML con datos del cliente
+def test_app_no_inyecta_datos_del_cliente_como_html():
+    """El catalogo del cliente (nombres de tablas y columnas de SU base) NO
+    puede terminar dentro de un st.markdown(unsafe_allow_html=True): ahi un
+    nombre de columna con '<' rompe el render, y con etiquetas inyecta HTML.
+
+    Streamlit escapa por defecto en st.dataframe/st.table, que es como se
+    muestra el catalogo — este test verifica que nadie meta datos por la via
+    insegura mas adelante."""
+    import ast
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        fuente = fh.read()
+    arbol = ast.parse(fuente)
+
+    dinamicos = []
+    for nodo in ast.walk(arbol):
+        if not (isinstance(nodo, ast.Call)
+                and isinstance(nodo.func, ast.Attribute)
+                and nodo.func.attr in ("markdown", "write", "caption")):
+            continue
+        inseguro = any(kw.arg == "unsafe_allow_html"
+                       and isinstance(kw.value, ast.Constant) and kw.value.value
+                       for kw in nodo.keywords)
+        if not inseguro or not nodo.args:
+            continue
+        arg = nodo.args[0]
+        # un literal sin interpolacion es HTML propio y estatico: esta bien
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            continue
+        # Un f-string que solo interpola constantes de marca (la paleta de
+        # BRAND en el bloque de CSS) tampoco mete datos: no viene de la base
+        # del cliente ni de un archivo subido. Cualquier OTRO nombre si.
+        SEGUROS = {"BRAND"}
+        if isinstance(arg, ast.JoinedStr):
+            nombres = {n.id for parte in arg.values
+                       if isinstance(parte, ast.FormattedValue)
+                       for n in ast.walk(parte.value) if isinstance(n, ast.Name)}
+            if nombres and nombres <= SEGUROS:
+                continue
+        dinamicos.append(f"linea {nodo.lineno}: "
+                         f"{(ast.get_source_segment(fuente, arg) or '')[:60]}")
+    assert not dinamicos, (
+        "HTML con valores interpolados y unsafe_allow_html: " + " | ".join(dinamicos))
+
+
+def test_landing_no_inyecta_datos_dinamicos_sin_escapar():
+    """Inventario de innerHTML/insertAdjacentHTML de la landing: los que
+    reciben datos (resenas, respuesta de la API de pago) tienen que pasar por
+    una funcion de escapado."""
+    import re
+    # index.html y reviews.html renderizan resenas
+    for archivo, escapador in (("index.html", "rvEsc"), ("reviews.html", "esc")):
+        html = _landing(archivo)
+        # cada campo de la resena que se inyecta pasa por el escapador
+        for campo in ("comment", "name", "role"):
+            patron = rf"{escapador}\(r\.{campo}\)"
+            assert re.search(patron, html), f"{archivo}: r.{campo} sin {escapador}()"
+        assert f"function {escapador}(" in html, f"{archivo}: falta {escapador}()"
+    # pago.html inyecta lo que devuelve la API de pagos
+    pago = _landing("pago.html")
+    for campo in ("STATE.license", "planName"):
+        assert f"esc({campo})" in pago, f"pago.html: {campo} sin escapar"
+
+
 def test_landing_tiene_landmark_main():
     html = _landing("index.html")
     assert html.count("<main>") == 1 and html.count("</main>") == 1

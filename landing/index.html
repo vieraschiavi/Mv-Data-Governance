@@ -56,6 +56,9 @@ h1,h2,h3{margin:0;line-height:1.08;text-wrap:balance;letter-spacing:-.02em}
 
 /* NAV */
 nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filter:blur(10px)}
+/* El nav es sticky (60px): sin esto, al entrar por un ancla del menú el título
+   de la sección queda debajo del nav y no se lee. Afecta a todas las secciones. */
+section[id]{scroll-margin-top:76px}
 nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap}
 @media(max-width:640px){.brand small{display:none}}
@@ -252,6 +255,13 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .cmp tbody tr:nth-child(odd){background:var(--tint)}
 .cmp td.yes{color:#0b9e71;font-weight:800}
 .cmp td.no{color:#c0504e;font-weight:700}
+.cmp td.part{color:#b07d1a;font-weight:700}
+/* Tabla honesta: capacidad por capacidad contra Purview/Collibra, incluyendo
+   lo que MV NO hace. Mismo contenido que docs/PURVIEW_COLLIBRA.md. */
+.cmp2 tbody td:nth-child(2),.cmp2 thead th:nth-child(2){background:transparent}
+.cmp2 th:nth-child(3),.cmp2 td:nth-child(3){background:rgba(242,180,65,.08)}
+.hon-note{margin-top:14px;font-size:13px;color:var(--muted-d);
+  border-left:3px solid var(--amber);padding:8px 0 8px 14px}
 .cmp th:nth-child(2),.cmp td:nth-child(2){background:rgba(242,180,65,.08)}
 
 /* PRICING */
@@ -318,6 +328,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <a href="#bi" data-i="nav_bi">BI</a>
     <a href="#implementacion" data-i="nav_impl">Implementación</a>
     <a href="#descargas" data-i="nav_downloads">Descargas</a>
+    <a href="#honesta" data-i="nav_honest">Comparativa</a>
     <a href="#precios" data-i="nav_pricing">Precios</a>
     <a href="#contacto" data-i="nav_contact">Contacto</a>
   </div>
@@ -595,6 +606,41 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 </div></section>
 
 <!-- PRECIOS -->
+<section class="panel" id="honesta"><div class="wrap">
+  <div class="eyebrow" data-i="hon_eye">Comparativa honesta</div>
+  <h2 class="h2" data-i="hon_h2">Capacidad por capacidad contra Purview y Collibra</h2>
+  <p class="lead-d" data-i="hon_lead">Incluye lo que MV <b>no</b> hace. Si necesitás descubrimiento
+    automático de linaje entre decenas de sistemas o cientos de conectores gestionados, esas suites
+    son la respuesta correcta — y te lo decimos acá, no después de la compra.</p>
+  <div style="overflow-x:auto">
+  <table class="cmp cmp2">
+    <thead><tr>
+      <th data-i="hon_c0">Capacidad</th>
+      <th data-i="hon_c1">Purview / Collibra</th>
+      <th style="color:var(--amber)">MV Data Governance</th>
+    </tr></thead>
+    <tbody>
+      <tr><td data-i="hon_h1">Catálogo con dueño, steward y clasificación</td><td class="yes" data-i="hon_h1_a">✅</td><td class="yes" data-i="hon_h1_b">✅ Catálogo + Mis datos</td></tr>
+      <tr><td data-i="hon_g2">Glosario de negocio</td><td class="yes" data-i="hon_g2_a">✅</td><td class="yes" data-i="hon_g2_b">✅ trilingüe ES/EN/PT</td></tr>
+      <tr><td data-i="hon_h3">Workflow de curaduría y aprobación</td><td class="yes" data-i="hon_h3_a">✅</td><td class="yes" data-i="hon_h3_b">✅ definición pre-establecida por IA, valida el Data Owner</td></tr>
+      <tr><td data-i="hon_h4">Asignación de responsables (stewardship)</td><td class="yes" data-i="hon_h4_a">✅</td><td class="yes" data-i="hon_h4_b">✅ desde el organigrama, editable</td></tr>
+      <tr><td data-i="hon_h5">Insights del estado del gobierno</td><td class="yes" data-i="hon_h5_a">✅</td><td class="yes" data-i="hon_h5_b">✅ índice 0-100 con 5 coberturas</td></tr>
+      <tr><td data-i="hon_h6">Calidad de datos con reglas y umbrales</td><td class="yes" data-i="hon_h6_a">✅</td><td class="yes" data-i="hon_h6_b">✅ 6 dimensiones DAMA + remediación</td></tr>
+      <tr><td data-i="hon_h7">MDM / deduplicación (golden record)</td><td class="no" data-i="hon_h7_a">➖ Collibra parcial · Purview no</td><td class="yes" data-i="hon_h7_b">✅ pestaña MDM completa</td></tr>
+      <tr><td data-i="hon_h8">Contratos de datos y alarmas sobre linaje</td><td class="yes" data-i="hon_h8_a">✅</td><td class="yes" data-i="hon_h8_b">✅ con impacto aguas abajo y responsable</td></tr>
+      <tr><td data-i="hon_h9">Linaje</td><td class="yes" data-i="hon_h9_a">✅ descubrimiento automático entre decenas de sistemas</td><td class="part" data-i="hon_h9_b">🟡 real y end-to-end, pero solo de las fuentes que conectás</td></tr>
+      <tr><td data-i="hon_h10">Escaneo de fuentes</td><td class="yes" data-i="hon_h10_a">✅ cientos de conectores gestionados</td><td class="part" data-i="hon_h10_b">🟡 9 motores SQL/cloud + Power BI + Tableau + archivos</td></tr>
+      <tr><td data-i="hon_h11">Clasificación de datos sensibles</td><td class="yes" data-i="hon_h11_a">✅ clasificadores gestionados + etiquetas MIP</td><td class="part" data-i="hon_h11_b">🟡 heurística de PII + MIP real, solo en OneDrive/SharePoint</td></tr>
+      <tr><td data-i="hon_h12">Enforcement de acceso (bloquear consultas)</td><td class="yes" data-i="hon_h12_a">✅ Purview, dentro del stack Azure</td><td class="part" data-i="hon_h12_b">🟡 genera el DDL (GRANT/REVOKE + enmascarado); lo ejecuta un DBA</td></tr>
+      <tr><td data-i="hon_h13">Precio y despliegue</td><td data-i="hon_h13_a">Suscripción cloud por capacidad; requiere tenant e infra</td><td class="yes" data-i="hon_h13_b">Licencia única o suscripción chica; corre en una notebook, sin nube</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="hon-note" data-i="hon_note">Esta misma tabla vive en el repositorio
+    (<code>docs/PURVIEW_COLLIBRA.md</code>) y se mantiene junto con el producto: si una fila
+    cambia en el código, cambia acá.</p>
+</div></section>
+
 <section class="panel" id="precios"><div class="wrap">
   <div class="eyebrow" data-i="pr_eye">Precios</div>
   <h2 class="h2" data-i="pr_h2">Planes simples, sin sorpresas</h2>
@@ -775,6 +821,52 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   v_eye:"Narrated demo · 1 minute · ES / EN / PT",v_h2:"Watch MV Data Governance in action",
   v_lead:"One minute, with voice-over in your language (Spanish, English or Portuguese): from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
   v_fallback:"Your browser does not support HTML5 video playback.",
+  nav_honest:"Comparison",
+  hon_eye:"Honest comparison",
+  hon_h2:"Capability by capability against Purview and Collibra",
+  hon_lead:"Including what MV does <b>not</b> do. If you need automatic lineage discovery across dozens of systems, or hundreds of managed connectors, those suites are the right answer — and we tell you here, not after you buy.",
+  hon_c0:"Capability",
+  hon_c1:"Purview / Collibra",
+  hon_h1:"Catalog with owner, steward and classification",
+  hon_h1_a:"✅",
+  hon_h1_b:"✅ Catalog + My data",
+  hon_h3:"Curation and approval workflow",
+  hon_h3_a:"✅",
+  hon_h3_b:"✅ AI-drafted definition, validated by the Data Owner",
+  hon_h4:"Stewardship assignment",
+  hon_h4_a:"✅",
+  hon_h4_b:"✅ from the org chart, editable",
+  hon_h5:"Governance posture insights",
+  hon_h5_a:"✅",
+  hon_h5_b:"✅ 0-100 index across 5 coverages",
+  hon_h6:"Data quality with rules and thresholds",
+  hon_h6_a:"✅",
+  hon_h6_b:"✅ 6 DAMA dimensions + remediation",
+  hon_h7:"MDM / deduplication (golden record)",
+  hon_h7_a:"➖ Collibra partial · Purview no",
+  hon_h7_b:"✅ full MDM tab",
+  hon_h8:"Data contracts and lineage alerts",
+  hon_h8_a:"✅",
+  hon_h8_b:"✅ with downstream impact and owner",
+  hon_h9:"Lineage",
+  hon_h9_a:"✅ automatic discovery across dozens of systems",
+  hon_h9_b:"🟡 real and end-to-end, but only for the sources you connect",
+  hon_h10:"Source scanning",
+  hon_h10_a:"✅ hundreds of managed connectors",
+  hon_h10_b:"🟡 9 SQL/cloud engines + Power BI + Tableau + files",
+  hon_h11:"Sensitive data classification",
+  hon_h11_a:"✅ managed classifiers + MIP labels",
+  hon_h11_b:"🟡 PII heuristics + real MIP, only on OneDrive/SharePoint",
+  hon_h12:"Access enforcement (blocking queries)",
+  hon_h12_a:"✅ Purview, inside the Azure stack",
+  hon_h12_b:"🟡 generates the DDL (GRANT/REVOKE + masking); a DBA runs it",
+  hon_h13:"Price and deployment",
+  hon_h13_a:"Cloud subscription by capacity; needs a tenant and infra",
+  hon_h13_b:"One-off licence or small subscription; runs on a laptop, no cloud",
+  hon_note:"This same table lives in the repository (<code>docs/PURVIEW_COLLIBRA.md</code>) and is maintained alongside the product: if a row changes in the code, it changes here.",
+  hon_g2_a:"✅",
+  hon_g2_b:"✅ trilingual ES/EN/PT",
+  hon_g2:"Business glossary",
   v_err_t:"We couldn't load the video",
   v_err_d:"It may be your connection or a blocker. You can see the same thing in the screenshots below, or try the demo directly.",
   v_err_cta:"Try the demo",
@@ -905,6 +997,52 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   v_eye:"Demo narrada · 1 minuto · ES / EN / PT",v_h2:"Veja o MV Data Governance em ação",
   v_lead:"Um minuto, com narração no seu idioma (espanhol, inglês ou português): do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
   v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
+  nav_honest:"Comparativo",
+  hon_eye:"Comparativo honesto",
+  hon_h2:"Capacidade por capacidade contra Purview e Collibra",
+  hon_lead:"Inclui o que o MV <b>não</b> faz. Se você precisa de descoberta automática de linhagem entre dezenas de sistemas, ou centenas de conectores gerenciados, essas suítes são a resposta certa — e dizemos isso aqui, não depois da compra.",
+  hon_c0:"Capacidade",
+  hon_c1:"Purview / Collibra",
+  hon_h1:"Catálogo com dono, steward e classificação",
+  hon_h1_a:"✅",
+  hon_h1_b:"✅ Catálogo + Meus dados",
+  hon_h3:"Fluxo de curadoria e aprovação",
+  hon_h3_a:"✅",
+  hon_h3_b:"✅ definição sugerida por IA, validada pelo Data Owner",
+  hon_h4:"Atribuição de responsáveis (stewardship)",
+  hon_h4_a:"✅",
+  hon_h4_b:"✅ a partir do organograma, editável",
+  hon_h5:"Insights do estado da governança",
+  hon_h5_a:"✅",
+  hon_h5_b:"✅ índice 0-100 com 5 coberturas",
+  hon_h6:"Qualidade de dados com regras e limites",
+  hon_h6_a:"✅",
+  hon_h6_b:"✅ 6 dimensões DAMA + remediação",
+  hon_h7:"MDM / deduplicação (golden record)",
+  hon_h7_a:"➖ Collibra parcial · Purview não",
+  hon_h7_b:"✅ aba MDM completa",
+  hon_h8:"Contratos de dados e alertas sobre linhagem",
+  hon_h8_a:"✅",
+  hon_h8_b:"✅ com impacto a jusante e responsável",
+  hon_h9:"Linhagem",
+  hon_h9_a:"✅ descoberta automática entre dezenas de sistemas",
+  hon_h9_b:"🟡 real e end-to-end, mas só das fontes que você conecta",
+  hon_h10:"Varredura de fontes",
+  hon_h10_a:"✅ centenas de conectores gerenciados",
+  hon_h10_b:"🟡 9 motores SQL/cloud + Power BI + Tableau + arquivos",
+  hon_h11:"Classificação de dados sensíveis",
+  hon_h11_a:"✅ classificadores gerenciados + rótulos MIP",
+  hon_h11_b:"🟡 heurística de PII + MIP real, só no OneDrive/SharePoint",
+  hon_h12:"Enforcement de acesso (bloquear consultas)",
+  hon_h12_a:"✅ Purview, dentro do stack Azure",
+  hon_h12_b:"🟡 gera o DDL (GRANT/REVOKE + mascaramento); um DBA executa",
+  hon_h13:"Preço e implantação",
+  hon_h13_a:"Assinatura cloud por capacidade; exige tenant e infra",
+  hon_h13_b:"Licença única ou assinatura pequena; roda num notebook, sem nuvem",
+  hon_note:"Esta mesma tabela vive no repositório (<code>docs/PURVIEW_COLLIBRA.md</code>) e é mantida junto com o produto: se uma linha muda no código, muda aqui.",
+  hon_g2_a:"✅",
+  hon_g2_b:"✅ trilíngue ES/EN/PT",
+  hon_g2:"Glossário de negócio",
   v_err_t:"Não conseguimos carregar o vídeo",
   v_err_d:"Pode ser sua conexão ou um bloqueador. Você pode ver o mesmo nas capturas abaixo, ou testar a demo diretamente.",
   v_err_cta:"Testar a demo",
