@@ -313,6 +313,22 @@ def test_licencia_valida_y_gating(tmp_path, monkeypatch):
     assert licensing.plan() == licensing.PLAN_DEMO
 
 
+def test_licencia_plan_owner_desbloquea_todo(tmp_path, monkeypatch):
+    """El plan "owner" (auto-emitido con la clave privada del dueño) pasa
+    has_feature() para cualquier función, incluida una que no exista todavía
+    en FUNCIONES_PAGAS al momento de escribir este test."""
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner")
+    assert licensing.save(token) is not None
+    assert licensing.plan() == "owner"
+    for funcion in list(licensing.FUNCIONES_PAGAS) + ["funcion_futura_no_declarada"]:
+        assert licensing.has_feature(funcion) is True
+
+
 def test_licencia_rechaza_manipulacion_y_vencimiento(tmp_path, monkeypatch):
     """Los tres ataques que importan contra una verificación local."""
     import base64

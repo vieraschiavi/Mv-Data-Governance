@@ -27,6 +27,50 @@ python packaging/build_release.py    # → dist/MVDataGovernance_Owner_v{ver}.zi
 
 ---
 
+## 🔓 Sacarte las restricciones (plan "owner")
+
+El kit del owner trae el mismo programa que un cliente, con las mismas
+funciones pagas apagadas hasta activar una licencia (pestaña Ayuda) — a
+propósito: es el mismo circuito que se audita, no una versión distinta con
+menos controles. Vos no comprás una licencia, te **auto-emitís** una con plan
+`owner`, que `has_feature()` trata como comodín: desbloquea todo, hoy y lo
+que se agregue después a `FUNCIONES_PAGAS`.
+
+**No existe un "build owner" separado para descargar ya desbloqueado** — ver
+por qué en el punto 4. Es un paso más, una vez, con tu clave privada.
+
+1. Si todavía no generaste el par de claves del emisor de licencias:
+
+   ```bash
+   python packaging/licencias.py keygen
+   ```
+
+   Pegá la pública impresa en `PUBLIC_KEY_B64` (`mvdg/licensing.py`) y cargá
+   la privada como `LICENSE_PRIVATE_KEY` en Vercel (para las licencias que sí
+   se venden). **Sin este paso ninguna licencia valida — ni la de un cliente
+   ni la tuya —, a propósito: falla cerrado.**
+
+2. Auto-emitite una licencia `owner` perpetua (sin `--dias` = no vence):
+
+   ```bash
+   python packaging/licencias.py firmar --plan owner --email tu-email@dominio.com
+   ```
+
+3. Copiá el token `MVDG2....` que imprime y pegalo una vez en la pestaña
+   ❓ Ayuda → Licencia del programa (cualquiera de las 3 versiones: .exe,
+   .bat o web). Queda guardado en `~/.mv_data_governance/licencia.json` — no
+   hay que repetirlo cada vez que abrís el programa.
+
+4. **Por qué esto y no un ZIP "owner" ya desbloqueado en un Release de
+   GitHub**: el repo es público. Cualquiera que lo descargue tendría Purview,
+   Collibra y el escaneo de tenant BI gratis — exactamente lo que el plan de
+   licencias existe para evitar. El token `owner` requiere tu clave PRIVADA
+   para emitirse (no está en el código fuente ni se puede fabricar leyéndolo),
+   así que es seguro guardarlo vos y activarlo localmente en tus propias
+   instalaciones, pero no es algo que tenga sentido publicar.
+
+---
+
 ## 🛡️ Por qué esta versión pasa la revisión de privacidad de cualquier empresa
 
 La versión del owner no "esquiva" los controles de TI del cliente — **los
