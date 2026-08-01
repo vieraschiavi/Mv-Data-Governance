@@ -1833,6 +1833,24 @@ def test_seguridad_xss_regresion_real_no_solo_grep():
         assert pista in salida, f"falta evidencia de que se probo: {pista}"
 
 
+def test_pagos_y_licencia_cobertura_real_no_solo_grep():
+    """Los modulos que tocan dinero (checkout, verificacion de pago, firma de
+    licencia) tenian 0% de cobertura de EJECUCION -- solo grep de texto. Esto
+    corre los handlers reales con mocks de req/res/fetch: metodo invalido,
+    plan invalido, rate limit, MercadoPago aprobando/rechazando/fallando,
+    emision de licencia Ed25519 verificable, e intentos de inyeccion en
+    payment_id."""
+    if not _node_disponible():
+        pytest.skip("node no disponible en este entorno")
+    ok, salida = _correr_test_js("api/payments.test.js")
+    assert ok, f"test de pagos/licencia fallo:\n{salida}"
+    assert "Todos los checks de pago/licencia pasaron" in salida
+    # evidencia de que se cubrieron los casos que importan, no solo un smoke test
+    for pista in ("rate limit", "Ed25519", "MercadoPago responde error",
+                  "inyección", "no_token", "aprobado"):
+        assert pista in salida, f"falta cobertura de: {pista}"
+
+
 def test_no_hay_carpetas_vendor_de_terceros_sin_declarar():
     """Nada de codigo de terceros pegado a mano: las dependencias van por
     pip/npm con version declarada, nunca copiadas en una carpeta vendor/."""
@@ -1909,6 +1927,24 @@ def test_un_solo_comando_instala_y_testea():
     assert "pytest tests/" in mk
     # `--upgrade pip` rompe en Pythons administrados por la distro
     assert "--upgrade pip" not in mk
+
+
+def test_readme_explica_correr_tests_en_maquina_limpia():
+    """El README tiene que alcanzar solo: alguien que nunca vio el repo debe
+    poder clonarlo y correr los tests sin preguntarle a nadie ni leer
+    CLAUDE.md. Antes faltaba el git clone y el prerrequisito de Python."""
+    ruta = os.path.join(_repo_root(), "README.md")
+    with open(ruta, encoding="utf-8") as fh:
+        rm = fh.read()
+    seccion = rm[rm.index("## ✅ Tests"):]
+    assert "git clone" in seccion, "falta el paso de clonar el repo"
+    assert "python" in seccion.lower() and ("3.10" in seccion or "3.1" in seccion), (
+        "falta el prerrequisito de version de Python")
+    assert "pip install -r requirements-dev.txt" in seccion
+    assert "pytest tests/" in seccion
+    # los tests de JS tambien se documentan, no solo los de Python
+    assert "node api/payments.test.js" in seccion
+    assert "node landing/security.test.js" in seccion
 
 
 def test_mcp_pinneado_por_debajo_de_2():

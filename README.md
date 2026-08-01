@@ -127,22 +127,44 @@ traducciones está cubierta por tests.
 
 ## ✅ Tests
 
-Un solo comando desde un checkout limpio — instala dependencias y corre la suite:
+Desde una máquina limpia (sin nada de este repo instalado todavía), estos son
+TODOS los pasos — no hace falta leer ningún otro documento primero:
+
+**Requisitos**: [Python 3.10+](https://www.python.org/downloads/) y
+[git](https://git-scm.com/downloads). `make` y
+[Node 18+](https://nodejs.org/) son opcionales (ver abajo).
 
 ```bash
-make test
-```
+git clone https://github.com/vieraschiavi/Mv-Data-Governance.git
+cd Mv-Data-Governance
 
-Otros atajos: `make lint` (ruff), `make check` (linter + tests), `make selfcheck`
-(auto-diagnóstico del motor). Sin `make`, el equivalente son dos pasos:
+# Opcional pero recomendado: entorno virtual, para no instalar nada
+# a nivel de todo el sistema.
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-```bash
 pip install -r requirements-dev.txt   # arrastra requirements.txt
 pytest tests/ -v
 ```
 
-Cada push y cada PR corren linter + tests + auto-diagnóstico en GitHub Actions
-(`.github/workflows/tests.yml`, Python 3.10 y 3.12).
+Eso corre la suite de Python (motor, i18n, exportadores, API — la gran
+mayoría de los tests). Con `make` instalado, `make test` hace exactamente lo
+mismo en un solo comando (`make lint` corre ruff, `make check` es
+lint + test, `make selfcheck` es el auto-diagnóstico del motor).
+
+**Tests de JavaScript** (código de pago/licencia en `api/*.js` y las
+funciones de escape de la landing): no son parte de `pytest` porque corren
+en Node, no en Python. Sin dependencias nuevas — si tenés Node instalado:
+
+```bash
+node api/payments.test.js       # checkout, verify-payment, firma de licencia
+node landing/security.test.js   # regresión de XSS: esc()/rvEsc() contra payloads reales
+```
+
+`make test` los corre automáticamente si detecta `node` en el PATH.
+
+Cada push y cada PR corren linter + tests (Python **y** JS) + auto-diagnóstico
+en GitHub Actions (`.github/workflows/tests.yml`, Python 3.10 y 3.12).
 
 ---
 

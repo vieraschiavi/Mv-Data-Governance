@@ -46,15 +46,21 @@ jobs:
       - name: Tests
         run: python -m pytest tests/ -v
 
+      - name: Cero warnings de deprecación
+        # Corrida aparte y estricta: si algo empieza a emitir un
+        # DeprecationWarning, esto falla aunque los tests de arriba pasen.
+        run: python -m pytest tests/ -q -W error::DeprecationWarning
+
       - name: Auto-diagnóstico del motor
         # El selfcheck importa el motor entero y el dashboard: si algo quedó
         # desalineado entre app.py y mvdg/, se cae acá aunque los tests pasen.
         run: python -m mvdg.selfcheck
 
-      - name: Test de XSS de la landing (JS)
-        # Sin deps nuevas (Node ya viene en el runner): las funciones de
-        # escape de la landing corren en el navegador, no en Python, así que
-        # pytest no las puede ejecutar directo. Solo hace falta correrlo una
-        # vez, no por versión de Python.
+      - name: Tests de JS (pago/licencia + XSS)
+        # Sin deps nuevas (Node ya viene en el runner): cubre lo que pytest no
+        # puede, porque api/*.js y las funciones de escape de la landing son
+        # JavaScript. Solo hace falta correrlo una vez, no por versión de Python.
         if: matrix.python-version == '3.12'
-        run: node landing/security.test.js
+        run: |
+          node api/payments.test.js
+          node landing/security.test.js
