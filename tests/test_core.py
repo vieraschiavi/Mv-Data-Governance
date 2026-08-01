@@ -4673,6 +4673,95 @@ def _read_bat(name):
         return fh.read()
 
 
+_BATS_LANZADORES = ("MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
+                    "MV_DataGovernance_Server.bat")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_repara_venv_sin_pip(nombre):
+    """Regresion del error reportado en Windows: "No module named pip".
+
+    Si la creacion del venv se interrumpe, queda .venv\\Scripts\\python.exe
+    pero SIN pip. Los .bat asumian que la existencia del interprete implicaba
+    un entorno usable, entraban igual, y reintentaban 4 veces el mismo
+    comando condenado echandole la culpa a OneDrive.
+    """
+    src = _read_bat(nombre)
+    # 1) se comprueba que pip EXISTE antes de intentar instalar con el
+    assert "-m pip --version" in src, "no verifica que pip exista"
+    # 2) se repara con ensurepip (offline, sin borrar el entorno)
+    assert "-m ensurepip --upgrade" in src, "no repara pip con ensurepip"
+    # 3) si ni ensurepip alcanza, se rehace el entorno automaticamente
+    assert ":rebuild_venv" in src and 'rmdir /s /q ".venv"' in src, (
+        "no rehace el entorno cuando es irrecuperable")
+    # 4) rehacer se intenta UNA sola vez: sin esto es un bucle infinito
+    assert "if defined MVDG_REBUILT goto errvenv" in src, (
+        "sin guarda contra rehacer el entorno en bucle")
+    assert 'set "MVDG_REBUILT="' in src, "no reinicia la guarda al arrancar"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_no_culpa_a_onedrive_cuando_falta_pip(nombre):
+    """El mensaje de "archivo en uso / pausa OneDrive" solo tiene sentido si
+    pip existe y algo bloquea un archivo. Cuando falta pip, reintentar es
+    inutil y el consejo manda al usuario a perder el tiempo."""
+    src = _read_bat(nombre)
+    bloque = src[src.index(":install_deps"):]
+    # se distingue el caso "pip no esta" con un codigo de salida propio...
+    assert "exit /b 2" in bloque, "no distingue falta-de-pip de archivo-en-uso"
+    # ...y el llamador lo trata rehaciendo el entorno, no reintentando.
+    # OJO: "if errorlevel N" en cmd es ">= N", asi que el 2 debe chequearse
+    # ANTES que el 1 o nunca se alcanza.
+    i2 = src.index("if errorlevel 2 goto rebuild_venv")
+    i1 = src.index("if errorlevel 1 goto errdeps")
+    assert i2 < i1, "el errorlevel 2 se chequea despues del 1: nunca entra"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_no_filtra_el_error_de_pip_por_stderr(nombre):
+    """El usuario veia "No module named pip" DOS veces: la linea que
+    actualiza pip redirigia solo stdout (>nul), asi que su stderr se colaba
+    a la consola ademas del error real de la linea siguiente."""
+    src = _read_bat(nombre)
+    assert "-m pip install --upgrade pip >nul 2>nul" in src, (
+        "el upgrade de pip no silencia stderr")
+    assert "-m pip install --upgrade pip >nul\n" not in src, (
+        "quedo una redireccion que deja escapar stderr")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_detecta_venv_que_ya_no_arranca(nombre):
+    """El otro modo de falla real: se actualiza o desinstala el Python del
+    sistema y el venv queda apuntando a un interprete que ya no existe."""
+    src = _read_bat(nombre)
+    assert '-c "pass"' in src, "no verifica que el interprete del venv arranque"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_verifica_dependencias_antes_de_lanzar(nombre):
+    """El Server.bat saltaba directo a :launch si existia el .venv, sin
+    mirar si las dependencias estaban: arrancaba y moria con un traceback."""
+    src = _read_bat(nombre)
+    assert ":verify" in src, "no hay etapa de verificacion de dependencias"
+    i_verify = src.index(":verify")
+    i_launch = src.index("\n:launch")
+    assert i_verify < i_launch, "la verificacion queda despues del arranque"
+    assert '-c "import ' in src[i_verify:i_launch], (
+        "la etapa de verificacion no importa nada")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_ofrece_el_instalador_exe_como_salida(nombre):
+    """Cuando el camino con Python falla de verdad, el usuario tiene que
+    enterarse de que existe un instalador que no necesita Python."""
+    src = _read_bat(nombre)
+    assert "MVDataGovernance_Setup.exe" in src, (
+        "no menciona el instalador .exe como alternativa")
+    # y ya no manda a borrar carpetas a mano: eso ahora es automatico
+    assert "borra la carpeta .venv" not in src
+    assert "delete the .venv folder" not in src
+
+
 def test_api_and_server_bats_are_self_sufficient_and_open_browser():
     """Los .bat de API y Servidor deben poder usarse SOLOS (crear su propio
     entorno como el .bat principal) y abrir el navegador — si no, el usuario ve

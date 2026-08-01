@@ -19,17 +19,76 @@ if not errorlevel 1 set "PYCMD=python"
 if not defined PYCMD py -3 --version >nul 2>nul
 if not defined PYCMD if not errorlevel 1 set "PYCMD=py -3"
 
-if exist ".venv\Scripts\python.exe" goto verify
-if not defined PYCMD goto nopython
+set "MVDG_REBUILT="
 
+rem ==================================================================
+rem  ENTORNO: crear el .venv si falta, o REPARARLO si quedo a medias.
+rem  ES: que exista .venv\Scripts\python.exe NO alcanza para asumir
+rem      que el entorno sirve. Los dos casos reales que rompian:
+rem      (1) la creacion del venv se interrumpio -> queda el
+rem          interprete pero SIN pip ("No module named pip"), y
+rem      (2) se actualizo/desinstalo el Python del sistema -> el venv
+rem          apunta a un interprete que ya no existe y ni siquiera
+rem          arranca. Antes el .bat entraba igual y reintentaba 4
+rem          veces el mismo comando condenado, culpando a OneDrive.
+rem ==================================================================
+:ensure_env
+if not exist ".venv\Scripts\python.exe" goto make_venv
+
+rem --- (a) el interprete del venv, arranca de verdad? ---
+".venv\Scripts\python.exe" -c "pass" >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo  [ES] El entorno quedo apuntando a un Python que ya no existe
+    echo       ^(pasa al actualizar o desinstalar Python^). Rehaciendolo...
+    echo  [EN] The environment points to a Python that no longer exists
+    echo       ^(happens when Python is upgraded or removed^). Rebuilding...
+    echo  [PT] O ambiente aponta para um Python que nao existe mais
+    echo       ^(acontece ao atualizar ou desinstalar o Python^). Refazendo...
+    echo.
+    goto rebuild_venv
+)
+
+rem --- (b) tiene pip? Si no, se repara sin borrar nada ni bajar nada ---
+".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+if not errorlevel 1 goto verify
 echo.
-echo  [ES] Primera ejecucion: creando entorno e instalando dependencias (2-5 min)...
-echo  [EN] First run: creating environment and installing dependencies (2-5 min)...
-echo  [PT] Primeira execucao: criando ambiente e instalando dependencias (2-5 min)...
+echo  [ES] Al entorno le falta pip ^(instalacion anterior interrumpida^). Reparando...
+echo  [EN] The environment is missing pip ^(previous install was interrupted^). Repairing...
+echo  [PT] Falta pip no ambiente ^(instalacao anterior interrompida^). Reparando...
+echo.
+".venv\Scripts\python.exe" -m ensurepip --upgrade
+if not errorlevel 1 goto verify
+echo.
+echo  [ES] No se pudo reparar pip. Rehaciendo el entorno desde cero...
+echo  [EN] Could not repair pip. Rebuilding the environment from scratch...
+echo  [PT] Nao foi possivel reparar o pip. Refazendo o ambiente do zero...
+echo.
+goto rebuild_venv
+
+rem --- Rehacer el venv. Solo se intenta UNA vez por ejecucion: si el
+rem     entorno recien hecho tampoco sirve, el problema no es el venv. ---
+:rebuild_venv
+if defined MVDG_REBUILT goto errvenv
+set "MVDG_REBUILT=1"
+rmdir /s /q ".venv" >nul 2>nul
+goto make_venv
+
+:make_venv
+if not defined PYCMD goto nopython
+echo.
+echo  [ES] Preparando el entorno e instalando dependencias (2-5 min)...
+echo  [EN] Preparing the environment and installing dependencies (2-5 min)...
+echo  [PT] Preparando o ambiente e instalando dependencias (2-5 min)...
 echo.
 %PYCMD% -m venv .venv
 if errorlevel 1 goto errvenv
+rem Cinturon y tiradores: normalmente "venv" ya deja pip adentro, pero si
+rem la copia quedo incompleta esto lo completa sin bajar nada de internet.
+".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+if errorlevel 1 ".venv\Scripts\python.exe" -m ensurepip --upgrade >nul 2>nul
 call :install_deps
+if errorlevel 2 goto rebuild_venv
 if errorlevel 1 goto errdeps
 
 :verify
@@ -42,8 +101,10 @@ echo  [EN] Finishing a previously interrupted install...
 echo  [PT] Concluindo uma instalacao anterior interrompida...
 echo.
 call :install_deps
+rem  errorlevel 2 = pip desaparecio del entorno. Se chequea ANTES que el 1
+rem  porque "if errorlevel N" en cmd significa ">= N".
+if errorlevel 2 goto rebuild_venv
 if errorlevel 1 goto errdeps
-
 :launch
 if not defined MVDG_API_PORT set "MVDG_API_PORT=8600"
 echo.
@@ -65,9 +126,18 @@ rem ------------------------------------------------------------------
 :install_deps
 set "MVDG_TRIES=4"
 :install_deps_try
-".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
+rem  El 2>nul importa: sin el, cuando faltaba pip su error se filtraba por
+rem  stderr y el usuario veia "No module named pip" DOS veces (una de esta
+rem  linea y otra de la de abajo). Actualizar pip es una mejora, no un
+rem  requisito: su resultado no se chequea a proposito.
+".venv\Scripts\python.exe" -m pip install --upgrade pip >nul 2>nul
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if not errorlevel 1 exit /b 0
+rem  Antes de culpar a OneDrive: si pip no esta, reintentar el mismo comando
+rem  4 veces no lo va a resolver. Codigo distinto para que el mensaje final
+rem  diga la verdad en vez de mandar a pausar la sincronizacion al pedo.
+".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+if errorlevel 1 exit /b 2
 set /a MVDG_TRIES-=1
 if %MVDG_TRIES% gtr 0 (
     echo.
@@ -95,26 +165,47 @@ goto end
 
 :errvenv
 echo.
-echo  [ES] Fallo la creacion del entorno (.venv). Borra la carpeta .venv y reintenta.
-echo  [EN] Environment creation failed (.venv). Delete the .venv folder and retry.
-echo  [PT] Falha ao criar o ambiente (.venv). Apague a pasta .venv e tente de novo.
+echo  [ES] No se pudo preparar el entorno de Python. Suele pasar si el antivirus
+echo       bloquea la creacion de archivos, si no hay espacio en disco, o si la
+echo       carpeta esta en OneDrive/Drive/Dropbox sincronizando. Ya se intento
+echo       rehacerlo automaticamente.
+echo       ALTERNATIVA SIN PYTHON: usa el instalador MVDataGovernance_Setup.exe
+echo       ^(no necesita Python ni crear entornos: instala y anda^).
+echo  [EN] Could not prepare the Python environment. Usually caused by antivirus
+echo       blocking file creation, no disk space, or the folder syncing with
+echo       OneDrive/Drive/Dropbox. An automatic rebuild was already attempted.
+echo       NO-PYTHON ALTERNATIVE: use the MVDataGovernance_Setup.exe installer
+echo       ^(no Python, no environments: install and run^).
+echo  [PT] Nao foi possivel preparar o ambiente Python. Costuma ser antivirus
+echo       bloqueando arquivos, falta de espaco em disco, ou a pasta sincronizando
+echo       com OneDrive/Drive/Dropbox. Ja se tentou refazer automaticamente.
+echo       ALTERNATIVA SEM PYTHON: use o instalador MVDataGovernance_Setup.exe
+echo       ^(sem Python, sem ambientes: instala e funciona^).
 goto end
 
 :errdeps
 echo.
-echo  [ES] No se pudo instalar las dependencias despues de varios intentos. Antes de
-echo       reintentar: (1) cerra otras ventanas de MV Data Governance abiertas, (2) si
-echo       esta carpeta esta en OneDrive/Google Drive/Dropbox, pausa la sincronizacion
-echo       o movela fuera ^(ej. C:\MVDataGovernance^), (3) revisa tu internet. Despues
-echo       borra .venv y reintenta.
-echo  [EN] Couldn't install dependencies after several attempts. Before retrying:
-echo       (1) close other open MV Data Governance windows, (2) if this folder is in
-echo       OneDrive/Google Drive/Dropbox, pause syncing or move it out, (3) check your
-echo       internet. Then delete .venv and retry.
-echo  [PT] Nao foi possivel instalar as dependencias. Antes de tentar de novo: (1) feche
-echo       outras janelas do MV Data Governance, (2) se esta pasta esta no OneDrive/
-echo       Google Drive/Dropbox, pause a sincronizacao ou mova-a para fora, (3) verifique
-echo       sua internet. Depois apague .venv e tente de novo.
+echo  [ES] No se pudieron instalar las dependencias. Causas frecuentes:
+echo       (1) sin conexion a internet, (2) otra ventana del programa abierta,
+echo       (3) antivirus o OneDrive/Drive/Dropbox bloqueando archivos.
+echo       NO hace falta borrar nada a mano: el entorno se repara solo la
+echo       proxima vez que abras este .bat.
+echo       ALTERNATIVA SIN PYTHON: usa el instalador MVDataGovernance_Setup.exe
+echo       ^(trae todo adentro: no necesita Python ni bajar dependencias^).
+echo  [EN] Could not install dependencies. Common causes: (1) no internet
+echo       connection, (2) another window of the program still open,
+echo       (3) antivirus or OneDrive/Drive/Dropbox locking files.
+echo       You do NOT need to delete anything by hand: the environment repairs
+echo       itself next time you open this .bat.
+echo       NO-PYTHON ALTERNATIVE: use the MVDataGovernance_Setup.exe installer
+echo       ^(everything bundled: no Python, no downloads^).
+echo  [PT] Nao foi possivel instalar as dependencias. Causas comuns: (1) sem
+echo       conexao com a internet, (2) outra janela do programa aberta,
+echo       (3) antivirus ou OneDrive/Drive/Dropbox bloqueando arquivos.
+echo       NAO e preciso apagar nada a mao: o ambiente se repara sozinho na
+echo       proxima vez que voce abrir este .bat.
+echo       ALTERNATIVA SEM PYTHON: use o instalador MVDataGovernance_Setup.exe
+echo       ^(tudo incluido: sem Python, sem downloads^).
 goto end
 
 :end
