@@ -1595,6 +1595,58 @@ def test_landing_viewport_favicon_y_lang(archivo):
     assert '<html lang="es"' in html      # idioma por defecto del HTML servido
 
 
+def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
+    """La landing tiene que nombrar las integraciones reales -- no
+    "conectate a tus fuentes de datos" generico -- Y el numero que declara
+    (9 motores) tiene que coincidir con lo que el codigo soporta de verdad,
+    para que agregar/sacar un conector sin actualizar la landing rompa esto
+    en vez de quedar mintiendo en silencio."""
+    from mvdg.connectors import ENGINES
+    html = _landing("index.html")
+    # integraciones con nombre propio, no lenguaje generico
+    for nombre in ("Power BI", "Tableau", "Purview", "Collibra"):
+        assert nombre in html, f"falta mencionar {nombre} por su nombre"
+    # el numero de motores que la landing declara tiene que ser el real
+    assert len(ENGINES) == 9, "cambio la cantidad de motores: actualizar la landing"
+    assert "9 motores" in html
+    # no se inventan capacidades que el codigo no tiene (ERPs, "en todos los
+    # paises", etc.) -- ausencia deliberada, no un genericazo disfrazado
+    assert "SAP" not in html and "Dynamics 365" not in html and "NetSuite" not in html
+
+
+def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
+    """No existen /en/ /pt/ como rutas separadas (es un solo HTML con
+    traduccion por JS) -- eso significa que un bot que nunca ejecuta JS
+    (Google, el unfurl de WhatsApp/LinkedIn) siempre ve el HTML servido en
+    espanol, sin importar que arquitectura se use ariba. Lo que SI esta al
+    alcance sin rehacer el sitio es que, para alguien mirando la pagina ya
+    cargada, el <title> y los meta cambien de verdad al tocar el selector de
+    idioma -- antes quedaban fijos en espanol aunque el usuario estuviera
+    viendo el contenido en EN/PT."""
+    html = _landing("index.html")
+    assert "var META={" in html or "var META = {" in html, "falta el diccionario META por idioma"
+    assert "function setMetaTags(" in html
+    assert "setMetaTags(lang)" in html, "setLang() no llama a setMetaTags()"
+
+    import re
+    bloque = re.search(r"var META=\{(.*?)\n\};", html, re.S)
+    assert bloque, "no se pudo extraer el diccionario META"
+    cuerpo = bloque.group(1)
+    for lang in ("es", "en", "pt"):
+        assert re.search(rf"\b{lang}:\{{", cuerpo), f"META sin entrada para {lang}"
+    # los 3 titulos y las 3 descripciones tienen que ser distintos entre si
+    titulos = re.findall(r'title:"([^"]+)"', cuerpo)
+    descs = re.findall(r'desc:"([^"]+)"', cuerpo)
+    assert len(titulos) == 3 and len(set(titulos)) == 3, "hay titulos repetidos entre idiomas"
+    assert len(descs) == 3 and len(set(descs)) == 3, "hay descripciones repetidas entre idiomas"
+    # setMetaTags toca los 5 selectores que importan (title + 4 meta)
+    bloque_fn = re.search(r"function setMetaTags\(lang\)\{(.*?)\n\}", html, re.S).group(1)
+    for selector in ('meta[name="description"]', 'meta[property="og:title"]',
+                     'meta[property="og:description"]', 'meta[name="twitter:title"]'):
+        assert selector in bloque_fn, f"setMetaTags() no toca {selector}"
+    assert "document.title=" in bloque_fn
+
+
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)
 def test_landing_imagenes_con_alt_descriptivo(archivo):
     """Ninguna <img> sin alt, y ningun alt de una sola palabra suelta."""
