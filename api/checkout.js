@@ -14,6 +14,8 @@
 // servidor. El riesgo sin ella es bajo: esto solo crea una preferencia de
 // pago (nadie cobra nada sin pagar de verdad en MercadoPago).
 
+const { rateLimited, clientIp } = require("./_rate_limit");
+
 const PLANS = {
   licencia: { title: "MV Data Governance · Licencia PC (pago único)", price: 149.0 },
   pro:      { title: "MV Data Governance · Professional (mensual)",   price: 390.0 },
@@ -24,6 +26,12 @@ const PLANS = {
 const CURRENCY = process.env.MP_CURRENCY || "USD";  // coincide con los precios mostrados en la landing (US$)
 
 module.exports = async (req, res) => {
+  // 20/min por IP: de sobra para un click de "Comprar" con algún reintento,
+  // corta un script creando preferencias de pago en loop.
+  if (rateLimited(clientIp(req), { max: 20, windowMs: 60_000 })) {
+    res.status(429).json({ error: "rate_limit" });
+    return;
+  }
   if (req.method !== "POST") { res.status(405).json({ error: "method" }); return; }
 
   const body = typeof req.body === "string" ? safeJson(req.body) : (req.body || {});

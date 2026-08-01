@@ -136,7 +136,12 @@ document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener
 try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es')CUR_LANG=sv;}catch(e){}
 
 var PLAN_NAMES={licencia:'Licencia PC',pro:'Professional',cred100:'100 créditos',cred550:'550 créditos',cred2500:'2.500 créditos'};
-function esc(s){return String(s==null?'':s).replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+// Escapado completo (&<>"'), igual que en index.html/reviews.html — aunque
+// hoy esc() solo se usa en nodos de texto (nunca dentro de un atributo), no
+// escapar comillas dejaba una trampa: alcanzaba con mover un esc(...) adentro
+// de un atributo en el futuro para reabrir la inyección.
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function qp(k){return new URLSearchParams(location.search).get(k);}
 
 var STATE={mode:'checking'};

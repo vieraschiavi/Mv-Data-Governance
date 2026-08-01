@@ -1549,6 +1549,58 @@ def test_flujo_principal_funciona_sin_red_ni_servicio_de_pago(monkeypatch):
     assert licensing.plan() == licensing.PLAN_DEMO
 
 
+def test_screencast_real_existe_y_se_puede_reproducir():
+    """El video narrado (build_video.py) es una animacion con TTS, no una
+    grabacion de la app -- no muestra la UI real. Esto exige ademas un
+    screencast de verdad: grabado con Playwright contra la app Streamlit
+    CORRIENDO, no un mockup dibujado con PIL."""
+    for ruta_rel in ("assets/video/MVDataGovernance_Screencast_real.webm",
+                     "landing/video/MVDataGovernance_Screencast_real.webm"):
+        ruta = os.path.join(_repo_root(), ruta_rel)
+        assert os.path.exists(ruta), f"falta {ruta_rel}"
+        assert os.path.getsize(ruta) > 300_000, f"{ruta_rel} sospechosamente chico"
+    # el script que lo genera existe y esta documentado como reproducible
+    script = os.path.join(_repo_root(), "assets", "video", "record_screencast.py")
+    assert os.path.exists(script)
+    with open(script, encoding="utf-8") as fh:
+        contenido = fh.read()
+    assert "streamlit" in contenido.lower() and "playwright" in contenido.lower()
+    assert "stTab" in contenido, "el script no navega pestañas reales de la app"
+    # esta enlazado desde la landing, no solo tirado en una carpeta
+    html = _landing("index.html")
+    assert "MVDataGovernance_Screencast_real.webm" in html
+
+
+def test_landing_promete_solo_lo_que_el_codigo_hace():
+    """Cada capacidad fuerte que la landing menciona (push/pull real a
+    Purview y Collibra, MIP, escaneo batch de conexiones) tiene que tener
+    una implementacion real detras, no solo la mencion."""
+    import mvdg.purview_export as pv_export
+    import mvdg.collibra_export as co_export
+    import mvdg.collibra_pull as co_pull
+    import mvdg.mip_labels  # noqa: F401  -- existe el modulo, es la promesa
+    from mvdg.connectors import scan_all_connections
+
+    # "directo a Purview por su API real (Atlas)"
+    src_purview = open(pv_export.__file__, encoding="utf-8").read()
+    assert "atlas/v2/entity/bulk" in src_purview, (
+        "la landing promete API real de Atlas; el codigo no la llama")
+
+    # "Collibra en las dos direcciones": push_catalog/push_glossary son reales
+    # (no un stub), y collibra_pull.py es un modulo aparte para la vuelta.
+    assert callable(co_export.push_catalog)
+    assert callable(co_export.push_glossary)
+    assert callable(co_pull.pull_catalog)
+    assert callable(scan_all_connections)
+
+    # el escaneo batch aisla el error de cada conexion (no frena las demas) --
+    # es la promesa concreta ("con el error de cada fuente aislado")
+    ruta_connectors = os.path.join(os.path.dirname(pv_export.__file__), "connectors.py")
+    with open(ruta_connectors, encoding="utf-8") as fh:
+        src_scan = fh.read()
+    assert "except Exception" in src_scan, "scan_all_connections deberia aislar errores"
+
+
 # ------------------------------------------------ landing: SEO / a11y / UX
 _LANDING_PAGES = ("index.html", "descargas.html", "guia.html",
                   "pago.html", "reviews.html")
@@ -1593,6 +1645,58 @@ def test_landing_viewport_favicon_y_lang(archivo):
     assert 'rel="icon"' in html
     assert 'rel="apple-touch-icon"' in html
     assert '<html lang="es"' in html      # idioma por defecto del HTML servido
+
+
+def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
+    """La landing tiene que nombrar las integraciones reales -- no
+    "conectate a tus fuentes de datos" generico -- Y el numero que declara
+    (9 motores) tiene que coincidir con lo que el codigo soporta de verdad,
+    para que agregar/sacar un conector sin actualizar la landing rompa esto
+    en vez de quedar mintiendo en silencio."""
+    from mvdg.connectors import ENGINES
+    html = _landing("index.html")
+    # integraciones con nombre propio, no lenguaje generico
+    for nombre in ("Power BI", "Tableau", "Purview", "Collibra"):
+        assert nombre in html, f"falta mencionar {nombre} por su nombre"
+    # el numero de motores que la landing declara tiene que ser el real
+    assert len(ENGINES) == 9, "cambio la cantidad de motores: actualizar la landing"
+    assert "9 motores" in html
+    # no se inventan capacidades que el codigo no tiene (ERPs, "en todos los
+    # paises", etc.) -- ausencia deliberada, no un genericazo disfrazado
+    assert "SAP" not in html and "Dynamics 365" not in html and "NetSuite" not in html
+
+
+def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
+    """No existen /en/ /pt/ como rutas separadas (es un solo HTML con
+    traduccion por JS) -- eso significa que un bot que nunca ejecuta JS
+    (Google, el unfurl de WhatsApp/LinkedIn) siempre ve el HTML servido en
+    espanol, sin importar que arquitectura se use ariba. Lo que SI esta al
+    alcance sin rehacer el sitio es que, para alguien mirando la pagina ya
+    cargada, el <title> y los meta cambien de verdad al tocar el selector de
+    idioma -- antes quedaban fijos en espanol aunque el usuario estuviera
+    viendo el contenido en EN/PT."""
+    html = _landing("index.html")
+    assert "var META={" in html or "var META = {" in html, "falta el diccionario META por idioma"
+    assert "function setMetaTags(" in html
+    assert "setMetaTags(lang)" in html, "setLang() no llama a setMetaTags()"
+
+    import re
+    bloque = re.search(r"var META=\{(.*?)\n\};", html, re.S)
+    assert bloque, "no se pudo extraer el diccionario META"
+    cuerpo = bloque.group(1)
+    for lang in ("es", "en", "pt"):
+        assert re.search(rf"\b{lang}:\{{", cuerpo), f"META sin entrada para {lang}"
+    # los 3 titulos y las 3 descripciones tienen que ser distintos entre si
+    titulos = re.findall(r'title:"([^"]+)"', cuerpo)
+    descs = re.findall(r'desc:"([^"]+)"', cuerpo)
+    assert len(titulos) == 3 and len(set(titulos)) == 3, "hay titulos repetidos entre idiomas"
+    assert len(descs) == 3 and len(set(descs)) == 3, "hay descripciones repetidas entre idiomas"
+    # setMetaTags toca los 5 selectores que importan (title + 4 meta)
+    bloque_fn = re.search(r"function setMetaTags\(lang\)\{(.*?)\n\}", html, re.S).group(1)
+    for selector in ('meta[name="description"]', 'meta[property="og:title"]',
+                     'meta[property="og:description"]', 'meta[name="twitter:title"]'):
+        assert selector in bloque_fn, f"setMetaTags() no toca {selector}"
+    assert "document.title=" in bloque_fn
 
 
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)
@@ -1800,6 +1904,100 @@ def test_landing_no_inyecta_datos_dinamicos_sin_escapar():
         assert f"esc({campo})" in pago, f"pago.html: {campo} sin escapar"
 
 
+def _node_disponible():
+    import shutil
+    return shutil.which("node") is not None
+
+
+def _correr_test_js(ruta_relativa):
+    """Corre un test .test.js con Node puro y devuelve (ok, salida)."""
+    import subprocess
+    ruta = os.path.join(_repo_root(), ruta_relativa)
+    r = subprocess.run(["node", ruta], capture_output=True, text=True, timeout=60)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def test_seguridad_xss_regresion_real_no_solo_grep():
+    """Test de REGRESION de verdad: ejecuta las funciones esc()/rvEsc() reales
+    de la landing (extraidas del propio HTML de produccion, no reimplementadas)
+    contra una bateria de payloads de XSS. Si alguien rompe el escapado -- lo
+    vacia, lo comenta, o lo deja escapar de menos -- esto falla, no hace falta
+    que nadie lo note a mano revisando el diff.
+
+    landing/security.test.js es Node puro (assert + fs, sin dependencia
+    nueva) porque las funciones que audita corren en el navegador, no en
+    Python: no hay forma de probarlas de verdad sin ejecutar el JS real."""
+    if not _node_disponible():
+        pytest.skip("node no disponible en este entorno")
+    ok, salida = _correr_test_js("landing/security.test.js")
+    assert ok, f"test de seguridad XSS fallo:\n{salida}"
+    assert "Todos los checks de seguridad (XSS) pasaron" in salida
+    # evidencia de que de verdad se probaron los 3 sitios con payloads reales
+    for pista in ("<script>", "onerror", "svg onload", "index.html", "reviews.html", "pago.html"):
+        assert pista in salida, f"falta evidencia de que se probo: {pista}"
+
+
+def test_pagos_y_licencia_cobertura_real_no_solo_grep():
+    """Los modulos que tocan dinero (checkout, verificacion de pago, firma de
+    licencia) tenian 0% de cobertura de EJECUCION -- solo grep de texto. Esto
+    corre los handlers reales con mocks de req/res/fetch: metodo invalido,
+    plan invalido, rate limit, MercadoPago aprobando/rechazando/fallando,
+    emision de licencia Ed25519 verificable, e intentos de inyeccion en
+    payment_id."""
+    if not _node_disponible():
+        pytest.skip("node no disponible en este entorno")
+    ok, salida = _correr_test_js("api/payments.test.js")
+    assert ok, f"test de pagos/licencia fallo:\n{salida}"
+    assert "Todos los checks de pago/licencia pasaron" in salida
+    # evidencia de que se cubrieron los casos que importan, no solo un smoke test
+    for pista in ("rate limit", "Ed25519", "MercadoPago responde error",
+                  "inyección", "no_token", "aprobado"):
+        assert pista in salida, f"falta cobertura de: {pista}"
+
+
+def test_no_hay_carpetas_vendor_de_terceros_sin_declarar():
+    """Nada de codigo de terceros pegado a mano: las dependencias van por
+    pip/npm con version declarada, nunca copiadas en una carpeta vendor/."""
+    import subprocess
+    r = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
+                       cwd=_repo_root(), check=True)
+    archivos = r.stdout.splitlines()
+    sospechosos = [f for f in archivos
+                  if "/vendor/" in f or f.startswith("vendor/")
+                  or ("/lib/" in f and "electron/lib/" not in f
+                      and "packaging/" not in f)]
+    assert not sospechosos, f"posible codigo vendorizado sin declarar: {sospechosos}"
+
+
+def test_security_md_documenta_cves_de_dependencias():
+    """El estado de las dependencias de terceros (electron, esbuild,
+    electron-builder) tiene que estar declarado en algun lado visible, no
+    solo "confiar" en que npm audit este limpio hoy."""
+    ruta = os.path.join(_repo_root(), "SECURITY.md")
+    assert os.path.exists(ruta), "falta SECURITY.md"
+    with open(ruta, encoding="utf-8") as fh:
+        sec = fh.read()
+    for paquete in ("electron-builder", "esbuild", "electron"):
+        assert paquete in sec, f"SECURITY.md no menciona {paquete}"
+    assert "npm audit" in sec
+    # el gap real (electron sin actualizar) tiene que quedar dicho, no oculto
+    assert "sin actualizar" in sec or "CVE" in sec
+
+
+def test_endpoints_publicos_de_pago_tienen_rate_limiting_propio():
+    """api/checkout.js y api/verify-payment.js reciben input publico
+    directo (body/query) y NO pueden depender solo del rate limiting de
+    plataforma de Vercel -- eso no es auditable ni configurable desde el
+    repo. Cada uno tiene que tener su propio control."""
+    for archivo in ("checkout.js", "verify-payment.js"):
+        ruta = os.path.join(_repo_root(), "api", archivo)
+        with open(ruta, encoding="utf-8") as fh:
+            codigo = fh.read()
+        assert "_rate_limit" in codigo, f"{archivo}: sin rate limiting propio"
+        assert "rateLimited(" in codigo and "429" in codigo, (
+            f"{archivo}: no corta con 429 al pasarse del limite")
+
+
 def test_landing_tiene_landmark_main():
     html = _landing("index.html")
     assert html.count("<main>") == 1 and html.count("</main>") == 1
@@ -1827,11 +2025,30 @@ def test_un_solo_comando_instala_y_testea():
     assert os.path.exists(ruta), "falta el Makefile"
     with open(ruta, encoding="utf-8") as fh:
         mk = fh.read()
-    assert "test: install" in mk             # testear depende de instalar
+    assert "test-py: install" in mk          # testear depende de instalar
+    assert "test: test-py test-js" in mk     # `make test` corre TODO, no solo Python
     assert "requirements-dev.txt" in mk
     assert "pytest tests/" in mk
     # `--upgrade pip` rompe en Pythons administrados por la distro
     assert "--upgrade pip" not in mk
+
+
+def test_readme_explica_correr_tests_en_maquina_limpia():
+    """El README tiene que alcanzar solo: alguien que nunca vio el repo debe
+    poder clonarlo y correr los tests sin preguntarle a nadie ni leer
+    CLAUDE.md. Antes faltaba el git clone y el prerrequisito de Python."""
+    ruta = os.path.join(_repo_root(), "README.md")
+    with open(ruta, encoding="utf-8") as fh:
+        rm = fh.read()
+    seccion = rm[rm.index("## ✅ Tests"):]
+    assert "git clone" in seccion, "falta el paso de clonar el repo"
+    assert "python" in seccion.lower() and ("3.10" in seccion or "3.1" in seccion), (
+        "falta el prerrequisito de version de Python")
+    assert "pip install -r requirements-dev.txt" in seccion
+    assert "pytest tests/" in seccion
+    # los tests de JS tambien se documentan, no solo los de Python
+    assert "node api/payments.test.js" in seccion
+    assert "node landing/security.test.js" in seccion
 
 
 def test_mcp_pinneado_por_debajo_de_2():

@@ -25,9 +25,15 @@ Setup.
 - **Landing web trilingüe** (estilo MV Kobra): [`landing/index.html`](landing/index.html)
   — hero, video de demo, plataforma, compatibilidad BI, descargas, precios y
   contacto, con selector **ES / PT / EN** persistente.
-- **Video de demo**: [`assets/video/MVDataGovernance_Demo.mp4`](assets/video/MVDataGovernance_Demo.mp4)
+- **Video de demo** (narrado, animado): [`assets/video/MVDataGovernance_Demo.mp4`](assets/video/MVDataGovernance_Demo.mp4)
   (42 s, generado con [`assets/video/build_video.py`](assets/video/build_video.py) —
   reproducible con `python assets/video/build_video.py`).
+- **Screencast real** (sin narración ni edición): [`assets/video/MVDataGovernance_Screencast_real.webm`](assets/video/MVDataGovernance_Screencast_real.webm)
+  (30 s, grabado automáticamente con Playwright contra la app Streamlit
+  corriendo de verdad — catálogo → calidad → linaje → BI/API, el mismo
+  flujo que promociona la landing. Reproducible con
+  `python assets/video/record_screencast.py`, enlazado también desde la
+  landing junto al video narrado).
 
 Para ver la landing localmente:
 
@@ -127,22 +133,44 @@ traducciones está cubierta por tests.
 
 ## ✅ Tests
 
-Un solo comando desde un checkout limpio — instala dependencias y corre la suite:
+Desde una máquina limpia (sin nada de este repo instalado todavía), estos son
+TODOS los pasos — no hace falta leer ningún otro documento primero:
+
+**Requisitos**: [Python 3.10+](https://www.python.org/downloads/) y
+[git](https://git-scm.com/downloads). `make` y
+[Node 18+](https://nodejs.org/) son opcionales (ver abajo).
 
 ```bash
-make test
-```
+git clone https://github.com/vieraschiavi/Mv-Data-Governance.git
+cd Mv-Data-Governance
 
-Otros atajos: `make lint` (ruff), `make check` (linter + tests), `make selfcheck`
-(auto-diagnóstico del motor). Sin `make`, el equivalente son dos pasos:
+# Opcional pero recomendado: entorno virtual, para no instalar nada
+# a nivel de todo el sistema.
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-```bash
 pip install -r requirements-dev.txt   # arrastra requirements.txt
 pytest tests/ -v
 ```
 
-Cada push y cada PR corren linter + tests + auto-diagnóstico en GitHub Actions
-(`.github/workflows/tests.yml`, Python 3.10 y 3.12).
+Eso corre la suite de Python (motor, i18n, exportadores, API — la gran
+mayoría de los tests). Con `make` instalado, `make test` hace exactamente lo
+mismo en un solo comando (`make lint` corre ruff, `make check` es
+lint + test, `make selfcheck` es el auto-diagnóstico del motor).
+
+**Tests de JavaScript** (código de pago/licencia en `api/*.js` y las
+funciones de escape de la landing): no son parte de `pytest` porque corren
+en Node, no en Python. Sin dependencias nuevas — si tenés Node instalado:
+
+```bash
+node api/payments.test.js       # checkout, verify-payment, firma de licencia
+node landing/security.test.js   # regresión de XSS: esc()/rvEsc() contra payloads reales
+```
+
+`make test` los corre automáticamente si detecta `node` en el PATH.
+
+Cada push y cada PR corren linter + tests (Python **y** JS) + auto-diagnóstico
+en GitHub Actions (`.github/workflows/tests.yml`, Python 3.10 y 3.12).
 
 ---
 
