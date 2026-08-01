@@ -68,6 +68,7 @@ from mvdg import tableau_meta as tabl
 from mvdg.ai_provider import (ai_parse_orgchart_image, ai_refactor_calc,
                               ai_refactor_dax)
 from mvdg.policies import policies_df
+from mvdg.auto_rules import auto_quality_results
 from mvdg.profiler import profile_table, suggest_rules, summary
 from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
                           quality_by_dataset, quality_matrix, quality_trend,
@@ -1120,7 +1121,45 @@ def _render_profile(user_df, dataset_name: str | None = None):
     }), width="stretch", hide_index=True)
     if info["pii_columns"]:
         st.warning(t("pr_pii_hint", lang), icon="🔐")
+
+    # Catálogo de calidad de verdad, no solo perfilado: las reglas se generan
+    # a partir del propio archivo y se CORREN contra los datos (score, umbral,
+    # pass/warn/fail) — mismo motor que usan los datasets de demo y ejemplo,
+    # via mvdg.auto_rules (completitud + unicidad; el resto de las 6
+    # dimensiones DAMA depende de reglas de negocio que no se pueden adivinar
+    # de un archivo cualquiera, así que no se fingen).
+    st.subheader(f"✅ {t('pr_auto_quality', lang)}")
+    ares = auto_quality_results(user_df, dataset_name or t("pr_upload", lang), lang)
+    if ares.empty:
+        st.caption(t("pr_auto_quality_none", lang))
+    else:
+        st.caption(t("pr_auto_quality_scope", lang))
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("kpi_quality", lang), f"{overall_index(ares)} / 100")
+        k2.metric(t("kpi_rules_pass", lang), f"{int((ares['status']=='pass').sum())} / {len(ares)}")
+        k3.metric(t("col_rows", lang), f"{info['rows']:,}")
+        a_show = ares.copy()
+        a_show["dimension"] = a_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        a_show["status"] = a_show["status"].map(_STATUS_LABEL)
+        st.dataframe(a_show.rename(columns={
+            "rule_id": "ID", "dataset": t("col_dataset", lang), "column": t("col_column", lang),
+            "dimension": t("q_dimension", lang), "description": t("q_rule", lang),
+            "score": t("q_score", lang), "threshold": t("q_threshold", lang),
+            "status": t("q_status", lang), "affected_rows": t("q_affected", lang),
+        }), width="stretch", hide_index=True)
+        adim = quality_by_dimension(ares)
+        adim["dimension"] = adim["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
+        fig = px.bar(adim, x="dimension", y="quality_index", text="quality_index",
+                    color_discrete_sequence=[BRAND["amber"]])
+        fig.update_traces(texttemplate="%{text:.1f}")
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101], xaxis_title=None,
+                          yaxis_title=None, height=260)
+        st.plotly_chart(fig, width="stretch",
+                        key=f"pr_auto_dims_{dataset_name or 'sinnombre'}")
+        _render_fixes(ares, lang)
+
     st.subheader(t("pr_suggestions", lang))
+    st.caption(t("pr_suggestions_note", lang))
     for s in suggest_rules(user_df, lang):
         st.markdown(f"- {s}")
 
