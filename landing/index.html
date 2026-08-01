@@ -145,6 +145,8 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 /* Estado vacío de las reseñas (si reviews-data.js no carga). */
 .rvempty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:13.5px;
   border:1px dashed var(--line2);border-radius:14px;padding:26px}
+.v-real{max-width:880px;margin:12px auto 0;text-align:center;color:var(--faint);font-size:12.5px}
+.v-real a{color:var(--amber);text-decoration:underline}
 
 /* WHITE panels */
 .panel{background:var(--paper);color:var(--ink-d);border-radius:26px;margin-top:14px;padding:60px 0}
@@ -402,6 +404,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
       <a class="btn btn-a" href="descargas.html" data-i="v_err_cta">Probar la demo</a>
     </div>
   </div>
+  <p class="v-real">
+    <span data-i="v_real_txt">¿Preferís algo sin narración ni edición? Este es un </span>
+    <a href="video/MVDataGovernance_Screencast_real.webm" target="_blank" rel="noopener" data-i="v_real_link">screencast real de 30s</a>
+    <span data-i="v_real_txt2">, grabado automáticamente contra la app corriendo (catálogo → calidad → linaje → BI), sin cortes.</span>
+  </p>
 </div></section>
 
 <!-- TABLEROS (capturas reales) -->
@@ -870,6 +877,9 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   v_err_t:"We couldn't load the video",
   v_err_d:"It may be your connection or a blocker. You can see the same thing in the screenshots below, or try the demo directly.",
   v_err_cta:"Try the demo",
+  v_real_txt:"Prefer something without narration or editing? This is a ",
+  v_real_link:"30s real screencast",
+  v_real_txt2:", recorded automatically against the app running (catalog → quality → lineage → BI), no cuts.",
   alt_tab_panorama:"Overview tab: governance KPIs, quality index and dataset status",
   alt_tab_calidad:"Quality tab: rules by dimension with threshold, result and affected rows",
   alt_tab_linaje:"Lineage tab: source-to-BI graph, from the source table to the report",
@@ -1046,6 +1056,9 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   v_err_t:"Não conseguimos carregar o vídeo",
   v_err_d:"Pode ser sua conexão ou um bloqueador. Você pode ver o mesmo nas capturas abaixo, ou testar a demo diretamente.",
   v_err_cta:"Testar a demo",
+  v_real_txt:"Prefere algo sem narração nem edição? Este é um ",
+  v_real_link:"screencast real de 30s",
+  v_real_txt2:", gravado automaticamente contra o app rodando (catálogo → qualidade → linhagem → BI), sem cortes.",
   alt_tab_panorama:"Aba Panorama: KPIs de governança, índice de qualidade e status dos datasets",
   alt_tab_calidad:"Aba Qualidade: regras por dimensão com limite, resultado e linhas afetadas",
   alt_tab_linaje:"Aba Linhagem: grafo da origem ao BI, da tabela fonte ao relatório",

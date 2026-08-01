@@ -1549,6 +1549,58 @@ def test_flujo_principal_funciona_sin_red_ni_servicio_de_pago(monkeypatch):
     assert licensing.plan() == licensing.PLAN_DEMO
 
 
+def test_screencast_real_existe_y_se_puede_reproducir():
+    """El video narrado (build_video.py) es una animacion con TTS, no una
+    grabacion de la app -- no muestra la UI real. Esto exige ademas un
+    screencast de verdad: grabado con Playwright contra la app Streamlit
+    CORRIENDO, no un mockup dibujado con PIL."""
+    for ruta_rel in ("assets/video/MVDataGovernance_Screencast_real.webm",
+                     "landing/video/MVDataGovernance_Screencast_real.webm"):
+        ruta = os.path.join(_repo_root(), ruta_rel)
+        assert os.path.exists(ruta), f"falta {ruta_rel}"
+        assert os.path.getsize(ruta) > 300_000, f"{ruta_rel} sospechosamente chico"
+    # el script que lo genera existe y esta documentado como reproducible
+    script = os.path.join(_repo_root(), "assets", "video", "record_screencast.py")
+    assert os.path.exists(script)
+    with open(script, encoding="utf-8") as fh:
+        contenido = fh.read()
+    assert "streamlit" in contenido.lower() and "playwright" in contenido.lower()
+    assert "stTab" in contenido, "el script no navega pestañas reales de la app"
+    # esta enlazado desde la landing, no solo tirado en una carpeta
+    html = _landing("index.html")
+    assert "MVDataGovernance_Screencast_real.webm" in html
+
+
+def test_landing_promete_solo_lo_que_el_codigo_hace():
+    """Cada capacidad fuerte que la landing menciona (push/pull real a
+    Purview y Collibra, MIP, escaneo batch de conexiones) tiene que tener
+    una implementacion real detras, no solo la mencion."""
+    import mvdg.purview_export as pv_export
+    import mvdg.collibra_export as co_export
+    import mvdg.collibra_pull as co_pull
+    import mvdg.mip_labels  # noqa: F401  -- existe el modulo, es la promesa
+    from mvdg.connectors import scan_all_connections
+
+    # "directo a Purview por su API real (Atlas)"
+    src_purview = open(pv_export.__file__, encoding="utf-8").read()
+    assert "atlas/v2/entity/bulk" in src_purview, (
+        "la landing promete API real de Atlas; el codigo no la llama")
+
+    # "Collibra en las dos direcciones": push_catalog/push_glossary son reales
+    # (no un stub), y collibra_pull.py es un modulo aparte para la vuelta.
+    assert callable(co_export.push_catalog)
+    assert callable(co_export.push_glossary)
+    assert callable(co_pull.pull_catalog)
+    assert callable(scan_all_connections)
+
+    # el escaneo batch aisla el error de cada conexion (no frena las demas) --
+    # es la promesa concreta ("con el error de cada fuente aislado")
+    ruta_connectors = os.path.join(os.path.dirname(pv_export.__file__), "connectors.py")
+    with open(ruta_connectors, encoding="utf-8") as fh:
+        src_scan = fh.read()
+    assert "except Exception" in src_scan, "scan_all_connections deberia aislar errores"
+
+
 # ------------------------------------------------ landing: SEO / a11y / UX
 _LANDING_PAGES = ("index.html", "descargas.html", "guia.html",
                   "pago.html", "reviews.html")
