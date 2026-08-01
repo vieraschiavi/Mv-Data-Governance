@@ -50,3 +50,11 @@ jobs:
         # El selfcheck importa el motor entero y el dashboard: si algo quedó
         # desalineado entre app.py y mvdg/, se cae acá aunque los tests pasen.
         run: python -m mvdg.selfcheck
+
+      - name: Test de XSS de la landing (JS)
+        # Sin deps nuevas (Node ya viene en el runner): las funciones de
+        # escape de la landing corren en el navegador, no en Python, así que
+        # pytest no las puede ejecutar directo. Solo hace falta correrlo una
+        # vez, no por versión de Python.
+        if: matrix.python-version == '3.12'
+        run: node landing/security.test.js

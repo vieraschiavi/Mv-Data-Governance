@@ -4,8 +4,15 @@
 // licencia MV Data Governance (firmada).
 
 const { sign, signEd25519 } = require("./_license");
+const { rateLimited, clientIp } = require("./_rate_limit");
 
 module.exports = async (req, res) => {
+  // 30/min por IP: la página solo llama esto una vez al cargar /pago.html,
+  // pero frena un intento de enumerar payment_id contra la API de MP.
+  if (rateLimited(clientIp(req), { max: 30, windowMs: 60_000 })) {
+    res.status(429).json({ approved: false, error: "rate_limit" });
+    return;
+  }
   const paymentId = String((req.query && req.query.payment_id) || "").trim();
   if (!paymentId || !/^[0-9]+$/.test(paymentId)) {
     res.status(400).json({ approved: false, error: "payment_id inválido" });

@@ -1800,6 +1800,82 @@ def test_landing_no_inyecta_datos_dinamicos_sin_escapar():
         assert f"esc({campo})" in pago, f"pago.html: {campo} sin escapar"
 
 
+def _node_disponible():
+    import shutil
+    return shutil.which("node") is not None
+
+
+def _correr_test_js(ruta_relativa):
+    """Corre un test .test.js con Node puro y devuelve (ok, salida)."""
+    import subprocess
+    ruta = os.path.join(_repo_root(), ruta_relativa)
+    r = subprocess.run(["node", ruta], capture_output=True, text=True, timeout=60)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def test_seguridad_xss_regresion_real_no_solo_grep():
+    """Test de REGRESION de verdad: ejecuta las funciones esc()/rvEsc() reales
+    de la landing (extraidas del propio HTML de produccion, no reimplementadas)
+    contra una bateria de payloads de XSS. Si alguien rompe el escapado -- lo
+    vacia, lo comenta, o lo deja escapar de menos -- esto falla, no hace falta
+    que nadie lo note a mano revisando el diff.
+
+    landing/security.test.js es Node puro (assert + fs, sin dependencia
+    nueva) porque las funciones que audita corren en el navegador, no en
+    Python: no hay forma de probarlas de verdad sin ejecutar el JS real."""
+    if not _node_disponible():
+        pytest.skip("node no disponible en este entorno")
+    ok, salida = _correr_test_js("landing/security.test.js")
+    assert ok, f"test de seguridad XSS fallo:\n{salida}"
+    assert "Todos los checks de seguridad (XSS) pasaron" in salida
+    # evidencia de que de verdad se probaron los 3 sitios con payloads reales
+    for pista in ("<script>", "onerror", "svg onload", "index.html", "reviews.html", "pago.html"):
+        assert pista in salida, f"falta evidencia de que se probo: {pista}"
+
+
+def test_no_hay_carpetas_vendor_de_terceros_sin_declarar():
+    """Nada de codigo de terceros pegado a mano: las dependencias van por
+    pip/npm con version declarada, nunca copiadas en una carpeta vendor/."""
+    import subprocess
+    r = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
+                       cwd=_repo_root(), check=True)
+    archivos = r.stdout.splitlines()
+    sospechosos = [f for f in archivos
+                  if "/vendor/" in f or f.startswith("vendor/")
+                  or ("/lib/" in f and "electron/lib/" not in f
+                      and "packaging/" not in f)]
+    assert not sospechosos, f"posible codigo vendorizado sin declarar: {sospechosos}"
+
+
+def test_security_md_documenta_cves_de_dependencias():
+    """El estado de las dependencias de terceros (electron, esbuild,
+    electron-builder) tiene que estar declarado en algun lado visible, no
+    solo "confiar" en que npm audit este limpio hoy."""
+    ruta = os.path.join(_repo_root(), "SECURITY.md")
+    assert os.path.exists(ruta), "falta SECURITY.md"
+    with open(ruta, encoding="utf-8") as fh:
+        sec = fh.read()
+    for paquete in ("electron-builder", "esbuild", "electron"):
+        assert paquete in sec, f"SECURITY.md no menciona {paquete}"
+    assert "npm audit" in sec
+    # el gap real (electron sin actualizar) tiene que quedar dicho, no oculto
+    assert "sin actualizar" in sec or "CVE" in sec
+
+
+def test_endpoints_publicos_de_pago_tienen_rate_limiting_propio():
+    """api/checkout.js y api/verify-payment.js reciben input publico
+    directo (body/query) y NO pueden depender solo del rate limiting de
+    plataforma de Vercel -- eso no es auditable ni configurable desde el
+    repo. Cada uno tiene que tener su propio control."""
+    for archivo in ("checkout.js", "verify-payment.js"):
+        ruta = os.path.join(_repo_root(), "api", archivo)
+        with open(ruta, encoding="utf-8") as fh:
+            codigo = fh.read()
+        assert "_rate_limit" in codigo, f"{archivo}: sin rate limiting propio"
+        assert "rateLimited(" in codigo and "429" in codigo, (
+            f"{archivo}: no corta con 429 al pasarse del limite")
+
+
 def test_landing_tiene_landmark_main():
     html = _landing("index.html")
     assert html.count("<main>") == 1 and html.count("</main>") == 1
@@ -1827,7 +1903,8 @@ def test_un_solo_comando_instala_y_testea():
     assert os.path.exists(ruta), "falta el Makefile"
     with open(ruta, encoding="utf-8") as fh:
         mk = fh.read()
-    assert "test: install" in mk             # testear depende de instalar
+    assert "test-py: install" in mk          # testear depende de instalar
+    assert "test: test-py test-js" in mk     # `make test` corre TODO, no solo Python
     assert "requirements-dev.txt" in mk
     assert "pytest tests/" in mk
     # `--upgrade pip` rompe en Pythons administrados por la distro
