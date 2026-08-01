@@ -5,14 +5,14 @@ CRM liviano de gobierno de datos: cada ficha guarda la empresa, el contacto,
 su BI, sus restricciones de TI (deciden si conviene la Opción A instalador
 .exe o la Opción B portable .bat), la madurez de gobierno y notas.
 
-Las fichas se guardan en disco (JSON) y sobreviven al cierre del programa:
-    ~/.mv_data_governance/clientes.json
-o en la carpeta que indique la variable de entorno MVDG_DATA_DIR.
+Las fichas se guardan en disco (JSON) y sobreviven al cierre del programa, en
+la carpeta que decide ``data_dir()`` — ver ahí la prioridad exacta.
 """
 from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from datetime import datetime, timezone
 
@@ -24,8 +24,29 @@ STATUSES = ["lead", "demo", "piloto", "activo", "cerrado"]
 
 
 def data_dir() -> str:
-    d = os.environ.get("MVDG_DATA_DIR") or os.path.join(
-        os.path.expanduser("~"), ".mv_data_governance")
+    """Carpeta donde vive TODO lo persistente (clientes, curaduría, licencia,
+    conexiones, importado, organigrama - un solo directorio para todo eso).
+
+    Prioridad:
+    1. ``MVDG_DATA_DIR`` explícita: control manual, gana siempre.
+    2. Instalación empaquetada (el .exe de Inno Setup, ``sys.frozen``): una
+       carpeta ``Data`` AL LADO del ejecutable. Así lo que el usuario eligió
+       en "Seleccionar carpeta de destino" del instalador (C:, D:, un
+       pendrive) es también donde quedan sus datos - no una carpeta aparte
+       en el perfil de Windows, que casi siempre vive en C: aunque el
+       programa se haya instalado en otro disco a propósito.
+    3. Todo lo demás (portable .bat, corriendo desde código fuente):
+       ``~/.mv_data_governance``. Ahí no hay una carpeta de instalación fija
+       a la cual atarse - el usuario puede mover la carpeta del programa
+       libremente sin que sus datos queden huérfanos en otro lado.
+    """
+    override = os.environ.get("MVDG_DATA_DIR")
+    if override:
+        d = override
+    elif getattr(sys, "frozen", False):
+        d = os.path.join(os.path.dirname(sys.executable), "Data")
+    else:
+        d = os.path.join(os.path.expanduser("~"), ".mv_data_governance")
     os.makedirs(d, exist_ok=True)
     return d
 
