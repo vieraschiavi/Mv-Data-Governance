@@ -8,7 +8,6 @@ abre el navegador automáticamente — el usuario solo hace doble clic.
 from __future__ import annotations
 
 import os
-import socket
 import sys
 import threading
 import time
@@ -22,18 +21,59 @@ def _base_dir() -> str:
 
 
 def _puerto_libre() -> int:
-    """Puerto libre para no chocar con otras apps (p. ej. otra en 8501)."""
-    for p in (8641, 8652, 8663, 8674, 8685):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind(("127.0.0.1", p))
-                return p
-            except OSError:
-                continue
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    """Puerto libre para no chocar con otras apps (p. ej. otra en 8501).
+
+    La deteccion vive en mvdg.netports porque la version que estaba aca
+    usaba SO_REUSEADDR, que en Windows permite atarse a un puerto de OTRA
+    aplicacion en vez de detectar que esta ocupado."""
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import elegir_puerto
+    return elegir_puerto("127.0.0.1")
+
+
+def _puerto_pedido() -> int:
+    """Puerto que el usuario fijo a mano (STREAMLIT_SERVER_PORT), o 0.
+
+    Si lo fijo y OTRA aplicacion ya lo esta usando, no lo cambiamos por
+    atras: eso lo dejaria buscando el programa en una direccion que no es.
+    Se corta con un mensaje que dice que hacer, en vez del traceback de
+    Tornado ("address already in use") que no le dice nada a un usuario de
+    escritorio. Sin la variable definida no hay contrato que respetar y el
+    lanzador elige puerto solo."""
+    crudo = os.environ.get("STREAMLIT_SERVER_PORT", "").strip()
+    if not crudo:
+        return 0
+    try:
+        port = int(crudo)
+    except ValueError:
+        _salir_con_aviso(
+            f"STREAMLIT_SERVER_PORT={crudo!r} no es un numero de puerto.\n"
+            "  ES: dejala sin definir para que el programa elija uno solo.\n"
+            "  EN: leave it unset to let the program pick one.\n"
+            "  PT: deixe-a indefinida para o programa escolher sozinho.")
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import puerto_libre
+    if not puerto_libre("127.0.0.1", port):
+        _salir_con_aviso(
+            f"El puerto {port} ya esta en uso por otro programa / port {port} "
+            f"is already in use / a porta {port} ja esta em uso.\n"
+            f"  ES: cerra ese programa, usa STREAMLIT_SERVER_PORT=<otro "
+            f"puerto>, o dejala sin definir para que el programa elija.\n"
+            f"  EN: close that program, set STREAMLIT_SERVER_PORT=<other "
+            f"port>, or leave it unset to let the program pick.\n"
+            f"  PT: feche esse programa, use STREAMLIT_SERVER_PORT=<outra "
+            f"porta>, ou deixe-a indefinida para o programa escolher.")
+    return port
+
+
+def _salir_con_aviso(mensaje: str) -> None:
+    """Mensaje accionable y salida limpia (sin traceback en la consola)."""
+    sys.stderr.write(f"\n  [MV Data Governance] {mensaje}\n\n")
+    raise SystemExit(3)
 
 
 def _abrir_navegador(url: str) -> None:
@@ -83,7 +123,7 @@ def main() -> None:
     os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
     os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")
 
-    port = int(os.environ.get("STREAMLIT_SERVER_PORT", 0)) or _puerto_libre()
+    port = _puerto_pedido() or _puerto_libre()
     url = f"http://127.0.0.1:{port}"
     print(f"MV Data Governance -> {url}")
 
