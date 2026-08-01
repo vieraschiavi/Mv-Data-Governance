@@ -143,6 +143,10 @@ function main() {
       assert.ok(new RegExp(`esc\\(${campo.replace(".", "\\.")}\\)`).test(html), `${campo} sin esc()`);
     }
   });
+  check("index.html: la licencia de trial (respuesta de /api/trial) pasa por rvEsc()", () => {
+    const html = fs.readFileSync(path.join(DIR, "index.html"), "utf8");
+    assert.ok(/rvEsc\(res\.d\.license_key\)/.test(html), "res.d.license_key sin rvEsc()");
+  });
 
   console.log(`\nTodos los checks de seguridad (XSS) pasaron (${checks}).`);
 }
