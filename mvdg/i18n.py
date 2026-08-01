@@ -683,7 +683,46 @@ _T: dict[str, dict[str, str]] = {
     "pr_nulls": {"es": "% nulos", "en": "% nulls", "pt": "% nulos"},
     "pr_unique": {"es": "Valores únicos", "en": "Unique values", "pt": "Valores únicos"},
     "pr_dupes": {"es": "Filas duplicadas", "en": "Duplicate rows", "pt": "Linhas duplicadas"},
+    "pr_auto_quality": {
+        "es": "Catálogo de calidad (automático)",
+        "en": "Quality catalog (automatic)",
+        "pt": "Catálogo de qualidade (automático)",
+    },
+    "pr_auto_quality_scope": {
+        "es": "Reglas de completitud y unicidad, generadas y evaluadas contra "
+              "tu archivo — mismo motor que el resto del programa. Validez, "
+              "consistencia, puntualidad y exactitud dependen de reglas de "
+              "negocio que no se pueden adivinar; definilas en 📖 Glosario o "
+              "pedile a tu Data Steward.",
+        "en": "Completeness and uniqueness rules, generated and evaluated "
+              "against your file — same engine as the rest of the program. "
+              "Validity, consistency, timeliness and accuracy depend on "
+              "business rules that can't be guessed; define them in "
+              "📖 Glossary or ask your Data Steward.",
+        "pt": "Regras de completude e unicidade, geradas e avaliadas contra "
+              "seu arquivo — mesmo motor do resto do programa. Validade, "
+              "consistência, pontualidade e exatidão dependem de regras de "
+              "negócio que não podem ser adivinhadas; defina-as em "
+              "📖 Glossário ou peça ao seu Data Steward.",
+    },
+    "pr_auto_quality_none": {
+        "es": "El archivo no tiene columnas donde inferir reglas automáticas "
+              "(o está vacío). Igual podés definir reglas a mano en 📖 Glosario.",
+        "en": "The file has no columns to infer automatic rules from (or it's "
+              "empty). You can still define rules by hand in 📖 Glossary.",
+        "pt": "O arquivo não tem colunas para inferir regras automáticas (ou "
+              "está vazio). Você ainda pode definir regras manualmente em "
+              "📖 Glossário.",
+    },
     "pr_suggestions": {"es": "Reglas sugeridas", "en": "Suggested rules", "pt": "Regras sugeridas"},
+    "pr_suggestions_note": {
+        "es": "Lectura rápida en texto (incluye privacidad). Las de "
+              "completitud y unicidad de arriba ya corrieron con puntaje real.",
+        "en": "Quick text summary (includes privacy). The completeness and "
+              "uniqueness ones above already ran with a real score.",
+        "pt": "Leitura rápida em texto (inclui privacidade). As de "
+              "completude e unicidade acima já rodaram com pontuação real.",
+    },
     "pr_pii_hint": {
         "es": "Posible PII detectada — revisá clasificación y enmascaramiento.",
         "en": "Possible PII detected — review classification and masking.",

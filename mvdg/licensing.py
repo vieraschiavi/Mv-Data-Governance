@@ -78,7 +78,14 @@ _ARCHIVO = "licencia.json"
 # se olvide sumar "owner" a mano.
 PLAN_DEMO = "demo"
 PLAN_OWNER = "owner"
-PLANES = (PLAN_DEMO, "licencia", "professional", "enterprise", PLAN_OWNER)
+# "trial" es el plan Professional (USD 390/mes) por 14 días, auto-emitido sin
+# pago: api/trial.js firma el mismo token MVDG2 que emitiría una compra real,
+# pero con `exp` a 14 días y sin pasar por MercadoPago. verify() YA rechaza
+# tokens vencidos (ver más abajo) — el vencimiento del trial no necesita
+# ningún código nuevo acá, solo que "trial" habilite lo mismo que
+# "professional" en FUNCIONES_PAGAS.
+PLAN_TRIAL = "trial"
+PLANES = (PLAN_DEMO, "licencia", PLAN_TRIAL, "professional", "enterprise", PLAN_OWNER)
 
 # ---------------------------------------------------------------------------
 # POLÍTICA COMERCIAL — qué necesita licencia paga.
@@ -97,10 +104,12 @@ PLANES = (PLAN_DEMO, "licencia", "professional", "enterprise", PLAN_OWNER)
 # datos propios), agregá "mis_datos" a FUNCIONES_PAGAS y listo.
 # ---------------------------------------------------------------------------
 FUNCIONES_PAGAS: dict[str, tuple[str, ...]] = {
-    # función -> planes que la habilitan
-    "migracion_purview": ("professional", "enterprise"),
-    "migracion_collibra": ("professional", "enterprise"),
-    "escaneo_tenant_bi": ("professional", "enterprise"),
+    # función -> planes que la habilitan. "trial" da acceso a lo mismo que
+    # "professional" (es el mismo plan, por 14 días) — así el trial demuestra
+    # el tier completo, no una versión recortada de "a ver si les gusta".
+    "migracion_purview": ("professional", "enterprise", PLAN_TRIAL),
+    "migracion_collibra": ("professional", "enterprise", PLAN_TRIAL),
+    "escaneo_tenant_bi": ("professional", "enterprise", PLAN_TRIAL),
 }
 
 

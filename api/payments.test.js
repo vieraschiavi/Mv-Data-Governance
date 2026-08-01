@@ -353,6 +353,137 @@ async function main() {
     });
   }
 
+  // ------------------------------------------------------------ api/trial.js
+  // Trial de 14 días del plan Professional (USD 390/mes), SIN tarjeta: nunca
+  // pasa por MercadoPago ni pide datos de pago — solo email. Antes de esto no
+  // existía ningún flujo de trial real, solo un botón "pedir demo".
+  {
+    delete require.cache[require.resolve("./trial")];
+    rateLimit.resetForTests();
+    const trial = require("./trial");
+
+    const b64u = (buf) => Buffer.from(buf).toString("base64")
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const b64uDecode = (s) => Buffer.from(
+      s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - s.length % 4) % 4), "base64");
+
+    function conClavePrivada(fn) {
+      const antes = process.env.LICENSE_PRIVATE_KEY;
+      const raw = crypto.randomBytes(32);
+      process.env.LICENSE_PRIVATE_KEY = b64u(raw);
+      return Promise.resolve().then(fn).finally(() => {
+        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes;
+        else delete process.env.LICENSE_PRIVATE_KEY;
+      });
+    }
+
+    await check("trial: sin email -> 400, no emite nada", async () => {
+      await conClavePrivada(async () => {
+        const res = mockRes();
+        await trial({ method: "POST", body: {} }, res);
+        assert.strictEqual(res._status, 400);
+      });
+    });
+
+    await check("trial: email inválido -> 400", async () => {
+      await conClavePrivada(async () => {
+        for (const malo of ["no-es-email", "a@b", "@sin-usuario.com", "  "]) {
+          const res = mockRes();
+          await trial({ method: "POST", body: { email: malo } }, res);
+          assert.strictEqual(res._status, 400, `debería rechazar: ${malo}`);
+        }
+      });
+    });
+
+    await check("trial: método distinto de POST -> 405", async () => {
+      await conClavePrivada(async () => {
+        const res = mockRes();
+        await trial({ method: "GET", body: {} }, res);
+        assert.strictEqual(res._status, 405);
+      });
+    });
+
+    await check("trial: sin LICENSE_PRIVATE_KEY configurada -> 503, nunca una licencia rota", async () => {
+      const antes = process.env.LICENSE_PRIVATE_KEY;
+      delete process.env.LICENSE_PRIVATE_KEY;
+      try {
+        const res = mockRes();
+        await trial({ method: "POST", body: { email: "consultor@empresa.com" } }, res);
+        assert.strictEqual(res._status, 503);
+        assert.strictEqual(res._body.license_key, undefined);
+      } finally {
+        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes;
+      }
+    });
+
+    await check("trial: email válido -> 200, emite MVDG2 sin pedir NINGÚN dato de pago", async () => {
+      await conClavePrivada(async () => {
+        const res = mockRes();
+        const antes = Date.now();
+        await trial({ method: "POST", body: { email: "Consultor@Empresa.com" } }, res);
+        assert.strictEqual(res._status, 200);
+        assert.strictEqual(res._body.plan, "trial");
+        assert.strictEqual(res._body.email, "consultor@empresa.com"); // normalizado a minúsculas
+        assert.ok(res._body.license_key.startsWith("MVDG2."));
+
+        // El payload firmado es el único lugar donde viaja informacion: no
+        // tiene payment_id, tarjeta, ni ningun campo de pago — es literalmente
+        // imposible que el flujo pida una tarjeta si el payload nunca la tiene.
+        const partes = res._body.license_key.split(".");
+        const payload = JSON.parse(b64uDecode(partes[1]).toString("utf8"));
+        assert.deepStrictEqual(Object.keys(payload).sort(), ["email", "exp", "iat", "plan"]);
+        assert.strictEqual(payload.plan, "trial");
+
+        // 14 dias exactos entre emision y vencimiento.
+        assert.strictEqual(payload.exp - payload.iat, 14 * 86400);
+        assert.ok(payload.iat * 1000 >= antes - 2000);
+      });
+    });
+
+    await check("trial: la firma verifica de forma independiente con la clave pública (crypto.verify puro)", async () => {
+      const rawPriv = crypto.randomBytes(32);
+      const der = Buffer.concat([
+        Buffer.from("302e020100300506032b657004220420", "hex"), rawPriv,
+      ]);
+      const privKeyObj = crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8" });
+      const pubKeyObj = crypto.createPublicKey(privKeyObj);
+      const pubRaw = pubKeyObj.export({ type: "spki", format: "der" }).subarray(-32);
+
+      const antes = process.env.LICENSE_PRIVATE_KEY;
+      process.env.LICENSE_PRIVATE_KEY = b64u(rawPriv);
+      try {
+        delete require.cache[require.resolve("./trial")];
+        const trial2 = require("./trial");
+        const res = mockRes();
+        await trial2({ method: "POST", body: { email: "otra@empresa.com" } }, res);
+        const [, body, sig] = res._body.license_key.split(".");
+        const ok = crypto.verify(null, Buffer.from(body, "ascii"), pubKeyObj, b64uDecode(sig));
+        assert.strictEqual(ok, true);
+        // con la clave publica INCORRECTA, no verifica
+        const otraPub = crypto.generateKeyPairSync("ed25519").publicKey;
+        const falso = crypto.verify(null, Buffer.from(body, "ascii"), otraPub, b64uDecode(sig));
+        assert.strictEqual(falso, false);
+      } finally {
+        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    });
+
+    await check("trial: rate limit corta después de 10 requests de la misma IP", async () => {
+      await conClavePrivada(async () => {
+        rateLimit.resetForTests();
+        const req = { method: "POST", body: { email: "loop@empresa.com" } };
+        let ultimo;
+        for (let i = 0; i < 11; i++) {
+          const res = mockRes();
+          await trial(req, res);
+          ultimo = res;
+        }
+        assert.strictEqual(ultimo._status, 429);
+        rateLimit.resetForTests();
+      });
+    });
+  }
+
   console.log(`\nTodos los checks de pago/licencia pasaron (${checks}).`);
 }
 

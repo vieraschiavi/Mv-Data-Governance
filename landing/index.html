@@ -99,6 +99,7 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .hero h1{font-size:clamp(33px,5.2vw,54px);font-weight:850;color:#fff}
 .hero .lead{font-size:clamp(15.5px,1.8vw,18px);color:var(--muted);max-width:48ch;margin:20px 0 26px}
 .hcta{display:flex;flex-wrap:wrap;gap:12px}
+.hnote{margin:14px 0 0;font-size:13.5px;color:var(--muted);max-width:52ch}
 .metrics{display:flex;flex-wrap:wrap;gap:14px 28px;margin-top:34px}
 .metric{min-width:96px}
 .metric .v{font-size:26px;font-weight:850;color:#fff;letter-spacing:-.01em}
@@ -298,6 +299,16 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .plan li:last-child{border-bottom:0}.plan li::before{content:"→";position:absolute;left:0;color:var(--amber2)}
 .plan .btn{width:100%}
 .btn-d{background:var(--ink-d);color:#fff}.btn-d:hover{background:#0a1626}
+/* Trial de 14 dias: link discreto bajo el boton de compra, sin tarjeta. */
+.trial-link{background:none;border:0;color:var(--blue);font-size:12px;font-weight:700;
+  text-decoration:underline;cursor:pointer;margin-top:10px;padding:0;font-family:inherit}
+.trial-form{margin-top:12px;display:grid;gap:8px}
+.trial-form[hidden]{display:none}
+.trial-form input{font-family:inherit;font-size:14px;color:var(--ink-d);background:#fff;
+  border:1px solid var(--line-d);border-radius:9px;padding:9px 11px;width:100%}
+.trial-msg{font-size:12px;margin:0}
+.trial-msg.ok{color:#0b9e71}.trial-msg.err{color:#c0504e}
+.trial-msg code{background:var(--tint);border-radius:5px;padding:1px 5px;font-size:11px;word-break:break-all}
 .btn-od{background:#fff;color:var(--ink-d);border-color:var(--line-d)}.btn-od:hover{border-color:var(--amber);color:var(--amber2)}
 
 /* CONTACT */
@@ -354,6 +365,10 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
       <a class="btn btn-a" href="#video" data-i="cta_video">▶ Ver la demo</a>
       <a class="btn btn-o" href="descargas.html" data-i="cta_dl">Descargar la demo</a>
     </div>
+    <p class="hnote" data-i="h_ownfile">
+      🔎 ¿Consultor BI? Subí tu propio CSV o Excel al abrir la demo y en minutos
+      tenés un catálogo de calidad auditado — sin pedirnos acceso ni hablar con nosotros.
+    </p>
     <div class="metrics">
       <div class="metric"><div class="v tnum">6</div><div class="l" data-i="m1">dimensiones de calidad medidas</div></div>
       <div class="metric"><div class="v tnum">3</div><div class="l" data-i="m2">idiomas: español · inglés · portugués</div></div>
@@ -685,6 +700,13 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
         <li data-i="pl3d">Soporte prioritario</li>
       </ul>
       <a class="btn btn-d" data-mp="pro" href="#" data-i="pl3btn">Suscribirme</a>
+      <button type="button" class="trial-link" id="trialToggle" data-i="pl3trial">o probá 14 días gratis · sin tarjeta</button>
+      <form id="trialForm" class="trial-form" hidden>
+        <input type="email" id="trialEmail" required
+              data-i-ph="pl3trial_ph" placeholder="tu@empresa.com" autocomplete="email">
+        <button type="submit" class="btn btn-od" data-i="pl3trial_go">Empezar prueba de 14 días</button>
+        <p class="trial-msg" id="trialMsg" hidden></p>
+      </form>
     </div>
     <div class="plan">
       <h3 data-i="pl4t">Enterprise</h3><div class="who" data-i="pl4w">Para organizaciones con requisitos regulatorios.</div>
@@ -820,6 +842,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   h1_a:"Your data, governed.\nYour decisions, trustworthy.",
   lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
   cta_video:"▶ Watch the demo",cta_dl:"Download the demo",
+  h_ownfile:"🔎 BI consultant? Upload your own CSV or Excel when you open the demo and get an audited quality catalog in minutes — no access request, no talking to us.",
   m1:"quality dimensions measured",m2:"languages: Spanish · English · Portuguese",
   m3:"compatible BI tools",m4:"web + desktop, no APK",
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
@@ -959,6 +982,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
   pl3t:"Professional",pl3w:"For teams governing for real (monthly).",pl_mo2:"/mo",pl3per:"Up to 25 users",
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
+  pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
   cr_eye:"Credits (optional)",cr_h2:"Boost with AI credits and packs",
@@ -999,6 +1023,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
   lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
   cta_video:"▶ Ver a demo",cta_dl:"Baixar a demo",
+  h_ownfile:"🔎 Consultor de BI? Envie seu próprio CSV ou Excel ao abrir a demo e tenha um catálogo de qualidade auditado em minutos — sem pedir acesso, sem falar conosco.",
   m1:"dimensões de qualidade medidas",m2:"idiomas: espanhol · inglês · português",
   m3:"ferramentas de BI compatíveis",m4:"web + desktop, sem APK",
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
@@ -1138,6 +1163,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
   pl3t:"Professional",pl3w:"Para equipes que governam de verdade (mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários",
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
+  pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
   cr_eye:"Créditos (opcional)",cr_h2:"Potencialize com créditos IA e packs",
@@ -1161,6 +1187,9 @@ ES.alt_tab_panorama="Pestaña Panorama: KPIs de gobierno, índice de calidad y e
 ES.alt_tab_calidad="Pestaña Calidad: reglas por dimensión con umbral, resultado y filas afectadas";
 ES.alt_tab_linaje="Pestaña Linaje: grafo de origen a BI, de la tabla fuente al informe";
 ES.alt_tab_bi="Pestaña BI y API: tablas de gobierno publicadas para Power BI y Tableau";
+/* Igual que los alt de las capturas: el placeholder del email del trial no
+   sale de un [data-i] (vive en el atributo placeholder, no en el texto). */
+document.querySelectorAll('[data-i-ph]').forEach(function(el){ES[el.getAttribute('data-i-ph')]=el.placeholder;});
 /* title + meta social por idioma. Antes setLang() cambiaba el texto visible
    pero dejaba <title> y los meta (description/og/twitter) siempre en
    español — quien compartía el link estando en EN/PT igual mandaba una
@@ -1197,6 +1226,10 @@ function setLang(lang){
       else if(k==='c_direct'||k==='c_fallback'){el.innerHTML=dict[k];}
       else{el.textContent=dict[k];}
     }else{el.innerHTML=ES[k];}
+  });
+  document.querySelectorAll('[data-i-ph]').forEach(function(el){
+    var k=el.getAttribute('data-i-ph');
+    el.placeholder=(dict&&dict[k]!==undefined)?dict[k]:ES[k];
   });
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;
@@ -1360,6 +1393,56 @@ document.getElementById('cform').addEventListener('submit',function(ev){
           alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
         });
     });
+  });
+})();
+
+/* --- Trial de 14 días (Professional), sin tarjeta: solo email, sin pasar
+   por MercadoPago. api/trial.js emite la licencia MVDG2 directo. --- */
+(function(){
+  var toggle=document.getElementById('trialToggle');
+  var form=document.getElementById('trialForm');
+  var msg=document.getElementById('trialMsg');
+  if(!toggle||!form)return;
+  toggle.addEventListener('click',function(){
+    form.hidden=!form.hidden;
+    if(!form.hidden)document.getElementById('trialEmail').focus();
+  });
+  var TXT={
+    es:{err:'No se pudo iniciar la prueba. Probá de nuevo en un rato.',
+       ok:'Licencia de prueba (14 días) — activala en la pestaña ❓ Ayuda → Licencia del programa:'},
+    en:{err:'Could not start the trial. Please try again shortly.',
+       ok:'Trial license (14 days) — activate it in the ❓ Help tab → Program license:'},
+    pt:{err:'Não foi possível iniciar o teste. Tente novamente em instantes.',
+       ok:'Licença de teste (14 dias) — ative na aba ❓ Ajuda → Licença do programa:'}};
+  form.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var lang=document.documentElement.lang||'es';
+    var email=document.getElementById('trialEmail').value.trim();
+    var btn=form.querySelector('button[type="submit"]');
+    var original=btn.textContent;
+    btn.disabled=true; btn.textContent='…';
+    msg.hidden=true; msg.className='trial-msg';
+    fetch('/api/trial',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:email})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        btn.disabled=false; btn.textContent=original;
+        if(res.ok&&res.d&&res.d.license_key){
+          msg.hidden=false; msg.className='trial-msg ok';
+          // license_key sale de nuestra propia API (api/trial.js), pero se
+          // escapa igual antes de insertarla: ningun dato que llegue de una
+          // API va directo a innerHTML sin pasar por rvEsc(), sin excepciones.
+          msg.innerHTML=rvEsc((TXT[lang]||TXT.es).ok)+'<br><code>'+rvEsc(res.d.license_key)+'</code>';
+        }else{
+          msg.hidden=false; msg.className='trial-msg err';
+          msg.textContent=(TXT[lang]||TXT.es).err;
+        }
+      })
+      .catch(function(){
+        btn.disabled=false; btn.textContent=original;
+        msg.hidden=false; msg.className='trial-msg err';
+        msg.textContent=(TXT[document.documentElement.lang]||TXT.es).err;
+      });
   });
 })();
 </script>

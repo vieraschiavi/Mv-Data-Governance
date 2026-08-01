@@ -153,6 +153,137 @@ def test_profiler_empty_frame():
     assert len(profile_table(empty)) == 1
 
 
+# ------------------------------ catalogo de calidad automatico (archivo propio)
+def _inventario_propio():
+    """Un archivo que no es ninguno de los datasets de ejemplo del repo:
+    nulos parciales en 3 columnas y una columna (sku) que es clave real —
+    sin filas duplicadas, para no pisar el heuristico de unicidad de sku
+    (ver test separado para la regla de fila completa duplicada)."""
+    return pd.DataFrame({
+        "sku": [f"A-{1000+i}" for i in range(1, 10)],
+        "producto": ["Tornillo M6", "Tuerca M6", "Arandela M6", "Taladro 500W",
+                    "Taladro 500W", "Sierra circular", "Guantes de cuero",
+                    "Casco de seguridad", "Cinta métrica 5m"],
+        "categoria": ["Ferretería", "Ferretería", "Ferretería", "Herramientas",
+                     "Herramientas", "Herramientas", "Seguridad", "Seguridad",
+                     "Herramientas"],
+        "stock": [540, 610, None, 12, 12, 7, 300, 150, 220],
+        "precio_unitario": [0.12, 0.08, 0.03, 45.90, 45.90, 89.50, 3.20, None, 2.10],
+        "proveedor": ["Norte", "Norte", "Norte", "Sur", "Sur", None, "Este", "Este", "Norte"],
+    })
+
+
+def test_auto_rules_genera_reglas_reales_para_un_archivo_propio():
+    """Diferencia central con el perfilado: estas reglas se CORREN contra el
+    archivo (score, umbral, pass/fail), no son solo texto sugerido. Verificado
+    tambien de punta a punta en la app real (Streamlit + Playwright, subiendo
+    este mismo archivo por la UI) antes de escribir este test."""
+    from mvdg.auto_rules import auto_quality_results, build_rules
+
+    df = _inventario_propio()
+    rules = build_rules(df, "inventario_real.csv")
+    ids = [r.rule_id for r in rules]
+    assert len(ids) == len(set(ids)), "rule_id repetido"
+    # sku es clave -> unicidad; stock/precio_unitario/proveedor tienen nulos
+    # parciales -> completitud; mas la regla de tabla completa (fila duplicada)
+    assert any(r.column == "sku" and r.dimension == "uniqueness" for r in rules)
+    assert any(r.column == "stock" and r.dimension == "completeness" for r in rules)
+    assert any(r.column == "precio_unitario" and r.dimension == "completeness" for r in rules)
+    assert any(r.column == "proveedor" and r.dimension == "completeness" for r in rules)
+    assert sum(r.column not in df.columns for r in rules) == 1  # la de "fila completa"
+    assert not any(r.column == "producto" for r in rules)  # sin nulos ni clave: no aplica
+
+    res = auto_quality_results(df, "inventario_real.csv", "es")
+    assert set(res["dataset"]) == {"inventario_real.csv"}
+    assert set(res["dimension"]) <= {"completeness", "uniqueness"}
+    sku_rule = res[res["column"] == "sku"].iloc[0]
+    assert sku_rule["status"] == "pass" and sku_rule["score"] == 100.0
+    # sin filas duplicadas: la regla de tabla completa tiene que pasar tambien
+    fila_completa = res[res["description"].str.contains("100% duplicadas")].iloc[0]
+    assert fila_completa["status"] == "pass" and fila_completa["affected_rows"] == 0
+    # 3 columnas con 10% de nulos (1/9, redondeando) no llegan al umbral 95%
+    fallas = res[res["status"] != "pass"]
+    assert set(fallas["column"]) == {"stock", "precio_unitario", "proveedor"}
+
+    from mvdg.quality import overall_index
+    assert 0 <= overall_index(res) <= 100
+
+
+def test_auto_rules_detecta_fila_100pct_duplicada():
+    """El caso que _inventario_propio() evita a proposito: una fila que se
+    repite en TODAS las columnas. Sin una columna clave en juego, para no
+    mezclar los dos heuristicos en el mismo caso."""
+    from mvdg.auto_rules import auto_quality_results
+
+    base = pd.DataFrame({
+        "categoria": ["Ferretería", "Herramientas", "Seguridad"],
+        "proveedor": ["Norte", "Sur", "Este"],
+    })
+    con_dupe = pd.concat([base, base.iloc[[1]]], ignore_index=True)  # 1 fila repetida
+
+    res = auto_quality_results(con_dupe, "categorias.csv", "es")
+    fila_completa = res[res["description"].str.contains("100% duplicadas")].iloc[0]
+    assert fila_completa["status"] != "pass"
+    assert fila_completa["affected_rows"] == 1
+
+
+def test_auto_rules_archivo_limpio_da_100():
+    from mvdg.auto_rules import auto_quality_results
+    from mvdg.quality import overall_index
+    limpio = pd.DataFrame({"id": [1, 2, 3, 4], "nombre": ["A", "B", "C", "D"]})
+    res = auto_quality_results(limpio, "limpio.csv", "es")
+    assert overall_index(res) == 100.0
+    assert (res["status"] == "pass").all()
+
+
+def test_auto_rules_archivo_vacio_no_rompe():
+    from mvdg.auto_rules import auto_quality_results
+    vacio = pd.DataFrame({"a": []})
+    res = auto_quality_results(vacio, "vacio.csv", "es")
+    assert res.empty
+    assert list(res.columns) == ["rule_id", "dataset", "column", "dimension",
+                                 "description", "score", "threshold",
+                                 "status", "affected_rows"]
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_auto_rules_trilingue(lang):
+    """Las descripciones de las reglas y el rotulo de la regla de tabla
+    completa tienen que existir en los 3 idiomas — mismo motor de i18n que
+    el resto del programa, no un atajo en un solo idioma."""
+    from mvdg.auto_rules import auto_quality_results
+    res = auto_quality_results(_inventario_propio(), "inventario_real.csv", lang)
+    assert not res["description"].isna().any()
+    assert (res["description"].str.len() > 0).all()
+    columnas_tabla = {"es": "(fila completa)", "en": "(entire row)",
+                      "pt": "(linha completa)"}
+    assert columnas_tabla[lang] in set(res["column"])
+
+
+def test_auto_rules_remediacion_funciona_para_reglas_generadas():
+    """suggest_fix() tiene que dar una sugerencia util aunque el rule_id
+    ('AUTO-01', etc.) no exista en REMEDIATIONS — cae a la plantilla generica
+    de la dimension, que es justamente lo que permite reusar _render_fixes()
+    en app.py sin tocarlo."""
+    from mvdg.auto_rules import auto_quality_results
+    from mvdg.remediation import suggest_fix
+    res = auto_quality_results(_inventario_propio(), "inventario_real.csv", "es")
+    fallas = res[res["status"] != "pass"]
+    assert len(fallas) > 0
+    for _, row in fallas.iterrows():
+        fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
+                          int(row["affected_rows"]), "es")
+        assert fix["root_cause"] and fix["short_term"] and fix["long_term"] and fix["owner"]
+
+
+def test_auto_rules_no_inventa_dimensiones_que_no_puede_evaluar():
+    """Solo completitud y unicidad: validez/consistencia/puntualidad/exactitud
+    dependen de reglas de negocio que un archivo generico no puede dar."""
+    from mvdg.auto_rules import build_rules
+    rules = build_rules(_inventario_propio(), "x", "es")
+    assert {r.dimension for r in rules} <= {"completeness", "uniqueness"}
+
+
 # ------------------------------------------------------------- exportadores
 @pytest.mark.parametrize("lang", LANGS)
 def test_governance_tables_complete(lang):
@@ -327,6 +458,41 @@ def test_licencia_plan_owner_desbloquea_todo(tmp_path, monkeypatch):
     assert licensing.plan() == "owner"
     for funcion in list(licensing.FUNCIONES_PAGAS) + ["funcion_futura_no_declarada"]:
         assert licensing.has_feature(funcion) is True
+
+
+def test_licencia_trial_14_dias_da_lo_mismo_que_professional(tmp_path, monkeypatch):
+    """api/trial.js emite un token 'trial' — este test verifica el lado que
+    lo interpreta: mientras no venza, desbloquea exactamente lo mismo que
+    'professional' (el plan de USD 390/mes que el trial demuestra)."""
+    import time as _t
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    vigente = _emitir(priv, plan="trial", exp=int(_t.time()) + 14 * 86400)
+    assert licensing.save(vigente) is not None
+    assert licensing.plan() == "trial"
+    for funcion in licensing.FUNCIONES_PAGAS:
+        assert licensing.has_feature(funcion) is True, (
+            f"trial no desbloquea {funcion}, pero professional si")
+    licensing.clear()
+
+
+def test_licencia_trial_vencida_vuelve_a_demo_sin_codigo_nuevo(tmp_path, monkeypatch):
+    """El vencimiento del trial no es un caso especial: es el mismo chequeo
+    de 'exp' que ya usa cualquier licencia paga con fecha de corte."""
+    import time as _t
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    vencida = _emitir(priv, plan="trial", exp=int(_t.time()) - 10)
+    assert licensing.verify(vencida) is None
+    assert licensing.save(vencida) is None  # no se guarda un trial vencido
+    assert licensing.plan() == licensing.PLAN_DEMO
+    assert licensing.has_feature("migracion_purview") is False
 
 
 def test_licencia_rechaza_manipulacion_y_vencimiento(tmp_path, monkeypatch):
@@ -1773,6 +1939,51 @@ def test_landing_estados_de_error_visibles():
     assert 'poster=""' not in tag_video, f"poster vacio en {tag_video}"
     for archivo in ("index.html", "reviews.html"):
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
+
+
+def test_landing_ofrece_trial_de_14_dias_sin_tarjeta():
+    """El trial del tier USD 390 (Professional) tiene que existir como flujo
+    real — email -> licencia — no un boton que dice 'pedir demo'. Y no puede
+    pedir NUNCA una tarjeta para arrancar."""
+    html = _landing("index.html")
+    assert 'id="trialForm"' in html and 'id="trialToggle"' in html
+    assert "fetch('/api/trial'" in html or 'fetch("/api/trial"' in html
+    assert 'type="email"' in html.split('id="trialForm"')[1][:400]
+    # El FORMULARIO del trial (no el boton que lo abre) no puede pedir
+    # tarjeta. El boton en si dice "sin tarjeta" a proposito -- esa negacion
+    # es la promesa, no una violacion -- por eso se mira desde <form> en
+    # adelante, no desde el boton.
+    inicio = html.index('<form id="trialForm"')
+    fin = html.index("</form>", inicio) + len("</form>")
+    bloque_form = html[inicio:fin]
+    assert "trialEmail" in bloque_form and "trialMsg" in bloque_form  # ventana correcta
+    for prohibido in ("card", "tarjeta", "cartão", "cvv", "cvc"):
+        assert prohibido not in bloque_form.lower(), f"'{prohibido}' dentro del form de trial"
+
+
+def test_endpoint_trial_no_tiene_ningun_campo_de_pago():
+    """api/trial.js: ni un import de MercadoPago, ni un campo de tarjeta, en
+    todo el CODIGO (fuera de comentarios) — el trial no pasa por el circuito
+    de pago en absoluto. Los comentarios SI pueden nombrar MercadoPago (para
+    explicar justamente que no se usa), por eso se limpian antes de mirar."""
+    import re
+    ruta = os.path.join(_repo_root(), "api", "trial.js")
+    with open(ruta, encoding="utf-8") as fh:
+        codigo = fh.read()
+    sin_comentarios = re.sub(r"//.*", "", codigo)
+    sin_comentarios = re.sub(r"/\*.*?\*/", "", sin_comentarios, flags=re.S)
+    for prohibido in ("mercadopago", "MP_ACCESS_TOKEN", "card_number", "cvv", "cvc"):
+        assert prohibido.lower() not in sin_comentarios.lower(), \
+            f"'{prohibido}' en el codigo (no comentario) de api/trial.js"
+    assert "rateLimited" in codigo, "sin rate limiting"
+    assert "signEd25519" in codigo, "no emite el formato de licencia que valida el programa"
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_landing_trial_traducido(lang):
+    html = _landing("index.html")
+    for clave in ("pl3trial", "pl3trial_ph", "pl3trial_go"):
+        assert f"{clave}:" in html, f"falta {clave} en {lang}"
 
 
 def test_landing_publica_la_comparativa_honesta():
