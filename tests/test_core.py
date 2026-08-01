@@ -460,6 +460,41 @@ def test_licencia_plan_owner_desbloquea_todo(tmp_path, monkeypatch):
         assert licensing.has_feature(funcion) is True
 
 
+def test_licencia_trial_14_dias_da_lo_mismo_que_professional(tmp_path, monkeypatch):
+    """api/trial.js emite un token 'trial' — este test verifica el lado que
+    lo interpreta: mientras no venza, desbloquea exactamente lo mismo que
+    'professional' (el plan de USD 390/mes que el trial demuestra)."""
+    import time as _t
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    vigente = _emitir(priv, plan="trial", exp=int(_t.time()) + 14 * 86400)
+    assert licensing.save(vigente) is not None
+    assert licensing.plan() == "trial"
+    for funcion in licensing.FUNCIONES_PAGAS:
+        assert licensing.has_feature(funcion) is True, (
+            f"trial no desbloquea {funcion}, pero professional si")
+    licensing.clear()
+
+
+def test_licencia_trial_vencida_vuelve_a_demo_sin_codigo_nuevo(tmp_path, monkeypatch):
+    """El vencimiento del trial no es un caso especial: es el mismo chequeo
+    de 'exp' que ya usa cualquier licencia paga con fecha de corte."""
+    import time as _t
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    vencida = _emitir(priv, plan="trial", exp=int(_t.time()) - 10)
+    assert licensing.verify(vencida) is None
+    assert licensing.save(vencida) is None  # no se guarda un trial vencido
+    assert licensing.plan() == licensing.PLAN_DEMO
+    assert licensing.has_feature("migracion_purview") is False
+
+
 def test_licencia_rechaza_manipulacion_y_vencimiento(tmp_path, monkeypatch):
     """Los tres ataques que importan contra una verificación local."""
     import base64
@@ -1904,6 +1939,51 @@ def test_landing_estados_de_error_visibles():
     assert 'poster=""' not in tag_video, f"poster vacio en {tag_video}"
     for archivo in ("index.html", "reviews.html"):
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
+
+
+def test_landing_ofrece_trial_de_14_dias_sin_tarjeta():
+    """El trial del tier USD 390 (Professional) tiene que existir como flujo
+    real — email -> licencia — no un boton que dice 'pedir demo'. Y no puede
+    pedir NUNCA una tarjeta para arrancar."""
+    html = _landing("index.html")
+    assert 'id="trialForm"' in html and 'id="trialToggle"' in html
+    assert "fetch('/api/trial'" in html or 'fetch("/api/trial"' in html
+    assert 'type="email"' in html.split('id="trialForm"')[1][:400]
+    # El FORMULARIO del trial (no el boton que lo abre) no puede pedir
+    # tarjeta. El boton en si dice "sin tarjeta" a proposito -- esa negacion
+    # es la promesa, no una violacion -- por eso se mira desde <form> en
+    # adelante, no desde el boton.
+    inicio = html.index('<form id="trialForm"')
+    fin = html.index("</form>", inicio) + len("</form>")
+    bloque_form = html[inicio:fin]
+    assert "trialEmail" in bloque_form and "trialMsg" in bloque_form  # ventana correcta
+    for prohibido in ("card", "tarjeta", "cartão", "cvv", "cvc"):
+        assert prohibido not in bloque_form.lower(), f"'{prohibido}' dentro del form de trial"
+
+
+def test_endpoint_trial_no_tiene_ningun_campo_de_pago():
+    """api/trial.js: ni un import de MercadoPago, ni un campo de tarjeta, en
+    todo el CODIGO (fuera de comentarios) — el trial no pasa por el circuito
+    de pago en absoluto. Los comentarios SI pueden nombrar MercadoPago (para
+    explicar justamente que no se usa), por eso se limpian antes de mirar."""
+    import re
+    ruta = os.path.join(_repo_root(), "api", "trial.js")
+    with open(ruta, encoding="utf-8") as fh:
+        codigo = fh.read()
+    sin_comentarios = re.sub(r"//.*", "", codigo)
+    sin_comentarios = re.sub(r"/\*.*?\*/", "", sin_comentarios, flags=re.S)
+    for prohibido in ("mercadopago", "MP_ACCESS_TOKEN", "card_number", "cvv", "cvc"):
+        assert prohibido.lower() not in sin_comentarios.lower(), \
+            f"'{prohibido}' en el codigo (no comentario) de api/trial.js"
+    assert "rateLimited" in codigo, "sin rate limiting"
+    assert "signEd25519" in codigo, "no emite el formato de licencia que valida el programa"
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_landing_trial_traducido(lang):
+    html = _landing("index.html")
+    for clave in ("pl3trial", "pl3trial_ph", "pl3trial_go"):
+        assert f"{clave}:" in html, f"falta {clave} en {lang}"
 
 
 def test_landing_publica_la_comparativa_honesta():
