@@ -181,13 +181,14 @@ def _base_dir() -> str:
 
 
 def _port_free(host: str, port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            s.bind((host, port))
-            return True
-        except OSError:
-            return False
+    """.Esta el puerto libre de verdad?
+
+    Delegado a mvdg.netports: la version anterior ponia SO_REUSEADDR, que en
+    Windows permite hacer bind sobre un puerto que otra app ya ocupa. O sea
+    que este chequeo — el que existe justamente para NO pisar a nadie —
+    devolvia "libre" en el sistema operativo donde mas importa."""
+    from mvdg.netports import puerto_libre
+    return puerto_libre(host, port)
 
 
 def run_server(argv_out: list | None = None) -> int:

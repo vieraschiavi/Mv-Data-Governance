@@ -1503,6 +1503,142 @@ def test_bi_api_token_opcional_pero_se_exige_cuando_esta_definido(monkeypatch):
     bm._reset_rate_limit()
 
 
+# ------------------------------------------- puertos: no pisar a otra app
+def test_puerto_ocupado_por_otra_app_se_detecta():
+    """El chequeo anterior ponia SO_REUSEADDR antes del bind. En Windows eso
+    NO sirve para reciclar sockets: permite atarse a un puerto que otra
+    aplicacion ya tiene tomado. O sea que el chequeo hecho para no pisar a
+    nadie devolvia "libre" justo en el sistema donde corre el producto."""
+    import socket as _s
+    from mvdg.netports import hay_alguien_escuchando, puerto_libre
+
+    otra_app = _s.socket()
+    otra_app.bind(("127.0.0.1", 0))
+    otra_app.listen()
+    puerto = otra_app.getsockname()[1]
+    try:
+        assert hay_alguien_escuchando("127.0.0.1", puerto) is True
+        assert puerto_libre("127.0.0.1", puerto) is False
+    finally:
+        otra_app.close()
+
+
+def test_puerto_realmente_libre_se_reconoce():
+    import socket as _s
+    from mvdg.netports import puerto_libre
+    tmp = _s.socket()
+    tmp.bind(("127.0.0.1", 0))
+    puerto = tmp.getsockname()[1]
+    tmp.close()          # queda libre
+    assert puerto_libre("127.0.0.1", puerto) is True
+
+
+def _usa_flag_socket(ruta, flag):
+    """.El CODIGO usa socket.<flag>? Se mira el AST y no el texto: los
+    docstrings de estos archivos explican justamente por que NO se usa
+    SO_REUSEADDR, y un grep de texto los contaria como si lo usaran."""
+    import ast
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+    return any(isinstance(n, ast.Attribute) and n.attr == flag
+               for n in ast.walk(arbol))
+
+
+def test_deteccion_de_puertos_no_usa_reuseaddr():
+    """Regresion de la causa raiz: si alguien vuelve a poner SO_REUSEADDR en
+    el sondeo, en Windows se rompe el aislamiento de puertos otra vez."""
+    ruta = os.path.join(_repo_root(), "mvdg", "netports.py")
+    assert not _usa_flag_socket(ruta, "SO_REUSEADDR"), "volvio SO_REUSEADDR al sondeo"
+    assert _usa_flag_socket(ruta, "SO_EXCLUSIVEADDRUSE"), (
+        "falta el flag que garantiza exclusividad en Windows")
+
+
+def test_ningun_modulo_sondea_puertos_con_reuseaddr():
+    """Ni el lanzador, ni la API, ni el modo servidor pueden volver a hacer
+    su propio sondeo con SO_REUSEADDR: todos delegan en mvdg.netports."""
+    for rel in (("packaging", "mvdg_launcher.py"), ("bi_api", "main.py"),
+                ("mvdg", "server.py")):
+        ruta = os.path.join(_repo_root(), *rel)
+        assert not _usa_flag_socket(ruta, "SO_REUSEADDR"), (
+            f"{'/'.join(rel)} sondea puertos con SO_REUSEADDR")
+        with open(ruta, encoding="utf-8") as fh:
+            assert "netports" in fh.read(), (
+                f"{'/'.join(rel)} no delega en mvdg.netports")
+
+
+def test_elegir_puerto_saltea_los_ocupados():
+    import socket as _s
+    from mvdg.netports import PUERTOS_DASHBOARD, elegir_puerto
+
+    tomados, sockets = [], []
+    try:
+        for p in PUERTOS_DASHBOARD[:2]:
+            so = _s.socket()
+            try:
+                so.bind(("127.0.0.1", p))
+                so.listen()
+                tomados.append(p)
+                sockets.append(so)
+            except OSError:
+                so.close()          # ya estaba ocupado por el entorno: da igual
+        if not tomados:
+            pytest.skip("no se pudo ocupar ningun puerto candidato")
+        elegido = elegir_puerto("127.0.0.1")
+        assert elegido not in tomados, "eligio un puerto que otra app tenia"
+    finally:
+        for so in sockets:
+            so.close()
+
+
+def _launcher():
+    """Importa packaging/mvdg_launcher.py (no es un paquete importable)."""
+    import importlib.util
+    ruta = os.path.join(_repo_root(), "packaging", "mvdg_launcher.py")
+    spec = importlib.util.spec_from_file_location("mvdg_launcher_test", ruta)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_launcher_respeta_el_puerto_pedido_si_esta_libre(monkeypatch):
+    """Con STREAMLIT_SERVER_PORT libre, se usa ese y no otro."""
+    import socket as _s
+    with _s.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        libre = so.getsockname()[1]          # se cierra al salir del with
+    monkeypatch.setenv("STREAMLIT_SERVER_PORT", str(libre))
+    assert _launcher()._puerto_pedido() == libre
+
+
+def test_launcher_no_arranca_encima_del_puerto_pedido_si_esta_ocupado(monkeypatch):
+    """Si el usuario fijo un puerto y OTRA app lo tiene, el lanzador corta
+    con un mensaje accionable — no se ata encima ni escupe un traceback."""
+    import socket as _s
+    with _s.socket() as ocupado:
+        ocupado.bind(("127.0.0.1", 0))
+        ocupado.listen()
+        port = ocupado.getsockname()[1]
+        monkeypatch.setenv("STREAMLIT_SERVER_PORT", str(port))
+        with pytest.raises(SystemExit) as exc:
+            _launcher()._puerto_pedido()
+    assert exc.value.code == 3
+
+
+def test_launcher_sin_variable_elige_puerto_solo(monkeypatch):
+    """Sin STREAMLIT_SERVER_PORT no hay contrato: devuelve 0 y el lanzador
+    delega en elegir_puerto (que ya saltea los ocupados)."""
+    monkeypatch.delenv("STREAMLIT_SERVER_PORT", raising=False)
+    assert _launcher()._puerto_pedido() == 0
+
+
+def test_launcher_puerto_no_numerico_no_explota_con_traceback(monkeypatch):
+    """Un valor basura da mensaje accionable, no ValueError crudo."""
+    monkeypatch.setenv("STREAMLIT_SERVER_PORT", "ocho mil")
+    with pytest.raises(SystemExit) as exc:
+        _launcher()._puerto_pedido()
+    assert exc.value.code == 3
+
+
 def test_bi_api_no_publica_fuera_de_loopback_sin_token(monkeypatch):
     """Falla cerrado: exponer la API en 0.0.0.0 sin token aborta con un
     mensaje accionable en vez de servir el gobierno a toda la red."""
@@ -4673,6 +4809,95 @@ def _read_bat(name):
         return fh.read()
 
 
+_BATS_LANZADORES = ("MV_DataGovernance.bat", "MV_DataGovernance_API.bat",
+                    "MV_DataGovernance_Server.bat")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_repara_venv_sin_pip(nombre):
+    """Regresion del error reportado en Windows: "No module named pip".
+
+    Si la creacion del venv se interrumpe, queda .venv\\Scripts\\python.exe
+    pero SIN pip. Los .bat asumian que la existencia del interprete implicaba
+    un entorno usable, entraban igual, y reintentaban 4 veces el mismo
+    comando condenado echandole la culpa a OneDrive.
+    """
+    src = _read_bat(nombre)
+    # 1) se comprueba que pip EXISTE antes de intentar instalar con el
+    assert "-m pip --version" in src, "no verifica que pip exista"
+    # 2) se repara con ensurepip (offline, sin borrar el entorno)
+    assert "-m ensurepip --upgrade" in src, "no repara pip con ensurepip"
+    # 3) si ni ensurepip alcanza, se rehace el entorno automaticamente
+    assert ":rebuild_venv" in src and 'rmdir /s /q ".venv"' in src, (
+        "no rehace el entorno cuando es irrecuperable")
+    # 4) rehacer se intenta UNA sola vez: sin esto es un bucle infinito
+    assert "if defined MVDG_REBUILT goto errvenv" in src, (
+        "sin guarda contra rehacer el entorno en bucle")
+    assert 'set "MVDG_REBUILT="' in src, "no reinicia la guarda al arrancar"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_no_culpa_a_onedrive_cuando_falta_pip(nombre):
+    """El mensaje de "archivo en uso / pausa OneDrive" solo tiene sentido si
+    pip existe y algo bloquea un archivo. Cuando falta pip, reintentar es
+    inutil y el consejo manda al usuario a perder el tiempo."""
+    src = _read_bat(nombre)
+    bloque = src[src.index(":install_deps"):]
+    # se distingue el caso "pip no esta" con un codigo de salida propio...
+    assert "exit /b 2" in bloque, "no distingue falta-de-pip de archivo-en-uso"
+    # ...y el llamador lo trata rehaciendo el entorno, no reintentando.
+    # OJO: "if errorlevel N" en cmd es ">= N", asi que el 2 debe chequearse
+    # ANTES que el 1 o nunca se alcanza.
+    i2 = src.index("if errorlevel 2 goto rebuild_venv")
+    i1 = src.index("if errorlevel 1 goto errdeps")
+    assert i2 < i1, "el errorlevel 2 se chequea despues del 1: nunca entra"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_no_filtra_el_error_de_pip_por_stderr(nombre):
+    """El usuario veia "No module named pip" DOS veces: la linea que
+    actualiza pip redirigia solo stdout (>nul), asi que su stderr se colaba
+    a la consola ademas del error real de la linea siguiente."""
+    src = _read_bat(nombre)
+    assert "-m pip install --upgrade pip >nul 2>nul" in src, (
+        "el upgrade de pip no silencia stderr")
+    assert "-m pip install --upgrade pip >nul\n" not in src, (
+        "quedo una redireccion que deja escapar stderr")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_detecta_venv_que_ya_no_arranca(nombre):
+    """El otro modo de falla real: se actualiza o desinstala el Python del
+    sistema y el venv queda apuntando a un interprete que ya no existe."""
+    src = _read_bat(nombre)
+    assert '-c "pass"' in src, "no verifica que el interprete del venv arranque"
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_verifica_dependencias_antes_de_lanzar(nombre):
+    """El Server.bat saltaba directo a :launch si existia el .venv, sin
+    mirar si las dependencias estaban: arrancaba y moria con un traceback."""
+    src = _read_bat(nombre)
+    assert ":verify" in src, "no hay etapa de verificacion de dependencias"
+    i_verify = src.index(":verify")
+    i_launch = src.index("\n:launch")
+    assert i_verify < i_launch, "la verificacion queda despues del arranque"
+    assert '-c "import ' in src[i_verify:i_launch], (
+        "la etapa de verificacion no importa nada")
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_ofrece_el_instalador_exe_como_salida(nombre):
+    """Cuando el camino con Python falla de verdad, el usuario tiene que
+    enterarse de que existe un instalador que no necesita Python."""
+    src = _read_bat(nombre)
+    assert "MVDataGovernance_Setup.exe" in src, (
+        "no menciona el instalador .exe como alternativa")
+    # y ya no manda a borrar carpetas a mano: eso ahora es automatico
+    assert "borra la carpeta .venv" not in src
+    assert "delete the .venv folder" not in src
+
+
 def test_api_and_server_bats_are_self_sufficient_and_open_browser():
     """Los .bat de API y Servidor deben poder usarse SOLOS (crear su propio
     entorno como el .bat principal) y abrir el navegador — si no, el usuario ve
@@ -4846,6 +5071,35 @@ def test_installer_iss_offers_optional_desktop_and_start_menu():
     assert 'Name: "desktopicon"' in iss               # casilla opcional
     assert "{autodesktop}" in iss and "Tasks: desktopicon" in iss
     assert "{group}" in iss                           # menú inicio siempre
+
+
+def test_installer_iss_deja_elegir_carpeta_y_disco():
+    """El asistente tiene que dejar elegir CARPETA Y DISCO de instalación.
+
+    Tres cosas, y las tres importan:
+      · ``DisableDirPage=no`` — la página "Seleccionar carpeta de destino"
+        se muestra; si alguien la pone en ``yes`` el cliente queda clavado
+        en Archivos de programa sin poder mandarlo a D:\\.
+      · ``DefaultDirName`` — hay una sugerencia razonable de arranque.
+      · ``PrivilegesRequiredOverridesAllowed=dialog`` — sin esto, Setup
+        exige admin sí o sí, y un usuario sin permisos no puede instalar en
+        su propia carpeta (que es justo el caso de una notebook corporativa).
+    """
+    with open(os.path.join(_repo_root(), "packaging", "instalador.iss"),
+              encoding="utf-8") as fh:
+        iss = fh.read()
+    directivas = {}
+    for linea in iss.splitlines():
+        linea = linea.strip()
+        if linea.startswith(";") or "=" not in linea or linea.startswith("["):
+            continue
+        clave, _, valor = linea.partition("=")
+        directivas[clave.strip().lower()] = valor.strip()
+    assert directivas.get("disabledirpage") == "no"
+    assert directivas.get("defaultdirname", "").endswith("MV Data Governance")
+    assert directivas.get("privilegesrequiredoverridesallowed") == "dialog"
+    # y nada de fijar el disco a mano: sería contradecir todo lo anterior
+    assert "usepreviousappdir=no" not in iss.lower()
 
 
 # --------------------------------------------- 📦 entregable final por caso
