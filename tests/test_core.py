@@ -344,6 +344,39 @@ def test_clients_corrupt_file_is_safe(tmp_path, monkeypatch):
     assert clients.load_clients() == []
 
 
+def test_data_dir_variable_explicita_gana_siempre(tmp_path, monkeypatch):
+    """MVDG_DATA_DIR manda pase lo que pase - la prioridad más alta."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "a mano"))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "otro_lado" / "MVDataGovernance.exe"))
+    from mvdg import clients
+    assert clients.data_dir() == str(tmp_path / "a mano")
+
+
+def test_data_dir_instalacion_empaquetada_queda_en_el_disco_elegido(tmp_path, monkeypatch):
+    """.exe instalado (Inno Setup) sin MVDG_DATA_DIR: los datos van al lado
+    del ejecutable, no a ~/.mv_data_governance - si el cliente instaló en
+    D:\\, todo (programa Y datos) tiene que quedar en D:\\, no la mitad en
+    C:\\ por culpa de un default que ignora dónde se instaló."""
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    exe = tmp_path / "D_simulado" / "MV Data Governance" / "MVDataGovernance.exe"
+    monkeypatch.setattr(sys, "executable", str(exe))
+    from mvdg import clients
+    d = clients.data_dir()
+    assert d == str(exe.parent / "Data")
+    assert os.path.isdir(d)
+
+
+def test_data_dir_sin_empaquetar_usa_home(tmp_path, monkeypatch):
+    """Portable .bat / código fuente: sin instalación fija, ~/.mv_data_governance
+    de siempre - no hay disco de instalación al cual atarse."""
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    from mvdg import clients
+    assert clients.data_dir() == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
+
+
 # ------------------------------------------------------------- centro de ayuda
 @pytest.mark.parametrize("lang", LANGS)
 def test_help_center(lang):

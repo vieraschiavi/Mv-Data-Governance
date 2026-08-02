@@ -46,11 +46,15 @@ ya viven las fichas de clientes y las conexiones:
     <tabla>.parquet|.csv   ← una por cada DataFrame de la etapa
 ```
 
-`<data_dir>` es `~/.mv_data_governance` (o lo que indique la variable de
-entorno `MVDG_DATA_DIR`). Las tablas se guardan en **Parquet** (preserva los
-tipos de dato); si no está disponible el motor de Parquet, caen
-automáticamente a **CSV**. Nada viaja a internet — es un almacenamiento de
-archivos en tu propia máquina, igual que cualquier programa de escritorio.
+`<data_dir>` es, en orden de prioridad: la variable de entorno
+`MVDG_DATA_DIR` si está definida; si no, y estás corriendo el **.exe
+instalado** (Inno Setup), la carpeta `Data` al lado del ejecutable — así todo
+queda en el disco que elegiste al instalar, no repartido entre dos discos;
+si no, `~/.mv_data_governance` (modo portable/código fuente). Las tablas se
+guardan en **Parquet** (preserva los tipos de dato); si no está disponible el
+motor de Parquet, caen automáticamente a **CSV**. Nada viaja a internet — es
+un almacenamiento de archivos en tu propia máquina, igual que cualquier
+programa de escritorio.
 
 ## Respaldo y portabilidad
 
