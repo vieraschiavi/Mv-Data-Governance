@@ -4892,9 +4892,9 @@ def test_bat_no_filtra_el_error_de_pip_por_stderr(nombre):
     actualiza pip redirigia solo stdout (>nul), asi que su stderr se colaba
     a la consola ademas del error real de la linea siguiente."""
     src = _read_bat(nombre)
-    assert "-m pip install --upgrade pip >nul 2>nul" in src, (
+    assert "-m pip install --no-cache-dir --upgrade pip >nul 2>nul" in src, (
         "el upgrade de pip no silencia stderr")
-    assert "-m pip install --upgrade pip >nul\n" not in src, (
+    assert "-m pip install --no-cache-dir --upgrade pip >nul\n" not in src, (
         "quedo una redireccion que deja escapar stderr")
 
 
@@ -4929,6 +4929,69 @@ def test_bat_ofrece_el_instalador_exe_como_salida(nombre):
     # y ya no manda a borrar carpetas a mano: eso ahora es automatico
     assert "borra la carpeta .venv" not in src
     assert "delete the .venv folder" not in src
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_redirige_temp_al_disco_del_proyecto(nombre):
+    """pip (y venv) escriben temporales en el TEMP del sistema, que en
+    Windows es casi siempre C:\\Users\\<usuario>\\AppData\\Local\\Temp SIN
+    IMPORTAR en que disco pusiste esta carpeta. Si la instalacion tiene que
+    quedar "100% en el disco elegido", un TEMP que sigue apuntando a C: la
+    rompe en silencio - hasta que C: se queda sin espacio a mitad de una
+    instalacion (el error real reportado: "No space left on device")."""
+    src = _read_bat(nombre)
+    i_temp = src.index('set "TEMP=')
+    i_pip = src.index(":install_deps")
+    assert i_temp < i_pip, "TEMP se redirige DESPUES de instalar - ya es tarde"
+    assert 'set "TEMP=%cd%\\.mvdg_tmp"' in src
+    assert 'set "TMP=%cd%\\.mvdg_tmp"' in src
+    # %cd% en ese punto es la carpeta del propio .bat (cd /d "%~dp0" ya corrio)
+    assert src.index('cd /d "%~dp0"') < i_temp
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_pip_no_deja_cache_persistente_fuera_del_venv(nombre):
+    """Sin --no-cache-dir, pip guarda un cache en %LOCALAPPDATA%\\pip\\Cache
+    - en C: SIEMPRE, sin importar TEMP/TMP ni en que disco este el programa.
+    Con reinstalaciones repetidas eso crece en silencio en el disco que el
+    usuario justamente quiso evitar llenar."""
+    src = _read_bat(nombre)
+    bloque = src[src.index(":install_deps"):]
+    assert "pip install --no-cache-dir --upgrade pip" in bloque
+    assert "pip install --no-cache-dir -r requirements.txt" in bloque
+
+
+@pytest.mark.parametrize("nombre", _BATS_LANZADORES)
+def test_bat_errdeps_menciona_espacio_en_disco(nombre):
+    """El error real reportado por un usuario fue "No space left on device"
+    durante la instalacion de dependencias - el mensaje final tiene que
+    nombrar esa causa, no solo internet/antivirus/OneDrive."""
+    src = _read_bat(nombre)
+    bloque = src[src.index(":errdeps"):]
+    assert "espacio en el disco C" in bloque
+    assert "free space on drive C" in bloque
+    assert "espaco no disco C" in bloque
+
+
+def test_build_exe_bat_redirige_temp_y_no_deja_cache_persistente():
+    """Mismo problema, mismo arreglo, en el script de build del .exe
+    (packaging/build_exe.bat): streamlit+pandas+pyinstaller+cython son
+    varios cientos de MB - si TEMP/el cache de pip siguen apuntando a C:
+    aunque el repo este en D:, el build puede fallar con el disco lleno
+    igual que le paso al usuario instalando el programa."""
+    with open(os.path.join(_repo_root(), "packaging", "build_exe.bat"),
+              encoding="ascii") as fh:
+        src = fh.read()
+    i_temp = src.index('set "TEMP=')
+    i_deps = src.index(":deps")
+    assert i_temp < i_deps, "TEMP se redirige DESPUES de instalar - ya es tarde"
+    assert 'set "TEMP=%cd%\\.mvdg_tmp"' in src
+    assert 'set "TMP=%cd%\\.mvdg_tmp"' in src
+    bloque = src[i_deps:]
+    assert "pip install --no-cache-dir --upgrade pip" in bloque
+    assert "pip install --no-cache-dir -r requirements.txt pyinstaller cython" in bloque
+    errdeps = src[src.index(":errdeps"):]
+    assert "espacio en disco" in errdeps and "free disk space" in errdeps
 
 
 def test_api_and_server_bats_are_self_sufficient_and_open_browser():

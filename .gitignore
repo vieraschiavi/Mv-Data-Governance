@@ -5,6 +5,9 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# TEMP/TMP redirigido por los .bat (pip/venv) al disco del proyecto
+.mvdg_tmp/
+
 # Build / packaging
 build/
 dist/

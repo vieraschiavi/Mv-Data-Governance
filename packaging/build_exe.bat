@@ -15,6 +15,22 @@ setlocal EnableExtensions
 cd /d "%~dp0.."
 title MV Data Governance - build .exe
 
+rem --- TEMP/TMP en ESTE disco, no en el de Windows por defecto ---
+rem  ES: pip escribe temporales en el TEMP del sistema, que en Windows es
+rem      casi siempre C:\Users\<usuario>\AppData\Local\Temp SIN IMPORTAR en
+rem      que disco pusiste este repo. Si lo pusiste en D:\ a proposito
+rem      (poco espacio en C:), un TEMP que sigue apuntando a C: rompe esa
+rem      eleccion en silencio - hasta que C: se queda sin espacio a mitad
+rem      de instalar streamlit+pandas+pyinstaller ("No space left on device").
+rem  EN: pip writes temp files to the system TEMP folder, almost always
+rem      C:\Users\<user>\AppData\Local\Temp NO MATTER what disk this repo is
+rem      on. If you put it on D:\ on purpose (low space on C:), a TEMP that
+rem      still points at C: breaks that choice silently - until C: runs out
+rem      of space mid-way through installing streamlit+pandas+pyinstaller.
+if not exist ".mvdg_tmp" mkdir ".mvdg_tmp" >nul 2>nul
+set "TEMP=%cd%\.mvdg_tmp"
+set "TMP=%cd%\.mvdg_tmp"
+
 set "PYCMD="
 python --version >nul 2>nul
 if not errorlevel 1 set "PYCMD=python"
@@ -27,8 +43,8 @@ if exist ".venv\Scripts\python.exe" goto deps
 if errorlevel 1 goto errvenv
 
 :deps
-".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt pyinstaller cython
+".venv\Scripts\python.exe" -m pip install --no-cache-dir --upgrade pip
+".venv\Scripts\python.exe" -m pip install --no-cache-dir -r requirements.txt pyinstaller cython
 if errorlevel 1 goto errdeps
 
 echo.
@@ -81,10 +97,17 @@ goto end
 
 :errvenv
 echo  Fallo la creacion del entorno (.venv) / venv creation failed.
+echo  Causas frecuentes: antivirus bloqueando archivos, sin espacio en disco.
+echo  Common causes: antivirus blocking files, no free disk space.
 goto end
 
 :errdeps
 echo  Fallo la instalacion de dependencias / dependency install failed.
+echo  Causas frecuentes: sin conexion, sin espacio en disco ^(revisa tambien
+echo  C:, este script redirige TEMP pero algunos temporales de Windows
+echo  igual pueden usarlo^).
+echo  Common causes: no connection, no free disk space ^(check C: too - this
+echo  script redirects TEMP but some Windows temp files may still use it^).
 goto end
 
 :errbuild
