@@ -1110,7 +1110,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
     info = summary(user_df)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("col_rows", lang), f"{info['rows']:,}")
-    c2.metric(t("col_column", lang), info["columns"])
+    c2.metric(t("col_columns_count", lang), info["columns"])
     c3.metric(t("pr_dupes", lang), info["duplicate_rows"])
     c4.metric(t("pr_nulls", lang), f"{info['null_cells_pct']}%")
     st.subheader(t("pr_col_profile", lang))

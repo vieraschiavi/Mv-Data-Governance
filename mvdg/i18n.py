@@ -337,6 +337,11 @@ _T: dict[str, dict[str, str]] = {
     "col_rows": {"es": "Filas", "en": "Rows", "pt": "Linhas"},
     "col_quality": {"es": "Calidad", "en": "Quality", "pt": "Qualidade"},
     "col_column": {"es": "Columna", "en": "Column", "pt": "Coluna"},
+    # Plural aparte: "col_column" es el ENCABEZADO de una tabla (una fila =
+    # una columna del dataset, singular correcto). Como MÉTRICA de conteo
+    # ("Columnas: 8") el singular queda mal, y es la primera pantalla que ve
+    # un prospecto con su propio archivo.
+    "col_columns_count": {"es": "Columnas", "en": "Columns", "pt": "Colunas"},
     "col_type": {"es": "Tipo", "en": "Type", "pt": "Tipo"},
     "col_pii": {"es": "PII", "en": "PII", "pt": "PII"},
     "col_nullable": {"es": "Admite nulos", "en": "Nullable", "pt": "Aceita nulos"},

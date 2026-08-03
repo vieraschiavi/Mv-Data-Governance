@@ -41,6 +41,32 @@ def test_i18n_fallback():
     assert len(all_keys()) > 80
 
 
+def test_metrica_de_conteo_de_columnas_usa_plural():
+    """La primera pantalla que ve un prospecto con SU archivo mostraba
+    "Columna 8" — el singular de un encabezado de tabla reusado como
+    métrica de conteo. Se separaron las dos claves: `col_column` sigue
+    siendo el encabezado (una fila = una columna, singular correcto) y
+    `col_columns_count` es la métrica."""
+    import ast
+    assert t("col_columns_count", "es") == "Columnas"
+    assert t("col_columns_count", "en") == "Columns"
+    assert t("col_columns_count", "pt") == "Colunas"
+    # y el singular NO vuelve a usarse como st.metric(...)
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+    for n in ast.walk(arbol):
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "metric" and n.args
+                and isinstance(n.args[0], ast.Call)
+                and isinstance(n.args[0].func, ast.Name)
+                and n.args[0].func.id == "t" and n.args[0].args
+                and isinstance(n.args[0].args[0], ast.Constant)):
+            assert n.args[0].args[0].value != "col_column", (
+                f"linea {n.lineno}: 'col_column' (singular) usado como metrica "
+                "de conteo; usa 'col_columns_count'")
+
+
 # -------------------------------------------------------------- demo data
 def test_demo_tables_deterministic():
     a, b = load_demo_tables(), load_demo_tables()
