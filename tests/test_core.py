@@ -1699,6 +1699,103 @@ def test_launcher_puerto_no_numerico_no_explota_con_traceback(monkeypatch):
     assert exc.value.code == 3
 
 
+def test_launcher_abre_ventana_de_programa_no_pestana():
+    """El .exe instalado tiene que abrirse como PROGRAMA (ventana propia,
+    sin barra de direcciones), no como una pestaña más del navegador.
+    ``--app=`` es el modo aplicación de Edge/Chrome; Edge viene preinstalado
+    en Windows 10/11, así que siempre hay con qué abrirlo."""
+    L = _launcher()
+    cmd = L._comando_ventana("http://127.0.0.1:8641", r"C:\x\msedge.exe")
+    assert cmd[0] == r"C:\x\msedge.exe"
+    assert "--app=http://127.0.0.1:8641" in cmd
+    # y el launcher usa la ventana, no el navegador a secas
+    with open(os.path.join(_repo_root(), "packaging", "mvdg_launcher.py"),
+              encoding="utf-8") as fh:
+        src = fh.read()
+    assert "target=_abrir_programa" in src, "el hilo sigue abriendo pestaña"
+    # en Windows, Edge está primero en la lista de candidatos
+    assert "msedge.exe" in src and "chrome.exe" in src
+
+
+def test_launcher_sin_edge_ni_chrome_cae_al_navegador(monkeypatch):
+    """Sin ningún navegador con modo app (raro en Windows), se abre la
+    pestaña de siempre: mejor eso que una ventana que nunca aparece."""
+    L = _launcher()
+    abiertos = []
+    monkeypatch.setattr(L, "_navegadores_ventana", lambda: ["/no/existe"])
+    monkeypatch.setattr(L.webbrowser, "open", lambda u: abiertos.append(u))
+    monkeypatch.setattr(L.time, "sleep", lambda s: None)
+
+    class _Resp:
+        def __init__(self, *a, **k): pass
+    import urllib.request as _ur
+    monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _Resp())
+    L._abrir_programa("http://127.0.0.1:9")
+    assert abiertos == ["http://127.0.0.1:9"]
+
+
+def test_launcher_deja_log_si_el_arranque_explota(tmp_path, monkeypatch):
+    """console=False en el spec significa que una excepción de arranque era
+    invisible: doble clic y 'no pasa nada'. Ahora queda mvdg_error.log al
+    lado del .exe (o en TEMP si no se puede escribir ahí)."""
+    L = _launcher()
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "MVDataGovernance.exe"))
+    ruta = L._log_y_avisar_error("Traceback: explosion de prueba")
+    assert ruta == str(tmp_path / "mvdg_error.log")
+    assert "explosion de prueba" in open(ruta, encoding="utf-8").read()
+
+
+def test_data_dir_program_files_sin_permiso_cae_al_perfil(tmp_path, monkeypatch):
+    """LA CAUSA DEL "NO FUNCIONA": instalado en Archivos de programa (el
+    default) y abierto como usuario normal, makedirs(Data) da PermissionError
+    y el .exe sin consola moría en silencio en el primer arranque. Ahora la
+    escritura se SONDEA (con un archivo real, no permisos declarados) y si
+    no se puede, los datos van al perfil del usuario: arrancar siempre."""
+    from mvdg import clients
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    exe_dir = tmp_path / "Program Files" / "MV Data Governance"
+    exe_dir.mkdir(parents=True)
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "MVDataGovernance.exe"))
+    monkeypatch.setattr(clients, "_ESCRITURA_PROBADA", {})
+
+    real_makedirs = os.makedirs
+    def sin_permiso(path, *a, **k):
+        if str(path).startswith(str(exe_dir)):
+            raise PermissionError(13, "Acceso denegado", str(path))
+        return real_makedirs(path, *a, **k)
+    monkeypatch.setattr(clients.os, "makedirs", sin_permiso)
+
+    d = clients.data_dir()
+    assert d == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
+    # y el sondeo quedó cacheado como "no escribible" (no se reintenta)
+    assert clients._ESCRITURA_PROBADA[str(exe_dir)] == ""
+
+
+def test_data_dir_carpeta_existente_pero_no_escribible_tambien_cae(tmp_path, monkeypatch):
+    """Peor variante: la carpeta Data EXISTE (la creó el instalador con
+    admin) pero no deja escribir adentro. makedirs(exist_ok=True) pasa —
+    solo el sondeo con un archivo real lo detecta."""
+    from mvdg import clients
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    exe_dir = tmp_path / "instalado"
+    (exe_dir / "Data").mkdir(parents=True)
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "MVDataGovernance.exe"))
+    monkeypatch.setattr(clients, "_ESCRITURA_PROBADA", {})
+
+    real_open = open
+    def open_sin_permiso(f, *a, **k):
+        if ".sonda_escritura" in str(f):
+            raise PermissionError(13, "Acceso denegado", str(f))
+        return real_open(f, *a, **k)
+    import builtins
+    monkeypatch.setattr(builtins, "open", open_sin_permiso)
+    d = clients.data_dir()
+    monkeypatch.undo()
+    assert d == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
+
+
 def test_bi_api_no_publica_fuera_de_loopback_sin_token(monkeypatch):
     """Falla cerrado: exponer la API en 0.0.0.0 sin token aborta con un
     mensaje accionable en vez de servir el gobierno a toda la red."""
