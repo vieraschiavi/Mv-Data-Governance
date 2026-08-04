@@ -76,8 +76,45 @@ def _salir_con_aviso(mensaje: str) -> None:
     raise SystemExit(3)
 
 
-def _abrir_navegador(url: str) -> None:
-    """Espera a que el servidor levante y abre el navegador una sola vez."""
+def _navegadores_ventana() -> list[str]:
+    """Rutas candidatas a un navegador con modo aplicación (--app).
+
+    En Windows, Edge viene preinstalado en 10/11 — es la garantía de que el
+    modo ventana funciona sin instalar nada. Chrome se prueba después. En
+    Linux/macOS (desarrollo) se buscan los equivalentes en el PATH."""
+    if os.name == "nt":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        return [
+            os.path.join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(pf86, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(local, "Google", "Chrome", "Application", "chrome.exe"),
+        ]
+    import shutil
+    rutas = [shutil.which(n) for n in
+             ("microsoft-edge", "google-chrome", "chromium", "chromium-browser")]
+    return [r for r in rutas if r]
+
+
+def _comando_ventana(url: str, navegador: str) -> list[str]:
+    """El comando que abre la app como VENTANA DE PROGRAMA, no como pestaña.
+
+    ``--app=URL`` es el modo aplicación de Edge/Chrome: ventana propia, sin
+    barra de direcciones ni pestañas, con su entrada en la barra de tareas —
+    lo que un usuario de escritorio espera de un programa instalado."""
+    return [navegador, f"--app={url}", "--window-size=1440,900"]
+
+
+def _abrir_programa(url: str) -> None:
+    """Espera a que el servidor levante y abre la VENTANA del programa.
+
+    Si hay Edge/Chrome, ventana de aplicación (sin cromo de navegador). Si
+    no hay ninguno — raro en Windows, donde Edge viene de fábrica — se cae
+    al navegador por defecto: mejor una pestaña que nada."""
+    import subprocess
     import urllib.request
     for _ in range(120):
         time.sleep(0.5)
@@ -86,6 +123,15 @@ def _abrir_navegador(url: str) -> None:
             break
         except Exception:
             continue
+    for navegador in _navegadores_ventana():
+        if os.path.isfile(navegador):
+            try:
+                subprocess.Popen(_comando_ventana(url, navegador),
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                return
+            except OSError:
+                continue
     webbrowser.open(url)
 
 
@@ -111,7 +157,56 @@ def _dispatch_module_flag() -> bool:
     return False
 
 
+def _log_y_avisar_error(detalle: str) -> str:
+    """Deja el traceback en un log y, en Windows, muestra un diálogo.
+
+    El .exe corre sin consola (console=False en el spec): sin esto, cualquier
+    excepción en el arranque hace que el programa "no haga nada" — la peor
+    experiencia posible de un instalador. El log va al lado del .exe si se
+    puede escribir ahí, o a TEMP si no (Archivos de programa sin admin)."""
+    import tempfile
+    nombre = "mvdg_error.log"
+    for carpeta in (os.path.dirname(os.path.abspath(sys.executable)),
+                    tempfile.gettempdir()):
+        ruta = os.path.join(carpeta, nombre)
+        try:
+            with open(ruta, "a", encoding="utf-8") as fh:
+                fh.write(detalle + "\n" + "-" * 60 + "\n")
+            break
+        except OSError:
+            continue
+    else:
+        ruta = "(no se pudo escribir el log)"
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                "El programa no pudo arrancar.\n"
+                "The program could not start.\n"
+                "O programa nao pode iniciar.\n\n"
+                f"Log: {ruta}",
+                "MV Data Governance", 0x10)  # MB_ICONERROR
+        except Exception:
+            pass
+    return ruta
+
+
 def main() -> None:
+    """Punto de entrada con los errores VISIBLES: si algo explota en el
+    arranque, queda un mvdg_error.log y (en Windows) un diálogo con la ruta
+    — nunca más un doble clic que no hace nada."""
+    try:
+        _main()
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        _log_y_avisar_error(traceback.format_exc())
+        raise
+
+
+def _main() -> None:
     if _dispatch_module_flag():
         return
 
@@ -127,7 +222,7 @@ def main() -> None:
     url = f"http://127.0.0.1:{port}"
     print(f"MV Data Governance -> {url}")
 
-    threading.Thread(target=_abrir_navegador, args=(url,), daemon=True).start()
+    threading.Thread(target=_abrir_programa, args=(url,), daemon=True).start()
 
     from streamlit.web import cli as stcli
     sys.argv = ["streamlit", "run", app_path,
