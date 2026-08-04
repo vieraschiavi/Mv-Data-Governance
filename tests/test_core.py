@@ -5,6 +5,7 @@ Ejecutar:  pytest tests/ -v
 """
 from __future__ import annotations
 
+import io
 import os
 import sys
 
@@ -5222,6 +5223,98 @@ def test_installer_iss_deja_elegir_carpeta_y_disco():
     assert directivas.get("privilegesrequiredoverridesallowed") == "dialog"
     # y nada de fijar el disco a mano: sería contradecir todo lo anterior
     assert "usepreviousappdir=no" not in iss.lower()
+
+
+# ---------------------------- 📥 informe de auditoría del archivo propio
+def _df_con_defectos():
+    """Archivo 'de cliente' con defectos reales: nulos en email/monto y una
+    clave aparente (id) — dispara reglas de completitud y unicidad."""
+    return pd.DataFrame({
+        "id": [1, 2, 3, 4, 5, 6, 7, 8],
+        "email": ["a@x.com", None, "c@x.com", "d@x.com", None,
+                  "f@x.com", "g@x.com", "h@x.com"],
+        "monto": [10.0, 20.0, None, 40.0, 50.0, 60.0, 70.0, 80.0],
+        "pais": ["UY", "UY", "AR", "AR", "BR", "BR", "UY", "AR"],
+    })
+
+
+def test_informe_archivo_propio_cuadra_con_el_motor():
+    """El Excel se REABRE y se audita contra el motor: mismo índice de
+    calidad, misma cantidad de reglas, un plan de corrección por falla.
+    La pantalla y el informe usan la misma fuente (file_report_tables),
+    así que si esto cuadra, no pueden divergir."""
+    import openpyxl
+    from mvdg.auto_rules import auto_quality_results
+    from mvdg.file_report import file_report_xlsx
+    from mvdg.i18n import t as _tt
+    from mvdg.quality import overall_index
+
+    df = _df_con_defectos()
+    ares = auto_quality_results(df, "clientes.csv", "es")
+    assert len(ares) >= 3          # el df de prueba tiene que disparar reglas
+    rotas = int((ares["status"] != "pass").sum())
+    assert rotas >= 2
+
+    datos = file_report_xlsx(df, "clientes.csv", "es")
+    assert datos[:2] == b"PK"
+    wb = openpyxl.load_workbook(io.BytesIO(datos), data_only=True)
+    esperadas = [_tt(k, "es") for k in ("frep_sheet_summary", "frep_sheet_profile",
+                                        "frep_sheet_quality", "frep_sheet_fixes")]
+    assert wb.sheetnames == esperadas
+
+    # resumen: el índice de calidad del informe ES el del motor
+    resumen = wb[esperadas[0]]
+    celdas = [str(c.value) for fila in resumen.iter_rows() for c in fila if c.value]
+    assert f"{overall_index(ares)} / 100" in celdas
+    assert any(v == str(len(df)) for v in celdas)          # filas
+
+    # calidad: una fila por regla corrida (sin contar título/encabezado/pie)
+    pie = _tt("frep_generated", "es")
+    def _filas_de_datos(hoja):
+        return [f for f in hoja.iter_rows(min_row=4, values_only=True)
+                if f[0] is not None and f[0] != pie]
+    assert len(_filas_de_datos(wb[esperadas[2]])) == len(ares)
+    # plan: una fila por regla rota, con causa y corto plazo no vacíos
+    plan = _filas_de_datos(wb[esperadas[3]])
+    assert len(plan) == rotas
+    assert all(f[3] and f[4] for f in plan)
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_informe_archivo_propio_trilingue(lang):
+    """Las 4 hojas salen en el idioma pedido — paridad ES/EN/PT también acá."""
+    import openpyxl
+    from mvdg.file_report import file_report_xlsx
+    from mvdg.i18n import t as _tt
+    datos = file_report_xlsx(_df_con_defectos(), "clientes.csv", lang)
+    wb = openpyxl.load_workbook(io.BytesIO(datos))
+    assert wb.sheetnames == [_tt(k, lang) for k in
+                             ("frep_sheet_summary", "frep_sheet_profile",
+                              "frep_sheet_quality", "frep_sheet_fixes")]
+
+
+def test_informe_archivo_sin_reglas_no_explota():
+    """Un archivo con solo encabezados (0 filas — típico: plantilla exportada
+    vacía) no dispara ninguna regla y el informe igual sale: perfil sí,
+    calidad vacía, '0 / 0' en vez de una división por cero o un traceback."""
+    import openpyxl
+    from mvdg.file_report import file_report_xlsx
+    df = pd.DataFrame({"nota": pd.Series([], dtype=str)})
+    datos = file_report_xlsx(df, "notas.csv", "es")
+    wb = openpyxl.load_workbook(io.BytesIO(datos), data_only=True)
+    celdas = [str(c.value) for h in wb for fila in h.iter_rows() for c in fila if c.value]
+    assert "0 / 0" in celdas
+
+
+def test_informe_descargable_desde_la_pantalla_de_perfilado():
+    """El botón existe en la UI y usa el motor — sin esto, el informe sería
+    una función huérfana que nadie puede descargar."""
+    with open(os.path.join(_repo_root(), "app", "app.py"), encoding="utf-8") as fh:
+        src = fh.read()
+    assert "file_report_xlsx" in src
+    assert 't("frep_btn", lang)' in src
+    # gateado por dataset_name: la comparación genérica de ejemplos no lo lleva
+    assert "if dataset_name:" in src
 
 
 # --------------------------------------------- 📦 entregable final por caso

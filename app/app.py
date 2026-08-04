@@ -1163,6 +1163,20 @@ def _render_profile(user_df, dataset_name: str | None = None):
     for s in suggest_rules(user_df, lang):
         st.markdown(f"- {s}")
 
+    # El cierre del recorrido comercial: lo que se ve en pantalla, en un
+    # Excel para el cliente del consultor. Solo con dataset_name (archivo o
+    # base) — la comparación genérica de los ejemplos no lo necesita.
+    if dataset_name:
+        from mvdg.file_report import file_report_xlsx
+        st.download_button(
+            t("frep_btn", lang),
+            file_report_xlsx(user_df, dataset_name, lang),
+            f"mvdg_informe_{dataset_name.rsplit('.', 1)[0]}_{lang}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"frep_dl_{dataset_name}",
+        )
+        st.caption(t("frep_caption", lang))
+
 
 with tab_pr:
     st.info(t("pr_intro", lang), icon="🔎")
