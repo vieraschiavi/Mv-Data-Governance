@@ -2028,6 +2028,51 @@ def test_bi_api_cors_no_trae_comodin_por_defecto():
                for o in bm.CORS_ORIGINS)
 
 
+def test_landing_ofrece_el_instalador_y_no_manda_a_compilarlo():
+    """El circuito comercial: la landing ofrece el .exe listo. Antes la
+    tarjeta del instalador bajaba el ZIP portable y decía "el .exe se genera
+    en tu PC" — pedirle a un prospecto que compile el producto antes de
+    probarlo es perder la venta ahí mismo."""
+    ruta = os.path.join(_repo_root(), "landing", "descargas.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+    assert "/api/descargar" in html, "la landing no ofrece el instalador"
+    for frase in ("El .exe se genera en tu PC", "The .exe is built on your",
+                  "O .exe é gerado no seu"):
+        assert frase not in html, f"sigue mandando a compilar: {frase!r}"
+
+
+def test_pago_entrega_el_mismo_instalador_mas_la_licencia():
+    """Demo y full son EL MISMO binario: quien paga no baja otro programa,
+    baja el mismo y pega su clave. La página de pago tiene que ofrecer el
+    instalador (no el ZIP de demo) y mostrar la licencia."""
+    ruta = os.path.join(_repo_root(), "landing", "pago.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+    assert "/api/descargar" in html
+    assert "MVDataGovernance_Demo_v1.0.0.zip" not in html, (
+        "despues de pagar seguia bajando el ZIP de demo")
+    assert "lic_label" in html, "no muestra la clave de licencia"
+    # y lo explica en los 3 idiomas, sin prometer una segunda descarga
+    for frase in ("No hay una segunda descarga", "No second download",
+                  "Sem segundo download"):
+        assert frase in html, f"falta la aclaracion: {frase!r}"
+
+
+def test_endpoint_de_descarga_falla_ruidoso_sin_configurar():
+    """Sin MVDG_INSTALLER_URL el endpoint NO puede inventar una URL ni
+    servir un archivo viejo: tiene que decir qué falta. Un botón de descarga
+    que baja algo equivocado es peor que uno que avisa."""
+    ruta = os.path.join(_repo_root(), "api", "descargar.js")
+    with open(ruta, encoding="utf-8") as fh:
+        js = fh.read()
+    assert "MVDG_INSTALLER_URL" in js
+    assert "503" in js and "sin_configurar" in js
+    assert 'url.protocol !== "https:"' in js, "permitiria bajar un .exe por http"
+    assert "302" in js and "no-store" in js, (
+        "un 301 cacheado dejaria a los usuarios pegados al hosting viejo")
+
+
 def test_landing_tiene_headers_de_seguridad():
     """CSP, nosniff y Referrer-Policy configurados para el sitio publico."""
     import json as _json

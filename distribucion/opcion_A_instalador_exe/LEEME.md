@@ -11,7 +11,51 @@ máquina do usuário: o instalador traz tudo dentro.
 
 ---
 
-## ⬇️ Descargar el instalador ya construido (lo más rápido)
+## 🌐 Distribución desde la landing (lo que ve un comprador)
+
+La landing ya tiene el circuito armado:
+
+```
+Landing → "⬇ Descargar instalador (.exe)" → /api/descargar → el .exe
+Pago OK → pago.html → el MISMO .exe + su clave de licencia
+```
+
+**Demo y full son el mismo archivo.** No hay dos instaladores: hay uno, y la
+licencia decide qué habilita. Sin licencia corre en plan demo (catálogo,
+calidad, linaje, glosario, perfilado, MDM, export a BI, datos propios); con
+licencia paga se suman migración a Purview/Collibra y escaneo de tenant BI.
+Quien paga **no baja otro programa**: baja el mismo y pega su clave en la
+pestaña ❓ Ayuda. Un único binario es el que se audita, se testea y se firma —
+dos builds paralelos serían dos superficies donde una queda atrás sin que
+nadie se entere.
+
+### El paso que falta configurar: dónde se aloja el .exe
+
+`/api/descargar` redirige a lo que diga la variable de entorno
+**`MVDG_INSTALLER_URL`** en Vercel (*Settings → Environment Variables*).
+Mientras no esté, el endpoint responde 503 con un mensaje que dice qué falta
+— a propósito: un botón que baja algo equivocado es peor que uno que avisa.
+
+El `.exe` no puede alojarse ni en el repo (GitHub rechaza >100 MB) ni en el
+deploy de Vercel (mismo orden de límite). Opciones, de más simple a más
+sofisticada:
+
+| Dónde | Cómo | Costo |
+|---|---|---|
+| **Release de un repo público aparte** (ej. `Mv-Data-Governance-Releases`, sin código fuente, solo el `.exe`) | Subís el `.exe` a una release de ese repo y pegás la URL del asset | Gratis |
+| **Vercel Blob** | `vercel blob put` y pegás la URL | Gratis hasta cierto volumen |
+| **Cloudflare R2 / S3** | Subís el objeto y pegás la URL pública | Centavos |
+
+> Este repo es **privado**, así que un link a *sus* releases **no le funciona
+> a un comprador** sin acceso. Por eso la primera opción usa un repo aparte:
+> el código del motor sigue privado y solo el instalador queda público.
+
+Cambiar de hosting después es cambiar la variable — no hay que tocar el HTML
+ni volver a deployar.
+
+---
+
+## ⬇️ Descargar el instalador ya construido (para vos)
 
 El `.exe` **no vive dentro del repositorio**: pesa cientos de MB y GitHub
 rechaza archivos de más de 100 MB — y aunque entrara, quedaría en el
