@@ -26,9 +26,13 @@ async function check(desc, fn) {
 
 function mockRes() {
   const res = {
-    _status: null, _body: null,
+    _status: null, _body: null, _headers: {}, _ended: false,
     status(code) { this._status = code; return this; },
     json(obj) { this._body = obj; return this; },
+    // Un redirect no responde con json(): setea Location y termina. Sin esto
+    // el test de descargar.js explotaría por método inexistente.
+    setHeader(k, v) { this._headers[k.toLowerCase()] = v; return this; },
+    end() { this._ended = true; return this; },
   };
   return res;
 }
@@ -477,6 +481,108 @@ async function main() {
           const res = mockRes();
           await trial(req, res);
           ultimo = res;
+        }
+        assert.strictEqual(ultimo._status, 429);
+        rateLimit.resetForTests();
+      });
+    });
+  }
+
+  {
+    // ---------------------------------------------------------------- descargas
+    // El .exe no vive en el repo ni en el deploy (pesa cientos de MB): la
+    // landing pega a /api/descargar y este redirige a donde este alojado.
+    const descargar = require("./descargar");
+    const ANTES = process.env.MVDG_INSTALLER_URL;
+    const conUrl = async (valor, fn) => {
+      if (valor === null) delete process.env.MVDG_INSTALLER_URL;
+      else process.env.MVDG_INSTALLER_URL = valor;
+      try { await fn(); } finally {
+        if (ANTES !== undefined) process.env.MVDG_INSTALLER_URL = ANTES;
+        else delete process.env.MVDG_INSTALLER_URL;
+      }
+    };
+
+    await check("descargar: redirige 302 a la URL configurada", async () => {
+      await conUrl("https://ejemplo.com/MVDataGovernance_Setup.exe", async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET", url: "/api/descargar" }, res);
+        assert.strictEqual(res._status, 302);
+        assert.strictEqual(res._headers.location,
+          "https://ejemplo.com/MVDataGovernance_Setup.exe");
+        // no-store: si el hosting cambia, nadie queda pegado al viejo
+        assert.strictEqual(res._headers["cache-control"], "no-store");
+        assert.ok(res._ended);
+      });
+    });
+
+    await check("descargar: sin configurar responde 503 y NO inventa una URL", async () => {
+      await conUrl(null, async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET" }, res);
+        assert.strictEqual(res._status, 503);
+        assert.strictEqual(res._body.error, "sin_configurar");
+        // el mensaje dice QUE falta, en los 3 idiomas
+        for (const k of ["es", "en", "pt"]) {
+          assert.ok(res._body[k].includes("MVDG_INSTALLER_URL"));
+        }
+        assert.ok(!res._headers.location, "no debe redirigir a ningun lado");
+      });
+    });
+
+    await check("descargar: rechaza http:// (un .exe se descarga por https o nada)", async () => {
+      await conUrl("http://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET" }, res);
+        assert.strictEqual(res._status, 500);
+        assert.strictEqual(res._body.error, "url_insegura");
+        assert.ok(!res._headers.location);
+      });
+    });
+
+    await check("descargar: URL mal formada no explota, responde 500", async () => {
+      await conUrl("no-es-una-url", async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET" }, res);
+        assert.strictEqual(res._status, 500);
+        assert.strictEqual(res._body.error, "url_invalida");
+      });
+    });
+
+    await check("descargar: el plan NO cambia el archivo (demo y full son el mismo .exe)", async () => {
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        const destinos = [];
+        for (const plan of ["demo", "full", undefined, "inventado"]) {
+          rateLimit.resetForTests();
+          const res = mockRes();
+          await descargar({ method: "GET", query: { plan } }, res);
+          destinos.push(res._headers.location);
+        }
+        assert.strictEqual(new Set(destinos).size, 1,
+          "el parametro plan no debe elegir un archivo distinto");
+      });
+    });
+
+    await check("descargar: POST no sirve para bajar (405)", async () => {
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "POST" }, res);
+        assert.strictEqual(res._status, 405);
+      });
+    });
+
+    await check("descargar: rate limit corta a los 30 de la misma IP", async () => {
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        let ultimo;
+        for (let i = 0; i < 31; i++) {
+          ultimo = mockRes();
+          await descargar({ method: "GET" }, ultimo);
         }
         assert.strictEqual(ultimo._status, 429);
         rateLimit.resetForTests();

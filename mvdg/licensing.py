@@ -37,6 +37,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 import time
 
 from .clients import data_dir
@@ -58,6 +59,8 @@ PUBLIC_KEY_B64 = ""
 
 _PREFIJO = "MVDG2"
 _ARCHIVO = "licencia.json"
+# Token que viaja dentro del build del owner (ver _licencia_empaquetada).
+_ARCHIVO_EMPAQUETADO = "licencia_owner.txt"
 
 # Planes conocidos, de menor a mayor. "demo" es el piso: sin licencia válida,
 # el programa funciona igual pero con las funciones marcadas abajo apagadas.
@@ -121,12 +124,19 @@ def _archivo() -> str:
     return os.path.join(data_dir(), _ARCHIVO)
 
 
-def verify(token: str, public_key_b64: str | None = None) -> dict | None:
+def verify(token: str, public_key_b64: str | None = None,
+           check_machine: bool = True) -> dict | None:
     """Verifica una licencia ``MVDG2.<payload>.<firma>``.
 
     Devuelve el payload si la firma es válida y no está vencida; ``None`` en
     cualquier otro caso. No lanza: una licencia inválida es un estado normal
     (alguien pegó mal la clave), no un error del programa.
+
+    ``check_machine=False`` verifica todo MENOS que el campo ``mid`` sea de
+    esta PC. Lo usa el emisor de licencias (packaging/licencias.py) para su
+    chequeo de sanidad: firma un token atado a OTRA máquina (la del owner) y
+    necesita confirmar que la firma quedó bien sin que lo rechace por no ser
+    esa máquina. El programa del cliente siempre usa el default.
     """
     pub = public_key_b64 if public_key_b64 is not None else PUBLIC_KEY_B64
     if not pub or not token or not isinstance(token, str):
@@ -163,6 +173,15 @@ def verify(token: str, public_key_b64: str | None = None) -> dict | None:
             return None
     if payload.get("plan") not in PLANES:
         return None
+    # Licencia ATADA a una máquina (campo "mid"): se usa para el build del
+    # owner, que viene desbloqueado de fábrica. Si ese .exe se filtra, en
+    # cualquier otra PC el id no coincide y queda en plan demo. Las licencias
+    # que se VENDEN no llevan "mid" y siguen valiendo en cualquier máquina —
+    # atarle la licencia a la PC a un cliente que pagó sería hostil.
+    if check_machine:
+        from .machine import matches
+        if not matches(payload.get("mid")):
+            return None
     return payload
 
 
@@ -189,16 +208,47 @@ def clear() -> None:
         pass
 
 
+def _licencia_empaquetada() -> str | None:
+    """Token que viaja DENTRO del programa, si lo hay (build del owner).
+
+    El instalador del owner trae ``licencia_owner.txt`` al lado del .exe: así
+    el programa abre ya desbloqueado, sin pegar el token a mano cada vez que
+    se reinstala. No es un atajo de seguridad — ese token igual tiene que
+    pasar ``verify()`` como cualquier otro (firma Ed25519 válida y, en el
+    caso del owner, atado a la máquina). Si no valida, se ignora."""
+    candidatas = []
+    if getattr(sys, "frozen", False):
+        candidatas.append(os.path.dirname(sys.executable))
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidatas.append(meipass)
+    else:
+        candidatas.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for base in candidatas:
+        ruta = os.path.join(base, _ARCHIVO_EMPAQUETADO)
+        try:
+            with open(ruta, encoding="utf-8") as fh:
+                token = fh.read().strip()
+            if token:
+                return token
+        except OSError:
+            continue
+    return None
+
+
 def current() -> dict | None:
     """Licencia guardada, **revalidando la firma** en cada lectura.
 
     Revalidar y no confiar en el JSON guardado es el punto: si alguien edita
     licencia.json a mano para ponerse plan "enterprise", la firma deja de
     coincidir con el payload y la licencia se descarta.
+
+    Si no hay licencia guardada, se prueba la empaquetada (build del owner).
     """
     ruta = _archivo()
     if not os.path.exists(ruta):
-        return None
+        token = _licencia_empaquetada()
+        return verify(token) if token else None
     try:
         with open(ruta, encoding="utf-8") as fh:
             guardado = json.load(fh)

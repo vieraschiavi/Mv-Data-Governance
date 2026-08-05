@@ -78,8 +78,8 @@ en:{checking:"Verifying your payment…",checking_p:"One moment, we're confirmin
   ok_h1:"✅ Payment confirmed!",
   ok_p:"Thanks for your purchase{PLAN}. Download MV Data Governance below.",
   ok_p_plan:" of the {plan} plan",
-  btn:"⬇ Download MV Data Governance (PC)",
-  ok_note:"Windows installer (.exe) and portable (.bat) included. Step-by-step guide inside the ZIP.",
+  btn:"⬇ Download the installer (.exe)",
+  ok_note:"Same program you may have already tried: install it and paste the key below in the ❓ Help tab to unlock the paid features. No second download.",
   lic_label:"🔑 Your MV Data Governance license (save it, it's your activation proof):",
   lic_generating:"Your license is being generated — if you don't see it in a few seconds, write to us and we'll send it.",
   copy:"Copy",copied:"✓ Copied to clipboard",
@@ -95,8 +95,8 @@ pt:{checking:"Verificando seu pagamento…",checking_p:"Um momento, estamos conf
   ok_h1:"✅ Pagamento confirmado!",
   ok_p:"Obrigado pela sua compra{PLAN}. Baixe o MV Data Governance abaixo.",
   ok_p_plan:" do plano {plan}",
-  btn:"⬇ Baixar MV Data Governance (PC)",
-  ok_note:"Instalador Windows (.exe) e portátil (.bat) incluídos. Guia passo a passo dentro do ZIP.",
+  btn:"⬇ Baixar o instalador (.exe)",
+  ok_note:"É o mesmo programa que você talvez já tenha testado: instale e cole a chave abaixo na aba ❓ Ajuda para liberar os recursos pagos. Sem segundo download.",
   lic_label:"🔑 Sua licença MV Data Governance (guarde-a, é seu comprovante de ativação):",
   lic_generating:"Sua licença está sendo gerada — se não aparecer em alguns segundos, escreva para nós e a enviaremos.",
   copy:"Copiar",copied:"✓ Copiada para a área de transferência",
@@ -112,8 +112,8 @@ var ES={checking:"Verificando tu pago…",checking_p:"Un momento, estamos confir
   ok_h1:"✅ ¡Pago confirmado!",
   ok_p:"Gracias por tu compra{PLAN}. Descargá MV Data Governance acá abajo.",
   ok_p_plan:" del plan {plan}",
-  btn:"⬇ Descargar MV Data Governance (PC)",
-  ok_note:"Incluye instalador Windows (.exe) y portable (.bat). Guía paso a paso adentro del ZIP.",
+  btn:"⬇ Descargar el instalador (.exe)",
+  ok_note:"Es el mismo programa que quizás ya probaste: instalalo y pegá la clave de abajo en la pestaña ❓ Ayuda para habilitar las funciones pagas. No hay una segunda descarga.",
   lic_label:"🔑 Tu licencia MV Data Governance (guardala, es tu comprobante de activación):",
   lic_generating:"Tu licencia se está generando — si no la ves en unos segundos, escribinos y te la mandamos.",
   copy:"Copiar",copied:"✓ Copiada al portapapeles",
@@ -169,7 +169,7 @@ function render(){
     }
     card.innerHTML=langBar+'<div class="ic ok">✓</div><h1>'+T('ok_h1')+'</h1>'
       +'<p>'+T('ok_p').replace('{PLAN}',planTxt)+'</p>'
-      +'<a class="btn" href="descargas/MVDataGovernance_Demo_v1.0.0.zip" download>'+T('btn')+'</a>'
+      +'<a class="btn" href="/api/descargar?plan=full">'+T('btn')+'</a>'
       +'<div class="small">'+T('ok_note')+'</div>'
       +licBlock
       +'<div class="small">'+T('help')+' <a href="mailto:vieraschiavi@gmail.com?subject=Compra%20MV%20Data%20Governance">'+T('help_link')+'</a> · '

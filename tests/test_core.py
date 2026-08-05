@@ -1699,6 +1699,216 @@ def test_launcher_puerto_no_numerico_no_explota_con_traceback(monkeypatch):
     assert exc.value.code == 3
 
 
+def test_app_no_parece_una_app_de_streamlit():
+    """El cliente compra software de gobierno de datos, no una demo. Tres
+    cosas delataban el framework: la barra blanca del header (que además
+    rompía el tema oscuro), el menú ⋮ con opciones de desarrollo y el pie
+    "Made with Streamlit"."""
+    with open(os.path.join(_repo_root(), "app", "app.py"), encoding="utf-8") as fh:
+        css = fh.read()
+    assert 'header[data-testid="stHeader"]' in css and "transparent" in css, (
+        "la barra blanca del header sigue rompiendo el tema oscuro")
+    for sel in ('[data-testid="stToolbar"]', "#MainMenu", "footer"):
+        assert sel in css, f"no se oculta {sel}"
+    # el header se hace transparente, NO se oculta: ahí vive el botón que
+    # despliega la barra lateral colapsada
+    assert 'header[data-testid="stHeader"] { display: none' not in css
+
+
+def test_launcher_arranca_sin_boton_deploy():
+    """--client.toolbarMode viewer saca el botón "Deploy" (lo único del
+    cromo que sí se puede apagar por configuración). Verificado contra un
+    Streamlit real: con el flag, 0 botones Deploy visibles; sin él, 1."""
+    with open(os.path.join(_repo_root(), "packaging", "mvdg_launcher.py"),
+              encoding="utf-8") as fh:
+        src = fh.read()
+    assert '"--client.toolbarMode", "viewer"' in src
+
+
+def test_launcher_reconfirma_el_puerto_antes_de_arrancar(monkeypatch):
+    """Entre elegir el puerto y el bind real de Streamlit pasa casi un
+    segundo (se abre el navegador, se importa la CLI). Si en esa ventana
+    otro programa se lo lleva, antes moría con el traceback de Tornado —
+    invisible en un .exe sin consola. Ahora re-chequea y re-elige."""
+    L = _launcher()
+    import mvdg.netports as np
+    ocupados = {7001}
+    monkeypatch.setattr(np, "puerto_libre",
+                        lambda h, p: p not in ocupados)
+    monkeypatch.setattr(np, "elegir_puerto", lambda h="127.0.0.1", **k: 7002)
+    # el puerto elegido se lo llevaron -> devuelve otro, no insiste
+    assert L._puerto_confirmado(7001) == 7002
+    # si sigue libre, se respeta (no se cambia porque sí)
+    assert L._puerto_confirmado(7003) == 7003
+
+
+def test_owner_y_comprador_reciben_el_mismo_exe():
+    """"VERSION OWNER IDENTICA A LA DESCARGADA POR COMPRADORES": el kit del
+    owner y el paquete del comprador empaquetan EL MISMO archivo
+    Setup_v{ver}.exe — no hay un build aparte "ya desbloqueado". Lo que
+    cambia es la licencia que cada uno activa, no el binario. Si alguien
+    forkeara los builds, esto lo caza."""
+    import ast
+    ruta = os.path.join(_repo_root(), "packaging", "build_release.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+    fuentes = {}
+    for fn in [n for n in ast.walk(arbol) if isinstance(n, ast.FunctionDef)]:
+        if fn.name in ("build_option_a", "build_owner"):
+            fuentes[fn.name] = [
+                n.value for n in ast.walk(fn)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and "Setup_v" in n.value]
+    assert fuentes["build_option_a"] == fuentes["build_owner"], (
+        "el owner y el comprador arman nombres de .exe distintos: "
+        f"{fuentes}")
+    assert fuentes["build_owner"], "no se encontró el Setup.exe en build_owner"
+
+
+def _par_de_claves():
+    """Par Ed25519 de prueba (no la clave real, que no está en el repo)."""
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    priv = Ed25519PrivateKey.generate()
+    pub = base64.urlsafe_b64encode(priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw)).decode().rstrip("=")
+    return priv, pub
+
+
+def _firmar_token(priv, payload):
+    import base64
+    import json as _json
+    body = base64.urlsafe_b64encode(_json.dumps(
+        payload, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
+    firma = base64.urlsafe_b64encode(priv.sign(body.encode("ascii"))).decode().rstrip("=")
+    return f"MVDG2.{body}.{firma}"
+
+
+def test_licencia_del_owner_atada_no_sirve_en_otra_maquina():
+    """EL punto del build del owner: viene desbloqueado, así que si ese .exe
+    se filtra tiene que ser inútil en cualquier otra PC. La licencia lleva
+    el id de máquina ("mid") y verify() la descarta si no coincide."""
+    import time as _time
+    from mvdg import licensing
+    from mvdg.machine import machine_id
+    priv, pub = _par_de_claves()
+    base = {"plan": "owner", "email": "yo@ejemplo.com", "iat": int(_time.time())}
+
+    # en ESTA máquina: vale
+    propia = _firmar_token(priv, {**base, "mid": machine_id()})
+    assert licensing.verify(propia, public_key_b64=pub) is not None
+
+    # el MISMO token, en otra PC (id distinto): no vale -> plan demo
+    ajena = _firmar_token(priv, {**base, "mid": "0000ffff0000ffff"})
+    assert licensing.verify(ajena, public_key_b64=pub) is None, (
+        "un .exe del owner filtrado funcionaria en otra maquina")
+
+    # y la firma sigue siendo válida: lo que falla es SOLO la máquina
+    assert licensing.verify(ajena, public_key_b64=pub,
+                            check_machine=False) is not None
+
+
+def test_licencias_vendidas_no_se_atan_a_una_maquina():
+    """Atarle la licencia al equipo a un cliente que pagó sería hostil:
+    cambia de notebook y pierde lo que compró. Sin "mid", vale en todos
+    lados — el binding es solo para el build del owner."""
+    import time as _time
+    from mvdg import licensing
+    priv, pub = _par_de_claves()
+    token = _firmar_token(priv, {"plan": "professional", "email": "cliente@x.com",
+                                 "iat": int(_time.time())})
+    assert licensing.verify(token, public_key_b64=pub) is not None
+
+
+def test_id_de_maquina_es_estable_y_no_filtra_el_nombre_del_equipo():
+    """Tiene que dar lo mismo en cada llamada (si no, la licencia dejaría de
+    valer al reiniciar) y no puede contener el nombre de la PC en claro: el
+    token viaja por mail y como secreto de CI."""
+    import platform
+    from mvdg.machine import machine_id, matches
+    mid = machine_id()
+    assert mid == machine_id() and len(mid) == 16
+    assert all(c in "0123456789abcdef" for c in mid)
+    nodo = (platform.node() or "").lower()
+    if nodo:
+        assert nodo not in mid.lower()
+    assert matches(None) and matches("")        # sin atar = vale en todos lados
+    assert matches(mid.upper())                 # se compara sin distinguir caso
+    assert not matches("deadbeefdeadbeef")
+
+
+def test_licencia_empaquetada_se_activa_sola_pero_valida_igual(tmp_path, monkeypatch):
+    """El .exe del owner abre ya desbloqueado (licencia_owner.txt al lado del
+    binario), pero ese token pasa por la MISMA verificación que el de un
+    comprador: si no valida, se ignora y queda en demo."""
+    import time as _time
+    from mvdg import licensing
+    from mvdg.machine import machine_id
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))   # sin licencia guardada
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    exe_dir = tmp_path / "instalado"
+    exe_dir.mkdir()
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "MVDataGovernance.exe"))
+
+    token = _firmar_token(priv, {"plan": "owner", "email": "yo@x.com",
+                                 "iat": int(_time.time()), "mid": machine_id()})
+    (exe_dir / "licencia_owner.txt").write_text(token, encoding="utf-8")
+    assert licensing.plan() == "owner"
+    assert licensing.has_feature("migracion_purview")
+
+    # token basura empaquetado -> se ignora, NO desbloquea nada
+    (exe_dir / "licencia_owner.txt").write_text("MVDG2.falso.falso", encoding="utf-8")
+    assert licensing.plan() == "demo"
+    assert not licensing.has_feature("migracion_purview")
+
+
+def test_workflow_owner_no_publica_release_y_exige_binding():
+    """Los dos candados del build del owner, fijados:
+    1. Se publica como ARTEFACTO, nunca como Release — un asset de Release
+       queda pegado al repo para siempre y quedaría expuesto el día que el
+       repo pase a público.
+    2. Exige que la licencia esté atada a una máquina, porque el candado 1
+       se rompe en cuanto alguien reenvía el archivo por mail."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador_owner.yml")
+    assert os.path.exists(ruta), "falta el workflow del instalador owner"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "workflow_dispatch" in wf and "tags:" not in wf, (
+        "el build del owner no debe dispararse solo")
+    assert "action-gh-release" not in wf and "softprops" not in wf, (
+        "el build del owner NO se publica como Release")
+    assert "contents: read" in wf, "no necesita permiso de escritura"
+    assert "MVDG_OWNER_TOKEN" in wf
+    assert "falta 'mid'" in wf, "no exige que la licencia este atada"
+    assert "retention-days: 7" in wf
+
+
+def test_workflow_del_instalador_publica_y_verifica():
+    """El .exe no puede vivir en el repo (GitHub rechaza >100 MB), así que
+    se construye en un runner Windows y se publica como Release. El
+    workflow tiene que verificar que el .exe es real antes de publicarlo:
+    un Inno que falla a medias deja un stub de pocos KB."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador.yml")
+    assert os.path.exists(ruta), "falta el workflow del instalador"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "windows-latest" in wf, "no se construye en Windows"
+    assert "pyinstaller packaging/mvdg.spec" in wf
+    assert "instalador.iss" in wf
+    assert "contents: write" in wf, "sin permiso para crear la Release"
+    assert 'tags: ["v*"]' in wf, "no se dispara al taggear una versión"
+    assert "-lt 20" in wf, "no verifica que el instalador no sea un stub"
+    # y el LEEME manda a las Releases, no a una carpeta del repo
+    leeme = os.path.join(_repo_root(), "distribucion",
+                         "opcion_A_instalador_exe", "LEEME.md")
+    with open(leeme, encoding="utf-8") as fh:
+        assert "releases/latest" in fh.read()
+
+
 def test_launcher_abre_ventana_de_programa_no_pestana():
     """El .exe instalado tiene que abrirse como PROGRAMA (ventana propia,
     sin barra de direcciones), no como una pestaña más del navegador.
@@ -1816,6 +2026,51 @@ def test_bi_api_cors_no_trae_comodin_por_defecto():
     assert "*" not in bm.CORS_ORIGINS
     assert all(o.startswith("http://127.0.0.1") or o.startswith("http://localhost")
                for o in bm.CORS_ORIGINS)
+
+
+def test_landing_ofrece_el_instalador_y_no_manda_a_compilarlo():
+    """El circuito comercial: la landing ofrece el .exe listo. Antes la
+    tarjeta del instalador bajaba el ZIP portable y decía "el .exe se genera
+    en tu PC" — pedirle a un prospecto que compile el producto antes de
+    probarlo es perder la venta ahí mismo."""
+    ruta = os.path.join(_repo_root(), "landing", "descargas.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+    assert "/api/descargar" in html, "la landing no ofrece el instalador"
+    for frase in ("El .exe se genera en tu PC", "The .exe is built on your",
+                  "O .exe é gerado no seu"):
+        assert frase not in html, f"sigue mandando a compilar: {frase!r}"
+
+
+def test_pago_entrega_el_mismo_instalador_mas_la_licencia():
+    """Demo y full son EL MISMO binario: quien paga no baja otro programa,
+    baja el mismo y pega su clave. La página de pago tiene que ofrecer el
+    instalador (no el ZIP de demo) y mostrar la licencia."""
+    ruta = os.path.join(_repo_root(), "landing", "pago.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+    assert "/api/descargar" in html
+    assert "MVDataGovernance_Demo_v1.0.0.zip" not in html, (
+        "despues de pagar seguia bajando el ZIP de demo")
+    assert "lic_label" in html, "no muestra la clave de licencia"
+    # y lo explica en los 3 idiomas, sin prometer una segunda descarga
+    for frase in ("No hay una segunda descarga", "No second download",
+                  "Sem segundo download"):
+        assert frase in html, f"falta la aclaracion: {frase!r}"
+
+
+def test_endpoint_de_descarga_falla_ruidoso_sin_configurar():
+    """Sin MVDG_INSTALLER_URL el endpoint NO puede inventar una URL ni
+    servir un archivo viejo: tiene que decir qué falta. Un botón de descarga
+    que baja algo equivocado es peor que uno que avisa."""
+    ruta = os.path.join(_repo_root(), "api", "descargar.js")
+    with open(ruta, encoding="utf-8") as fh:
+        js = fh.read()
+    assert "MVDG_INSTALLER_URL" in js
+    assert "503" in js and "sin_configurar" in js
+    assert 'url.protocol !== "https:"' in js, "permitiria bajar un .exe por http"
+    assert "302" in js and "no-store" in js, (
+        "un 301 cacheado dejaria a los usuarios pegados al hosting viejo")
 
 
 def test_landing_tiene_headers_de_seguridad():
