@@ -1765,6 +1765,128 @@ def test_owner_y_comprador_reciben_el_mismo_exe():
     assert fuentes["build_owner"], "no se encontró el Setup.exe en build_owner"
 
 
+def _par_de_claves():
+    """Par Ed25519 de prueba (no la clave real, que no está en el repo)."""
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    priv = Ed25519PrivateKey.generate()
+    pub = base64.urlsafe_b64encode(priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw)).decode().rstrip("=")
+    return priv, pub
+
+
+def _firmar_token(priv, payload):
+    import base64
+    import json as _json
+    body = base64.urlsafe_b64encode(_json.dumps(
+        payload, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
+    firma = base64.urlsafe_b64encode(priv.sign(body.encode("ascii"))).decode().rstrip("=")
+    return f"MVDG2.{body}.{firma}"
+
+
+def test_licencia_del_owner_atada_no_sirve_en_otra_maquina():
+    """EL punto del build del owner: viene desbloqueado, así que si ese .exe
+    se filtra tiene que ser inútil en cualquier otra PC. La licencia lleva
+    el id de máquina ("mid") y verify() la descarta si no coincide."""
+    import time as _time
+    from mvdg import licensing
+    from mvdg.machine import machine_id
+    priv, pub = _par_de_claves()
+    base = {"plan": "owner", "email": "yo@ejemplo.com", "iat": int(_time.time())}
+
+    # en ESTA máquina: vale
+    propia = _firmar_token(priv, {**base, "mid": machine_id()})
+    assert licensing.verify(propia, public_key_b64=pub) is not None
+
+    # el MISMO token, en otra PC (id distinto): no vale -> plan demo
+    ajena = _firmar_token(priv, {**base, "mid": "0000ffff0000ffff"})
+    assert licensing.verify(ajena, public_key_b64=pub) is None, (
+        "un .exe del owner filtrado funcionaria en otra maquina")
+
+    # y la firma sigue siendo válida: lo que falla es SOLO la máquina
+    assert licensing.verify(ajena, public_key_b64=pub,
+                            check_machine=False) is not None
+
+
+def test_licencias_vendidas_no_se_atan_a_una_maquina():
+    """Atarle la licencia al equipo a un cliente que pagó sería hostil:
+    cambia de notebook y pierde lo que compró. Sin "mid", vale en todos
+    lados — el binding es solo para el build del owner."""
+    import time as _time
+    from mvdg import licensing
+    priv, pub = _par_de_claves()
+    token = _firmar_token(priv, {"plan": "professional", "email": "cliente@x.com",
+                                 "iat": int(_time.time())})
+    assert licensing.verify(token, public_key_b64=pub) is not None
+
+
+def test_id_de_maquina_es_estable_y_no_filtra_el_nombre_del_equipo():
+    """Tiene que dar lo mismo en cada llamada (si no, la licencia dejaría de
+    valer al reiniciar) y no puede contener el nombre de la PC en claro: el
+    token viaja por mail y como secreto de CI."""
+    import platform
+    from mvdg.machine import machine_id, matches
+    mid = machine_id()
+    assert mid == machine_id() and len(mid) == 16
+    assert all(c in "0123456789abcdef" for c in mid)
+    nodo = (platform.node() or "").lower()
+    if nodo:
+        assert nodo not in mid.lower()
+    assert matches(None) and matches("")        # sin atar = vale en todos lados
+    assert matches(mid.upper())                 # se compara sin distinguir caso
+    assert not matches("deadbeefdeadbeef")
+
+
+def test_licencia_empaquetada_se_activa_sola_pero_valida_igual(tmp_path, monkeypatch):
+    """El .exe del owner abre ya desbloqueado (licencia_owner.txt al lado del
+    binario), pero ese token pasa por la MISMA verificación que el de un
+    comprador: si no valida, se ignora y queda en demo."""
+    import time as _time
+    from mvdg import licensing
+    from mvdg.machine import machine_id
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))   # sin licencia guardada
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    exe_dir = tmp_path / "instalado"
+    exe_dir.mkdir()
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "MVDataGovernance.exe"))
+
+    token = _firmar_token(priv, {"plan": "owner", "email": "yo@x.com",
+                                 "iat": int(_time.time()), "mid": machine_id()})
+    (exe_dir / "licencia_owner.txt").write_text(token, encoding="utf-8")
+    assert licensing.plan() == "owner"
+    assert licensing.has_feature("migracion_purview")
+
+    # token basura empaquetado -> se ignora, NO desbloquea nada
+    (exe_dir / "licencia_owner.txt").write_text("MVDG2.falso.falso", encoding="utf-8")
+    assert licensing.plan() == "demo"
+    assert not licensing.has_feature("migracion_purview")
+
+
+def test_workflow_owner_no_publica_release_y_exige_binding():
+    """Los dos candados del build del owner, fijados:
+    1. Se publica como ARTEFACTO, nunca como Release — un asset de Release
+       queda pegado al repo para siempre y quedaría expuesto el día que el
+       repo pase a público.
+    2. Exige que la licencia esté atada a una máquina, porque el candado 1
+       se rompe en cuanto alguien reenvía el archivo por mail."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador_owner.yml")
+    assert os.path.exists(ruta), "falta el workflow del instalador owner"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "workflow_dispatch" in wf and "tags:" not in wf, (
+        "el build del owner no debe dispararse solo")
+    assert "action-gh-release" not in wf and "softprops" not in wf, (
+        "el build del owner NO se publica como Release")
+    assert "contents: read" in wf, "no necesita permiso de escritura"
+    assert "MVDG_OWNER_TOKEN" in wf
+    assert "falta 'mid'" in wf, "no exige que la licencia este atada"
+    assert "retention-days: 7" in wf
+
+
 def test_workflow_del_instalador_publica_y_verifica():
     """El .exe no puede vivir en el repo (GitHub rechaza >100 MB), así que
     se construye en un runner Windows y se publica como Release. El

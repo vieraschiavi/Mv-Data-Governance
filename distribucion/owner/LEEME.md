@@ -36,8 +36,63 @@ menos controles. Vos no comprás una licencia, te **auto-emitís** una con plan
 `owner`, que `has_feature()` trata como comodín: desbloquea todo, hoy y lo
 que se agregue después a `FUNCIONES_PAGAS`.
 
-**No existe un "build owner" separado para descargar ya desbloqueado** — ver
-por qué en el punto 4. Es un paso más, una vez, con tu clave privada.
+Además del paso manual, ahora existe un **instalador del owner ya
+desbloqueado** que bajás de GitHub — ver abajo.
+
+---
+
+## 💿 Instalador del owner (.exe ya desbloqueado, solo para vos)
+
+Es **el mismo programa** que compra un cliente: mismo `mvdg.spec`, mismo
+`instalador.iss`, mismo código. Lo único distinto es que trae un archivo
+`licencia_owner.txt` al lado del `.exe`, así abre desbloqueado sin que
+pegues el token cada vez que reinstalás. Ese token pasa por la **misma**
+verificación Ed25519 que la licencia de cualquier comprador — no es un build
+con menos controles.
+
+### Preparación (una sola vez)
+
+```bash
+# 1. En TU PC — el id de tu máquina
+python packaging/licencias.py maquina
+
+# 2. Firmá el token ATÁNDOLO a esa máquina (con tu clave privada)
+python packaging/licencias.py firmar --plan owner \
+    --email <tu-email> --maquina <id-del-paso-1>
+```
+
+3. Guardá el token como secreto **`MVDG_OWNER_TOKEN`** en
+   *Settings → Secrets and variables → Actions*.
+
+### Cada vez que quieras el instalador
+
+*Actions* → **Instalador Owner** → *Run workflow* → bajás el artefacto
+`MVDataGovernance_OWNER_Setup_v{versión}.exe`.
+
+### Por qué no lo pueden usar los clientes
+
+Dos candados, y el segundo es el que importa:
+
+1. **Dónde queda.** Se publica como **artefacto** de la corrida, nunca como
+   Release. Un asset de Release queda pegado al repo para siempre: el día que
+   este repo pase de privado a público, *todas* las releases históricas
+   quedarían expuestas de golpe. Un artefacto vence solo (7 días) y se baja
+   desde Actions con tu cuenta.
+2. **Que no sirva si se filtra.** El candado 1 se rompe en cuanto alguien
+   reenvía el archivo por mail. Por eso la licencia va **atada a tu máquina**
+   (`mvdg/machine.py`): en cualquier otra PC el id no coincide,
+   `licensing.verify()` la descarta y el programa abre en **plan demo**.
+   Verificado con el binario real — mismo `.exe`, `owner` en tu PC y `demo`
+   en otra.
+
+> **Límite honesto:** esto no es DRM. El id de máquina se calcula de datos
+> que alguien decidido puede falsificar, y un binario siempre se puede
+> parchear. Lo que frena es el caso realista —que un `.exe` desbloqueado
+> circule y funcione—, no a un atacante con tiempo. Contra eso protege el
+> contrato, no el código.
+
+Si cambiás de PC: repetí los pasos 1 y 2 con el id nuevo y actualizá el
+secreto.
 
 1. Si todavía no generaste el par de claves del emisor de licencias:
 

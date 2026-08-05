@@ -97,6 +97,13 @@ def _firmar(args) -> int:
     }
     if args.dias:
         payload["exp"] = int(time.time()) + args.dias * 86400
+    # Licencia ATADA a una máquina: el build del owner viene desbloqueado de
+    # fábrica, así que si ese .exe se filtra tiene que ser inútil en otra PC.
+    # Las licencias que se VENDEN no llevan "mid" — atarle la licencia al
+    # equipo a un cliente que pagó sería hostil (cambia de notebook y pierde
+    # lo que compró).
+    if getattr(args, "maquina", None):
+        payload["mid"] = args.maquina.strip().lower()
     body = _b64u(json.dumps(payload, ensure_ascii=False,
                             separators=(",", ":"), sort_keys=True).encode("utf-8"))
     firma = _b64u(priv.sign(body.encode("ascii")))
@@ -109,6 +116,8 @@ def _firmar(args) -> int:
         print(f"  vence en {args.dias} días")
     else:
         print("  sin vencimiento")
+    if payload.get("mid"):
+        print(f"  ATADA a la máquina {payload['mid']} — no vale en otra PC")
 
     # Sanity check real: se verifica con la MISMA ruta de código que usará el
     # programa del cliente, contra la pública derivada de esta privada. Si esto
@@ -117,7 +126,12 @@ def _firmar(args) -> int:
     pub_b64 = _b64u(priv.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw))
-    if licensing.verify(token, public_key_b64=pub_b64) is None:
+    # check_machine=False: si la licencia va atada a la PC del owner y se
+    # emite desde otra (o desde un runner de CI), el chequeo de máquina la
+    # rechazaría acá y reportaría un error que no existe. La firma, el
+    # vencimiento y el plan sí se validan.
+    if licensing.verify(token, public_key_b64=pub_b64,
+                        check_machine=False) is None:
         sys.stderr.write("\n  ERROR: la licencia emitida NO verifica.\n")
         return 1
     print("  ✓ verificada con la clave pública correspondiente")
@@ -141,6 +155,19 @@ def _verificar(args) -> int:
     return 0
 
 
+def _maquina() -> int:
+    """Imprime el id de esta PC, para emitir una licencia atada a ella."""
+    from mvdg.machine import machine_id
+    mid = machine_id()
+    print(f"\n  Id de esta máquina: {mid}\n")
+    print("  Para el instalador del owner, emitilo así:\n")
+    print(f"    python packaging/licencias.py firmar --plan owner \\\n"
+          f"        --email <tu-email> --maquina {mid}\n")
+    print("  Ese token va como secreto MVDG_OWNER_TOKEN en GitHub\n"
+          "  (Settings -> Secrets and variables -> Actions).\n")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Emisión de licencias MV Data Governance")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -155,6 +182,14 @@ def main() -> int:
                    help="vencimiento en días (0 = sin vencimiento)")
     f.add_argument("--pago", help="id de pago asociado, si lo hay")
     f.add_argument("--clave-privada", help="si no, se lee LICENSE_PRIVATE_KEY")
+    f.add_argument("--maquina",
+                   help="ata la licencia a una máquina (id de `licencias.py "
+                        "maquina`). Se usa para el build del owner: si ese "
+                        "exe se filtra, no sirve en otra PC. NO usarlo en "
+                        "licencias que se venden.")
+
+    sub.add_parser("maquina",
+                   help="imprime el id de ESTA máquina (para --maquina)")
 
     v = sub.add_parser("verificar", help="verifica una licencia")
     v.add_argument("--token", required=True)
@@ -162,6 +197,8 @@ def main() -> int:
     args = p.parse_args()
     if args.cmd == "keygen":
         return _keygen()
+    if args.cmd == "maquina":
+        return _maquina()
     if args.cmd == "firmar":
         return _firmar(args)
     return _verificar(args)
