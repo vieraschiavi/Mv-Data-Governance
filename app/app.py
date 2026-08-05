@@ -89,6 +89,20 @@ if _missing:
 
 st.markdown(f"""
 <style>
+/* --- Que parezca un PROGRAMA, no una app de Streamlit -----------------
+   El cliente compra software de gobierno de datos, no una demo. Tres cosas
+   delataban el framework: la barra blanca del header (que encima rompía el
+   tema oscuro), el menú ⋮ con opciones de desarrollo ("Rerun", "Record a
+   screencast", "Report a bug" al repo de Streamlit) y el pie "Made with
+   Streamlit". El botón Deploy lo saca --client.toolbarMode; el resto no se
+   puede apagar por configuración, así que va por CSS.
+   El header se hace TRANSPARENTE en vez de display:none a propósito: ahí
+   vive el botón que despliega la barra lateral cuando está colapsada, y
+   ocultarlo dejaría al usuario sin forma de recuperarla. */
+header[data-testid="stHeader"] {{ background: transparent !important; }}
+[data-testid="stToolbar"], [data-testid="stMainMenu"], #MainMenu,
+[data-testid="stStatusWidget"], [data-testid="stDecoration"],
+footer {{ display: none !important; visibility: hidden !important; }}
 .stApp {{ background: linear-gradient(160deg, {BRAND['navy']} 0%, #0a1a2f 100%); }}
 h1, h2, h3 {{ color: {BRAND['ink']}; }}
 [data-testid="stMetricValue"] {{ color: {BRAND['amber']}; }}

@@ -1699,6 +1699,94 @@ def test_launcher_puerto_no_numerico_no_explota_con_traceback(monkeypatch):
     assert exc.value.code == 3
 
 
+def test_app_no_parece_una_app_de_streamlit():
+    """El cliente compra software de gobierno de datos, no una demo. Tres
+    cosas delataban el framework: la barra blanca del header (que además
+    rompía el tema oscuro), el menú ⋮ con opciones de desarrollo y el pie
+    "Made with Streamlit"."""
+    with open(os.path.join(_repo_root(), "app", "app.py"), encoding="utf-8") as fh:
+        css = fh.read()
+    assert 'header[data-testid="stHeader"]' in css and "transparent" in css, (
+        "la barra blanca del header sigue rompiendo el tema oscuro")
+    for sel in ('[data-testid="stToolbar"]', "#MainMenu", "footer"):
+        assert sel in css, f"no se oculta {sel}"
+    # el header se hace transparente, NO se oculta: ahí vive el botón que
+    # despliega la barra lateral colapsada
+    assert 'header[data-testid="stHeader"] { display: none' not in css
+
+
+def test_launcher_arranca_sin_boton_deploy():
+    """--client.toolbarMode viewer saca el botón "Deploy" (lo único del
+    cromo que sí se puede apagar por configuración). Verificado contra un
+    Streamlit real: con el flag, 0 botones Deploy visibles; sin él, 1."""
+    with open(os.path.join(_repo_root(), "packaging", "mvdg_launcher.py"),
+              encoding="utf-8") as fh:
+        src = fh.read()
+    assert '"--client.toolbarMode", "viewer"' in src
+
+
+def test_launcher_reconfirma_el_puerto_antes_de_arrancar(monkeypatch):
+    """Entre elegir el puerto y el bind real de Streamlit pasa casi un
+    segundo (se abre el navegador, se importa la CLI). Si en esa ventana
+    otro programa se lo lleva, antes moría con el traceback de Tornado —
+    invisible en un .exe sin consola. Ahora re-chequea y re-elige."""
+    L = _launcher()
+    import mvdg.netports as np
+    ocupados = {7001}
+    monkeypatch.setattr(np, "puerto_libre",
+                        lambda h, p: p not in ocupados)
+    monkeypatch.setattr(np, "elegir_puerto", lambda h="127.0.0.1", **k: 7002)
+    # el puerto elegido se lo llevaron -> devuelve otro, no insiste
+    assert L._puerto_confirmado(7001) == 7002
+    # si sigue libre, se respeta (no se cambia porque sí)
+    assert L._puerto_confirmado(7003) == 7003
+
+
+def test_owner_y_comprador_reciben_el_mismo_exe():
+    """"VERSION OWNER IDENTICA A LA DESCARGADA POR COMPRADORES": el kit del
+    owner y el paquete del comprador empaquetan EL MISMO archivo
+    Setup_v{ver}.exe — no hay un build aparte "ya desbloqueado". Lo que
+    cambia es la licencia que cada uno activa, no el binario. Si alguien
+    forkeara los builds, esto lo caza."""
+    import ast
+    ruta = os.path.join(_repo_root(), "packaging", "build_release.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+    fuentes = {}
+    for fn in [n for n in ast.walk(arbol) if isinstance(n, ast.FunctionDef)]:
+        if fn.name in ("build_option_a", "build_owner"):
+            fuentes[fn.name] = [
+                n.value for n in ast.walk(fn)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and "Setup_v" in n.value]
+    assert fuentes["build_option_a"] == fuentes["build_owner"], (
+        "el owner y el comprador arman nombres de .exe distintos: "
+        f"{fuentes}")
+    assert fuentes["build_owner"], "no se encontró el Setup.exe en build_owner"
+
+
+def test_workflow_del_instalador_publica_y_verifica():
+    """El .exe no puede vivir en el repo (GitHub rechaza >100 MB), así que
+    se construye en un runner Windows y se publica como Release. El
+    workflow tiene que verificar que el .exe es real antes de publicarlo:
+    un Inno que falla a medias deja un stub de pocos KB."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador.yml")
+    assert os.path.exists(ruta), "falta el workflow del instalador"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "windows-latest" in wf, "no se construye en Windows"
+    assert "pyinstaller packaging/mvdg.spec" in wf
+    assert "instalador.iss" in wf
+    assert "contents: write" in wf, "sin permiso para crear la Release"
+    assert 'tags: ["v*"]' in wf, "no se dispara al taggear una versión"
+    assert "-lt 20" in wf, "no verifica que el instalador no sea un stub"
+    # y el LEEME manda a las Releases, no a una carpeta del repo
+    leeme = os.path.join(_repo_root(), "distribucion",
+                         "opcion_A_instalador_exe", "LEEME.md")
+    with open(leeme, encoding="utf-8") as fh:
+        assert "releases/latest" in fh.read()
+
+
 def test_launcher_abre_ventana_de_programa_no_pestana():
     """El .exe instalado tiene que abrirse como PROGRAMA (ventana propia,
     sin barra de direcciones), no como una pestaña más del navegador.

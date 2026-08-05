@@ -11,7 +11,37 @@ máquina do usuário: o instalador traz tudo dentro.
 
 ---
 
-## 🇪🇸 Cómo generar el instalador (una sola vez, en una PC con Python)
+## ⬇️ Descargar el instalador ya construido (lo más rápido)
+
+El `.exe` **no vive dentro del repositorio**: pesa cientos de MB y GitHub
+rechaza archivos de más de 100 MB — y aunque entrara, quedaría en el
+historial de git para siempre y cada `git clone` tendría que bajarlo. El
+lugar que GitHub provee para binarios grandes son las **Releases** (hasta
+2 GB por archivo, con URL de descarga estable):
+
+👉 **https://github.com/vieraschiavi/Mv-Data-Governance/releases/latest**
+
+Ahí está `MVDataGovernance_Setup_v{versión}.exe`, construido automáticamente
+por [`.github/workflows/instalador.yml`](../../.github/workflows/instalador.yml)
+en un runner **Windows real** cada vez que se publica una versión. Ese link
+es el que se le pasa a un comprador.
+
+**Publicar una versión nueva** (crea la Release y adjunta el `.exe` solo):
+
+```bash
+git tag v1.1.0 && git push origin v1.1.0
+```
+
+**Probar un build sin publicar nada:** pestaña *Actions* → *Instalador
+Windows* → *Run workflow*. Deja el `.exe` como artefacto descargable 90 días.
+
+> El workflow verifica que el `.exe` generado pese más de 20 MB antes de
+> publicarlo: un Inno Setup que falla a medias puede dejar un stub de pocos
+> KB, y sin ese chequeo se publicaría igual.
+
+---
+
+## 🇪🇸 Cómo generar el instalador a mano (en tu PC con Windows)
 
 1. Doble clic en **`packaging\build_exe.bat`** (en la raíz del proyecto).
 2. Salida:

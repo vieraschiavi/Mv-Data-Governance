@@ -33,6 +33,29 @@ def _puerto_libre() -> int:
     return elegir_puerto("127.0.0.1")
 
 
+def _puerto_confirmado(port: int, intentos: int = 5) -> int:
+    """Vuelve a chequear el puerto JUSTO antes de arrancar, y re-elige si en
+    el intervalo se lo llevó otro.
+
+    Entre ``elegir_puerto()`` y el ``bind`` real de Streamlit pasa casi un
+    segundo: se abre el navegador, se importa la CLI. En esa ventana otra
+    aplicación puede quedarse con el puerto — y ahí Streamlit muere con el
+    traceback de Tornado ("address already in use"), que en un .exe sin
+    consola es otra vez el doble clic que no hace nada. Esto no elimina la
+    carrera (es inherente: nadie puede reservar un puerto sin ocuparlo),
+    pero la reduce de ~1s a milisegundos y, si igual pierde, reintenta en
+    vez de morir."""
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import elegir_puerto, puerto_libre
+    for _ in range(intentos):
+        if puerto_libre("127.0.0.1", port):
+            return port
+        port = elegir_puerto("127.0.0.1")
+    return port
+
+
 def _puerto_pedido() -> int:
     """Puerto que el usuario fijo a mano (STREAMLIT_SERVER_PORT), o 0.
 
@@ -218,7 +241,11 @@ def _main() -> None:
     os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
     os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")
 
-    port = _puerto_pedido() or _puerto_libre()
+    pedido = _puerto_pedido()
+    # Si el usuario NO fijó puerto, se elige uno y se re-confirma antes de
+    # arrancar. Si SÍ lo fijó, _puerto_pedido() ya cortó con aviso si estaba
+    # ocupado — no se lo cambiamos por atrás, que es un contrato suyo.
+    port = pedido or _puerto_confirmado(_puerto_libre())
     url = f"http://127.0.0.1:{port}"
     print(f"MV Data Governance -> {url}")
 
@@ -229,6 +256,11 @@ def _main() -> None:
                 "--server.port", str(port),
                 "--server.address", "127.0.0.1",
                 "--browser.gatherUsageStats", "false",
+                # Sin botón "Deploy" ni opciones de desarrollo: es un
+                # programa instalado, no un proyecto que se publica. (El
+                # menú ⋮ y el pie "Made with Streamlit" no se pueden apagar
+                # por configuración — se ocultan por CSS en app/app.py.)
+                "--client.toolbarMode", "viewer",
                 "--theme.base", "dark",
                 "--theme.primaryColor", "#f2b441",
                 "--theme.backgroundColor", "#081527",
