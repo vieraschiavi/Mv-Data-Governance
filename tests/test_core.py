@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 
 import pandas as pd
@@ -1864,6 +1865,108 @@ def test_licencia_empaquetada_se_activa_sola_pero_valida_igual(tmp_path, monkeyp
     (exe_dir / "licencia_owner.txt").write_text("MVDG2.falso.falso", encoding="utf-8")
     assert licensing.plan() == "demo"
     assert not licensing.has_feature("migracion_purview")
+
+
+def test_activacion_del_owner_en_un_solo_paso(tmp_path, monkeypatch):
+    """Un solo doble clic tiene que dejar todo listo: generar el par de
+    claves (sin él NINGUNA licencia valida — PUBLIC_KEY_B64 arranca vacía),
+    escribir la pública en el código, guardar la privada FUERA del repo,
+    firmar la licencia del owner atada a esta PC y activarla."""
+    import importlib
+    import shutil
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "datos"))
+    # copia del repo: el script EDITA mvdg/licensing.py, no se toca el real
+    copia = tmp_path / "repo"
+    copia.mkdir()
+    for d in ("mvdg", "packaging"):
+        shutil.copytree(os.path.join(_repo_root(), d), copia / d)
+    monkeypatch.syspath_prepend(str(copia))
+    for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+        del sys.modules[m]
+    try:
+        licensing = importlib.import_module("mvdg.licensing")
+        assert licensing.PUBLIC_KEY_B64 == "", "el repo no debe traer claves"
+        spec = importlib.util.spec_from_file_location(
+            "owner_setup_test", copia / "packaging" / "owner_setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        assert setup.EMAIL_POR_DEFECTO == "vieraschiavi@gmail.com"
+
+        assert setup.main() == 0
+        # la pública quedó escrita en el código (si no, el cliente no valida nada)
+        texto = (copia / "mvdg" / "licensing.py").read_text(encoding="utf-8")
+        pub = re.search(r'^PUBLIC_KEY_B64 = "([^"]+)"$', texto, re.MULTILINE)
+        assert pub and len(pub.group(1)) > 20
+        # la privada quedó FUERA del repo
+        priv = tmp_path / "datos" / "clave_privada_licencias.txt"
+        assert priv.exists() and priv.read_text().strip()
+        assert not (copia / "clave_privada_licencias.txt").exists()
+
+        # y la licencia quedó activa, con el email pedido y atada a esta PC
+        importlib.reload(licensing)
+        assert licensing.plan() == "owner"
+        assert licensing.has_feature("migracion_purview")
+        assert licensing.current()["email"] == "vieraschiavi@gmail.com"
+        assert licensing.current()["mid"]
+
+        # idempotente: correrlo de nuevo NO genera otro par (eso invalidaría
+        # todas las licencias ya emitidas a clientes)
+        antes = pub.group(1)
+        assert setup.main() == 0
+        texto2 = (copia / "mvdg" / "licensing.py").read_text(encoding="utf-8")
+        assert f'PUBLIC_KEY_B64 = "{antes}"' in texto2
+    finally:
+        for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+            del sys.modules[m]
+
+
+def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
+    """Con la pública ya configurada pero sin la privada, no se puede firmar
+    nada: tiene que cortar con un mensaje que diga dónde la buscó, no
+    generar un par nuevo por las suyas (eso invalidaría las licencias de
+    los clientes en silencio)."""
+    import importlib
+    import shutil
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "datos"))
+    monkeypatch.delenv("LICENSE_PRIVATE_KEY", raising=False)
+    copia = tmp_path / "repo"
+    copia.mkdir()
+    for d in ("mvdg", "packaging"):
+        shutil.copytree(os.path.join(_repo_root(), d), copia / d)
+    lic = copia / "mvdg" / "licensing.py"
+    lic.write_text(lic.read_text(encoding="utf-8").replace(
+        'PUBLIC_KEY_B64 = ""', 'PUBLIC_KEY_B64 = "unaClavePublicaCualquiera"'),
+        encoding="utf-8")
+    monkeypatch.syspath_prepend(str(copia))
+    for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+        del sys.modules[m]
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "owner_setup_test2", copia / "packaging" / "owner_setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        assert setup.main() == 1
+        # y NO piso la clave publica existente
+        assert 'PUBLIC_KEY_B64 = "unaClavePublicaCualquiera"' in \
+            lic.read_text(encoding="utf-8")
+    finally:
+        for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+            del sys.modules[m]
+
+
+def test_bat_de_activacion_del_owner_es_de_un_clic():
+    """El .bat tiene que resolver todo solo: encontrar Python, instalar
+    'cryptography' si falta y correr el setup — sin que el usuario escriba
+    ningún comando."""
+    with open(os.path.join(_repo_root(), "MV_Owner_Activar.bat"),
+              encoding="ascii") as fh:      # ascii: cmd.exe usa cp850/cp1252
+        bat = fh.read()
+    assert "packaging\\owner_setup.py" in bat
+    assert "import cryptography" in bat, "no verifica la dependencia de firma"
+    assert "pip install --no-cache-dir cryptography" in bat
+    assert ":nopython" in bat, "sin salida clara si no hay Python"
+    # usa el venv del programa si existe, y si no el Python del sistema
+    assert '.venv\\Scripts\\python.exe' in bat and "py -3" in bat
 
 
 def test_workflow_owner_no_publica_release_y_exige_binding():
