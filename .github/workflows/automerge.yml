@@ -1,0 +1,125 @@
+# Merge automático de los PRs de trabajo, cuando los tests pasan.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Qué hace y qué NO hace
+# ────────────────────────────────────────────────────────────────────────────
+# Cuando el workflow "tests" termina bien, este busca el PR abierto de esa
+# rama y, si cumple TODAS las condiciones de abajo, lo mergea con squash y
+# borra la rama. Si no las cumple, no hace nada y lo dice en el log — nunca
+# fuerza un merge.
+#
+# Condiciones (todas, sin excepción):
+#   · la rama empieza con "claude/" — las ramas de trabajo de esta sesión;
+#     una rama a mano nunca se mergea sola
+#   · el PR NO está en borrador (draft = "todavía lo estoy escribiendo")
+#   · el PR no tiene la etiqueta "no-automerge" (la salida de emergencia)
+#   · el PR es mergeable (sin conflictos)
+#   · los tests corrieron SOBRE EL COMMIT ACTUAL del PR y pasaron
+#   · ningún otro check está en failure/cancelled/timed_out
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Por qué se verifica el SHA y no alcanza con "tests dio verde"
+# ────────────────────────────────────────────────────────────────────────────
+# El evento workflow_run trae el resultado de UNA corrida, que puede ser de
+# un commit anterior. Sin re-verificar contra el HEAD actual del PR, un push
+# nuevo con código roto podría colarse aprovechando el verde del anterior.
+#
+# Y se exige que los tests EXISTAN para ese commit: si Actions no llegó a
+# registrarlos (pasó de verdad en el PR #60, donde solo corrió Vercel),
+# "no hay ningún check en rojo" sería cierto y estaríamos mergeando sin que
+# nadie haya corrido nada. Ausencia de rojo no es verde.
+name: automerge
+
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
+
+permissions:
+  contents: write          # mergear y borrar la rama
+  pull-requests: write     # comentar/cerrar el PR
+
+jobs:
+  merge:
+    # Si los tests no pasaron no hay nada que evaluar.
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const rama = context.payload.workflow_run.head_branch;
+            const salir = (m) => { core.info(`No se mergea: ${m}`); };
+
+            if (!rama || !rama.startsWith('claude/')) {
+              return salir(`la rama "${rama}" no es una rama de trabajo`);
+            }
+
+            const {data: prs} = await github.rest.pulls.list({
+              owner, repo, state: 'open', head: `${owner}:${rama}`,
+            });
+            if (prs.length === 0) return salir(`no hay PR abierto para ${rama}`);
+            const pr = prs[0];
+
+            if (pr.draft) return salir(`el PR #${pr.number} esta en borrador`);
+            if (pr.labels.some(l => l.name === 'no-automerge')) {
+              return salir(`el PR #${pr.number} tiene la etiqueta no-automerge`);
+            }
+
+            // Estado fresco: "mergeable" se calcula async y en la respuesta
+            // de list() puede venir null.
+            let detalle;
+            for (let i = 0; i < 5; i++) {
+              ({data: detalle} = await github.rest.pulls.get({
+                owner, repo, pull_number: pr.number}));
+              if (detalle.mergeable !== null) break;
+              await new Promise(r => setTimeout(r, 3000));
+            }
+            if (detalle.mergeable === false) {
+              return salir(`el PR #${pr.number} tiene conflictos`);
+            }
+
+            // --- los checks, contra el HEAD ACTUAL del PR ---
+            const sha = detalle.head.sha;
+            const {data: checks} = await github.rest.checks.listForRef({
+              owner, repo, ref: sha, per_page: 100,
+            });
+
+            const malos = checks.check_runs.filter(c =>
+              ['failure', 'cancelled', 'timed_out', 'action_required']
+                .includes(c.conclusion));
+            if (malos.length) {
+              return salir(`checks en rojo: ${malos.map(c => c.name).join(', ')}`);
+            }
+
+            const pendientes = checks.check_runs.filter(c => c.status !== 'completed');
+            if (pendientes.length) {
+              return salir(`checks sin terminar: ${pendientes.map(c => c.name).join(', ')}`);
+            }
+
+            // Ausencia de rojo NO es verde: los tests tienen que haber
+            // corrido de verdad sobre ESTE commit.
+            const tests = checks.check_runs.filter(c =>
+              c.name.startsWith('test') && c.conclusion === 'success');
+            if (tests.length === 0) {
+              return salir(`no corrieron los tests sobre ${sha.slice(0, 7)} ` +
+                           `(checks vistos: ${checks.check_runs.map(c => c.name).join(', ') || 'ninguno'})`);
+            }
+
+            core.info(`Mergeando #${pr.number} (${tests.length} jobs de test en verde)`);
+            await github.rest.pulls.merge({
+              owner, repo, pull_number: pr.number,
+              merge_method: 'squash',
+              commit_title: `${detalle.title} (#${pr.number})`,
+            });
+
+            // Borrar la rama. Que falle esto no invalida el merge, que ya
+            // ocurrió: se avisa y se sigue.
+            try {
+              await github.rest.git.deleteRef({
+                owner, repo, ref: `heads/${rama}`});
+              core.info(`Rama ${rama} borrada`);
+            } catch (e) {
+              core.warning(`No se pudo borrar ${rama}: ${e.message}`);
+            }

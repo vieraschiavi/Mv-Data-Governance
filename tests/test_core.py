@@ -1990,6 +1990,127 @@ def test_workflow_owner_no_publica_release_y_exige_binding():
     assert "retention-days: 7" in wf
 
 
+def test_todo_lo_que_importa_la_suite_esta_declarado():
+    """Regresión de un error real: agregué tests que hacen `import yaml` y
+    pasaron en local — porque acá PyYAML venía como paquete del SISTEMA. En
+    el venv limpio del CI no existía y la suite entera se cayó.
+
+    Esto lo caza antes: recorre los imports de este archivo por AST y exige
+    que todo lo que no sea stdlib ni del repo figure en algún requirements.
+    Un `pip install -r requirements-dev.txt` en una máquina limpia tiene que
+    alcanzar para correr todo — sin eso, "los tests pasan" no significa nada
+    fuera de la máquina donde se escribieron."""
+    import ast
+    ruta = os.path.join(_repo_root(), "tests", "test_core.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+
+    raices = set()
+    for n in ast.walk(arbol):
+        if isinstance(n, ast.Import):
+            raices.update(a.name.split(".")[0] for a in n.names)
+        elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+            raices.add(n.module.split(".")[0])
+
+    propios = {"mvdg", "app", "bi_api", "tests", "conftest"}
+    externos = {r for r in raices
+                if r not in sys.stdlib_module_names and r not in propios}
+
+    declarado = ""
+    for req in ("requirements.txt", "requirements-dev.txt"):
+        with open(os.path.join(_repo_root(), req), encoding="utf-8") as fh:
+            for linea in fh:
+                linea = linea.split("#")[0].strip()
+                if linea and not linea.startswith("-r"):
+                    declarado += linea.lower() + "\n"
+
+    # nombre de import != nombre del paquete en unos pocos casos conocidos
+    ALIAS = {"yaml": "pyyaml", "PIL": "pillow", "dateutil": "python-dateutil",
+             "sqlalchemy": "sqlalchemy", "openpyxl": "openpyxl"}
+    faltan = [m for m in sorted(externos)
+              if ALIAS.get(m, m).lower() not in declarado]
+    assert not faltan, (
+        f"la suite importa {faltan} y no esta(n) en requirements*.txt: "
+        "en una maquina limpia los tests no corren")
+
+
+def _yaml_workflow(nombre):
+    import yaml
+    ruta = os.path.join(_repo_root(), ".github", "workflows", nombre)
+    with open(ruta, encoding="utf-8") as fh:
+        return yaml.safe_load(fh), fh
+
+
+def test_automerge_no_puede_mergear_sin_tests_en_verde():
+    """El riesgo real del merge automático: que "ningún check en rojo" se
+    tome por "está todo bien". Pasó de verdad en el PR #60 — Actions no
+    registró los tests y solo corrió Vercel. Ausencia de rojo NO es verde:
+    el workflow tiene que exigir que los tests HAYAN CORRIDO sobre el commit
+    actual del PR."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "automerge.yml")
+    assert os.path.exists(ruta), "falta el workflow de automerge"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    # exige tests en verde, y no solo ausencia de fallos
+    assert "tests.length === 0" in wf, (
+        "no exige que los tests hayan corrido: mergearia sin verificar nada")
+    assert "conclusion === 'success'" in wf
+    # y los mira contra el HEAD del PR, no contra el commit del workflow_run
+    assert "detalle.head.sha" in wf, (
+        "usa el sha del workflow_run: un push nuevo con codigo roto podria "
+        "colarse con el verde del commit anterior")
+    # nada de checks pendientes
+    assert "status !== 'completed'" in wf
+
+
+def test_automerge_solo_toca_ramas_de_trabajo_y_tiene_salida_de_emergencia():
+    """No puede mergear una rama hecha a mano ni un PR en borrador, y tiene
+    que haber una forma de frenarlo sin desactivar el workflow entero."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "automerge.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "startsWith('claude/')" in wf, "mergearia cualquier rama"
+    assert "pr.draft" in wf, "mergearia un PR en borrador"
+    assert "no-automerge" in wf, "sin etiqueta para frenarlo puntualmente"
+    assert "mergeable === false" in wf, "mergearia con conflictos"
+    # y borra la rama, que es la otra mitad del pedido
+    assert "deleteRef" in wf
+    # solo corre si los tests pasaron
+    datos, _ = _yaml_workflow("automerge.yml")
+    assert list(datos[True] if True in datos else datos["on"]) == ["workflow_run"]
+    assert datos["jobs"]["merge"]["if"] == (
+        "github.event.workflow_run.conclusion == 'success'")
+
+
+def test_instalador_se_reconstruye_solo_cuando_cambia_el_programa():
+    """"Que se dispare solo cuando sea necesario": al mergear a main algo
+    que toca el programa. Los paths son el punto — construir 200 MB por un
+    typo en un .md o un cambio de la landing sería quemar minutos al pedo."""
+    datos, _ = _yaml_workflow("instalador.yml")
+    on = datos[True] if True in datos else datos["on"]
+    push = on["push"]
+    assert push["tags"] == ["v*"], "se pierde la publicacion por tag"
+    assert push["branches"] == ["main"]
+    paths = push["paths"]
+    for necesario in ("mvdg/**", "app/**", "packaging/**", "requirements.txt"):
+        assert necesario in paths, f"un cambio en {necesario} no reconstruiria"
+    # y NO se dispara por cosas que no afectan al .exe
+    for irrelevante in ("landing/**", "docs/**", "**.md", "api/**"):
+        assert irrelevante not in paths, f"{irrelevante} no cambia el instalador"
+    assert "concurrency" in datos, "sin concurrency, dos merges = dos builds de 10 min"
+
+
+def test_tests_no_corren_dos_veces_por_pr():
+    """Un PR dispara push Y pull_request, con refs distintos: agrupando por
+    github.ref cada uno armaba su grupo y la suite corría DOS VECES sobre el
+    mismo commit. Agrupada por nombre de rama, queda una sola."""
+    datos, _ = _yaml_workflow("tests.yml")
+    grupo = datos["concurrency"]["group"]
+    assert "github.ref }}" not in grupo, "vuelve a correr dos veces por PR"
+    assert "pull_request.head.ref" in grupo and "github.ref_name" in grupo
+    assert datos["concurrency"]["cancel-in-progress"] is True
+
+
 def test_workflow_del_instalador_publica_y_verifica():
     """El .exe no puede vivir en el repo (GitHub rechaza >100 MB), así que
     se construye en un runner Windows y se publica como Release. El
