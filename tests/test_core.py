@@ -1990,6 +1990,50 @@ def test_workflow_owner_no_publica_release_y_exige_binding():
     assert "retention-days: 7" in wf
 
 
+def test_todo_lo_que_importa_la_suite_esta_declarado():
+    """Regresión de un error real: agregué tests que hacen `import yaml` y
+    pasaron en local — porque acá PyYAML venía como paquete del SISTEMA. En
+    el venv limpio del CI no existía y la suite entera se cayó.
+
+    Esto lo caza antes: recorre los imports de este archivo por AST y exige
+    que todo lo que no sea stdlib ni del repo figure en algún requirements.
+    Un `pip install -r requirements-dev.txt` en una máquina limpia tiene que
+    alcanzar para correr todo — sin eso, "los tests pasan" no significa nada
+    fuera de la máquina donde se escribieron."""
+    import ast
+    ruta = os.path.join(_repo_root(), "tests", "test_core.py")
+    with open(ruta, encoding="utf-8") as fh:
+        arbol = ast.parse(fh.read())
+
+    raices = set()
+    for n in ast.walk(arbol):
+        if isinstance(n, ast.Import):
+            raices.update(a.name.split(".")[0] for a in n.names)
+        elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+            raices.add(n.module.split(".")[0])
+
+    propios = {"mvdg", "app", "bi_api", "tests", "conftest"}
+    externos = {r for r in raices
+                if r not in sys.stdlib_module_names and r not in propios}
+
+    declarado = ""
+    for req in ("requirements.txt", "requirements-dev.txt"):
+        with open(os.path.join(_repo_root(), req), encoding="utf-8") as fh:
+            for linea in fh:
+                linea = linea.split("#")[0].strip()
+                if linea and not linea.startswith("-r"):
+                    declarado += linea.lower() + "\n"
+
+    # nombre de import != nombre del paquete en unos pocos casos conocidos
+    ALIAS = {"yaml": "pyyaml", "PIL": "pillow", "dateutil": "python-dateutil",
+             "sqlalchemy": "sqlalchemy", "openpyxl": "openpyxl"}
+    faltan = [m for m in sorted(externos)
+              if ALIAS.get(m, m).lower() not in declarado]
+    assert not faltan, (
+        f"la suite importa {faltan} y no esta(n) en requirements*.txt: "
+        "en una maquina limpia los tests no corren")
+
+
 def _yaml_workflow(nombre):
     import yaml
     ruta = os.path.join(_repo_root(), ".github", "workflows", nombre)

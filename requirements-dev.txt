@@ -17,3 +17,16 @@ httpx>=0.27
 httpx2>=0.1
 # Linter (configurado en pyproject.toml). Sin formateo automático: solo revisa.
 ruff>=0.6
+# Para validar los workflows de .github/workflows/ como YAML de verdad y no
+# con grep de texto. Importa desde que el merge automático depende de que esos
+# archivos estén bien formados: un `paths:` mal escrito no rompe nada visible,
+# solo deja de disparar el build, y eso se nota tarde.
+# NO estaba declarado y la suite igual pasaba en local — porque acá venía como
+# paquete del sistema. En el venv limpio del CI no existe: ese es exactamente
+# el agujero que "todas las dependencias declaradas" tiene que cerrar.
+PyYAML>=6.0
+# La suite abre la imagen og_cover.jpg para verificar que mide 1200x630. Hoy
+# Pillow llega igual porque streamlit lo arrastra, pero depender de eso es
+# frágil: el día que streamlit lo saque, la suite se cae sin que nadie haya
+# tocado nada. Lo que se importa directo se declara.
+Pillow>=10.0
