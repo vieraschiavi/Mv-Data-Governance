@@ -9,8 +9,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Un push nuevo sobre la misma rama cancela la corrida anterior.
-  group: tests-${{ github.ref }}
+  # Se agrupa por NOMBRE DE RAMA, no por github.ref, a propósito: un PR
+  # dispara dos eventos (push a la rama y pull_request) cuyos refs son
+  # distintos (refs/heads/x vs refs/pull/N/merge). Con github.ref cada uno
+  # armaba su propio grupo y la suite corría DOS VECES por PR — el doble de
+  # minutos de Actions para el mismo commit. Agrupados por rama, la segunda
+  # cancela a la primera y queda una sola corrida.
+  group: tests-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

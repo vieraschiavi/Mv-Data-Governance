@@ -9,15 +9,33 @@
 #
 # Cuándo corre:
 #   · Al pushear un tag v* (ej. v1.1.0) -> crea la Release con el .exe adjunto.
-#   · A mano desde la pestaña Actions ("Run workflow") -> deja el .exe como
-#     artefacto descargable, sin publicar Release. Sirve para probar un build
-#     antes de anunciar una versión.
+#   · Al mergear a main algo que CAMBIA EL PROGRAMA -> reconstruye el .exe y
+#     lo deja como artefacto, sin publicar Release. Así siempre hay un
+#     instalador fresco para probar sin tener que acordarse de pedirlo.
+#     Los `paths` son a propósito: construir 200 MB por un typo en un .md o
+#     un cambio de la landing sería quemar minutos de Actions al pedo.
+#   · A mano desde Actions ("Run workflow") -> igual que el anterior, para
+#     probar un build antes de anunciar una versión.
 name: Instalador Windows
 
 on:
   push:
     tags: ["v*"]
+    branches: ["main"]
+    paths:
+      - "mvdg/**"
+      - "app/**"
+      - "bi_api/**"
+      - "packaging/**"
+      - "requirements.txt"
+      - ".github/workflows/instalador.yml"
   workflow_dispatch:
+
+# Un merge nuevo a main cancela el build anterior: el .exe que importa es el
+# del último código, y son ~10 minutos de runner cada uno.
+concurrency:
+  group: instalador-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write        # necesario para crear la Release y adjuntar el .exe
