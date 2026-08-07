@@ -1,0 +1,200 @@
+# Instalador de escritorio (Electron + NSIS) — versión CLIENTE y versión OWNER.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Qué entrega
+# ────────────────────────────────────────────────────────────────────────────
+# Un ZIP con la estructura pedida:
+#
+#   MVDataGovernance_v<ver>.zip
+#   └── INSTALADOR/
+#       ├── MVDataGovernance_Setup_<ver>.exe   ← doble clic y listo
+#       └── LEEME.txt                          ← qué hace, en ES/EN/PT
+#
+# El instalador NSIS deja: acceso directo en el ESCRITORIO, entrada en el
+# MENÚ INICIO, y DESINSTALADOR en "Agregar o quitar programas" — los tres
+# declarados explícitamente en electron/package.json, no heredados de un
+# default que puede cambiar entre versiones de electron-builder.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Cliente vs owner: MISMO programa, distinta licencia
+# ────────────────────────────────────────────────────────────────────────────
+#   CLIENTE  -> sin licencia adentro. Arranca en plan demo; cuando compra,
+#               pega su clave en la pestaña Ayuda y se habilita. NO baja otro
+#               programa: es el mismo, desbloqueado.
+#   OWNER    -> lleva licencia_owner.txt adentro, ATADA A TU MÁQUINA. Abre
+#               desbloqueado sin escribir ninguna clave. Si ese .exe se
+#               filtra, en otra PC el id no coincide y abre en plan demo.
+#
+# Un solo binario es el que se audita, se testea y se firma. Dos builds
+# paralelos serían dos superficies donde una queda atrás sin que nadie se
+# entere — por eso lo único que cambia entre las dos versiones es un .txt.
+#
+# Se publica como ARTEFACTO, no como Release: los assets de Release quedan
+# pegados al repo para siempre, y el del owner no puede quedar expuesto el
+# día que el repo pase a público. El del cliente se sube a la Release a mano
+# (o se aloja donde apunte MVDG_INSTALLER_URL).
+name: Instalador Escritorio (Electron)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "cliente = sin licencia · owner = desbloqueado para tu PC"
+        required: true
+        default: cliente
+        type: choice
+        options: [cliente, owner, ambas]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # El .venv viaja DENTRO del instalador: si dependiera del Python del
+      # cliente, volveríamos al problema que el .bat portable ya tuvo (sin
+      # Python, o con uno a medias). El instalador tiene que andar en una PC
+      # recién formateada.
+      - name: Preparar el entorno Python que se empaqueta
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --no-cache-dir --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Leer la versión del programa
+        id: ver
+        shell: bash
+        run: echo "v=$(python -c 'import mvdg; print(mvdg.__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Instalar dependencias de Electron
+        working-directory: electron
+        run: npm ci
+
+      # ---------------------------------------------------------------- CLIENTE
+      - name: Construir instalador CLIENTE
+        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        working-directory: electron
+        run: npm run dist-win
+
+      - name: Empaquetar INSTALADOR/ (cliente)
+        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          New-Item -ItemType Directory -Force -Path "salida\INSTALADOR" | Out-Null
+          $exe = Get-ChildItem "electron\dist_electron\*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "electron-builder no genero ningun .exe" }
+          if ($exe.Length / 1MB -lt 40) {
+            throw ("El instalador pesa {0:N1} MB: sospechoso, no se publica" -f ($exe.Length/1MB))
+          }
+          Copy-Item $exe.FullName "salida\INSTALADOR\MVDataGovernance_Setup_$v.exe"
+          # Array de lineas y no un here-string de PowerShell: el `"@` que lo
+          # cierra tiene que ir pegado al margen izquierdo, y eso rompe la
+          # indentacion del bloque `run: |` de YAML.
+          $leeme = @(
+            "MV Data Governance $v - Instalador de Windows",
+            "",
+            "ES: Doble clic en MVDataGovernance_Setup_$v.exe. Elegis carpeta y disco.",
+            "    Deja acceso directo en el escritorio y en el menu Inicio, y se",
+            "    desinstala desde 'Agregar o quitar programas'.",
+            "    Arranca en plan demo. Cuando compres, pega tu clave en la pestana",
+            "    Ayuda: es el MISMO programa, no hay una segunda descarga.",
+            "",
+            "EN: Double-click MVDataGovernance_Setup_$v.exe. Pick folder and drive.",
+            "    Adds desktop and Start Menu shortcuts, uninstalls from 'Apps'.",
+            "    Starts in demo. After buying, paste your key in the Help tab: it is",
+            "    the SAME program, there is no second download.",
+            "",
+            "PT: Duplo clique em MVDataGovernance_Setup_$v.exe. Escolha pasta e disco.",
+            "    Cria atalhos na area de trabalho e no menu Iniciar; desinstala em",
+            "    'Aplicativos'. Inicia no plano demo. Apos comprar, cole sua chave na",
+            "    aba Ajuda: e o MESMO programa, sem segundo download."
+          )
+          $leeme | Out-File -FilePath "salida\INSTALADOR\LEEME.txt" -Encoding ascii
+          Compress-Archive -Path "salida\INSTALADOR" -DestinationPath "MVDataGovernance_v$v.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        with:
+          name: MVDataGovernance_CLIENTE_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 90
+
+      # ------------------------------------------------------------------ OWNER
+      # La licencia se agrega DESPUÉS del build del cliente y se reconstruye:
+      # así el programa es idéntico y lo único distinto es el .txt.
+      - name: Validar la licencia del owner
+        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "Falta el secreto MVDG_OWNER_TOKEN. Generalo con un doble clic"
+            echo "en MV_Owner_Activar.bat y pegalo en Settings > Secrets."
+            exit 1
+          fi
+          python - <<'PY'
+          import os, sys
+          from mvdg import licensing
+          p = licensing.verify(os.environ["TOKEN"].strip(), check_machine=False)
+          if p is None:
+              sys.exit("El token no verifica contra la publica de mvdg/licensing.py")
+          if p.get("plan") != licensing.PLAN_OWNER:
+              sys.exit(f"El token es plan '{p.get('plan')}', se esperaba 'owner'")
+          if not p.get("mid"):
+              sys.exit("El token NO esta atado a una maquina: un exe filtrado "
+                       "funcionaria en cualquier PC. Reemitilo con --maquina.")
+          print(f"Licencia OK: plan={p['plan']} mid={p['mid']}")
+          PY
+
+      - name: Construir instalador OWNER
+        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
+        run: |
+          # el token viaja junto al motor, donde licensing._licencia_empaquetada lo busca
+          $env:TOKEN | Out-File -FilePath "mvdg\licencia_owner.txt" -Encoding ascii -NoNewline
+          cd electron
+          npm run dist-win
+
+      - name: Empaquetar INSTALADOR/ (owner)
+        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          New-Item -ItemType Directory -Force -Path "salida_owner\INSTALADOR" | Out-Null
+          $exe = Get-ChildItem "electron\dist_electron\*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "electron-builder no genero ningun .exe" }
+          Copy-Item $exe.FullName "salida_owner\INSTALADOR\MVDataGovernance_OWNER_Setup_$v.exe"
+          $leeme = @(
+            "MV Data Governance $v - INSTALADOR DEL OWNER - NO DISTRIBUIR",
+            "",
+            "Este instalador viene ya desbloqueado y la licencia esta ATADA A TU",
+            "MAQUINA: en cualquier otra PC abre en plan demo. Aun asi, no lo",
+            "compartas - para eso esta la version CLIENTE."
+          )
+          $leeme | Out-File -FilePath "salida_owner\INSTALADOR\LEEME.txt" -Encoding ascii
+          Compress-Archive -Path "salida_owner\INSTALADOR" -DestinationPath "MVDataGovernance_OWNER_v$v.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        with:
+          name: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 7
