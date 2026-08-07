@@ -42,7 +42,18 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MV Data Governance",
+      "menuCategory": "MV Data Governance",
+      "uninstallDisplayName": "MV Data Governance",
+      "installerIcon": "../assets/brand/mv.ico",
+      "uninstallerIcon": "../assets/brand/mv.ico",
+      "installerHeaderIcon": "../assets/brand/mv.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "artifactName": "MVDataGovernance_Setup_${version}.${ext}"
     },
     "linux": {
       "target": ["AppImage"],

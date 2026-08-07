@@ -2041,6 +2041,73 @@ def _yaml_workflow(nombre):
         return yaml.safe_load(fh), fh
 
 
+def test_todos_los_workflows_son_yaml_valido():
+    """Un workflow mal formado NO falla ruidoso: GitHub simplemente no lo
+    corre, y el síntoma es "el CI no se disparó" — que ya nos costó una
+    tarde de diagnóstico. Y los tests que solo hacen grep de texto no lo
+    detectan: este archivo se escribió con un here-string de PowerShell
+    pegado al margen, que rompía el bloque `run: |`, y el test de grep pasó
+    igual. Parsearlos de verdad es lo único que lo caza."""
+    import glob
+
+    import yaml
+    encontrados = sorted(glob.glob(
+        os.path.join(_repo_root(), ".github", "workflows", "*.yml")))
+    assert len(encontrados) >= 4, "faltan workflows"
+    for ruta in encontrados:
+        with open(ruta, encoding="utf-8") as fh:
+            try:
+                datos = yaml.safe_load(fh)
+            except yaml.YAMLError as exc:
+                raise AssertionError(
+                    f"{os.path.basename(ruta)} no es YAML valido: {exc}") from exc
+        assert isinstance(datos, dict), os.path.basename(ruta)
+        # "on" en YAML 1.1 se parsea como el booleano True
+        assert (True in datos or "on" in datos), (
+            f"{os.path.basename(ruta)} sin disparadores")
+        assert datos.get("jobs"), f"{os.path.basename(ruta)} sin jobs"
+
+
+def test_instalador_electron_deja_iconos_y_desinstalador():
+    """Accesos directos en escritorio y menú Inicio, y desinstalador — los
+    tres DECLARADOS, no heredados del default de electron-builder: un
+    default puede cambiar entre versiones y el síntoma sería un instalador
+    que no deja icono, descubierto por un cliente."""
+    import json
+    with open(os.path.join(_repo_root(), "electron", "package.json"),
+              encoding="utf-8") as fh:
+        nsis = json.load(fh)["build"]["nsis"]
+    assert nsis["createDesktopShortcut"] is True
+    assert nsis["createStartMenuShortcut"] is True
+    assert nsis["uninstallDisplayName"] == "MV Data Governance"
+    # elegir carpeta y disco, como el instalador de PyInstaller
+    assert nsis["allowToChangeInstallationDirectory"] is True
+    assert nsis["oneClick"] is False
+    # desinstalar NO borra los datos del usuario (fichas, licencia, glosario)
+    assert nsis["deleteAppDataOnUninstall"] is False
+
+
+def test_workflow_electron_arma_la_carpeta_instalador():
+    """El pedido concreto: un ZIP con una carpeta INSTALADOR adentro. Y las
+    dos versiones — cliente sin licencia, owner ya desbloqueado."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
+    assert os.path.exists(ruta), "falta el workflow del instalador Electron"
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "INSTALADOR" in wf and "Compress-Archive" in wf
+    assert "MVDataGovernance_CLIENTE" in wf and "MVDataGovernance_OWNER" in wf
+    # el owner exige licencia atada; el cliente no lleva ninguna
+    assert "MVDG_OWNER_TOKEN" in wf and "NO esta atado a una maquina" in wf
+    # y el .venv viaja adentro: el cliente no necesita Python instalado
+    assert "python -m venv .venv" in wf
+    assert "-r requirements.txt" in wf
+    # no se publica como Release (el del owner no puede quedar pegado al repo)
+    assert "action-gh-release" not in wf and "softprops" not in wf
+    # chequeo anti-stub, igual que el otro instalador
+    assert "-lt 40" in wf
+
+
 def test_automerge_no_puede_mergear_sin_tests_en_verde():
     """El riesgo real del merge automático: que "ningún check en rojo" se
     tome por "está todo bien". Pasó de verdad en el PR #60 — Actions no
