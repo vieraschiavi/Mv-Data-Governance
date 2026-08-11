@@ -261,6 +261,38 @@ def _port_free(host: str, port: int) -> bool:
     return puerto_libre(host, port)
 
 
+def _dir_ui() -> str | None:
+    """Carpeta con la interfaz de escritorio (React) ya empaquetada.
+
+    La sirve ESTE servidor, en /app, a propósito: así la UI y la API quedan
+    en el mismo origen y no hace falta CORS ni abrirla por file://, que son
+    las dos formas habituales de que un empaquetado de escritorio termine
+    con un agujero de seguridad o con un "no carga y no se sabe por qué".
+
+    Orden: MVDG_UI_DIR (para armados a medida o para el bundle de
+    electron-builder, que mueve las carpetas) y si no, la ruta del repo.
+    Si no existe, no se monta nada — la API sigue funcionando igual para
+    Power BI/Tableau, que es su trabajo principal.
+    """
+    from pathlib import Path
+    candidatas = []
+    env = os.environ.get("MVDG_UI_DIR", "").strip()
+    if env:
+        candidatas.append(Path(env))
+    candidatas.append(Path(__file__).resolve().parent.parent / "electron" / "ui" / "dist")
+    for c in candidatas:
+        if (c / "index.html").is_file():
+            return str(c)
+    return None
+
+
+_UI = _dir_ui()
+if _UI:
+    from fastapi.staticfiles import StaticFiles
+    # html=True hace que /app sirva index.html en la raíz de la carpeta.
+    app.mount("/app", StaticFiles(directory=_UI, html=True), name="ui")
+
+
 def main():
     port = int(os.environ.get("MVDG_API_PORT", DEFAULT_PORT))
     host = os.environ.get("MVDG_API_HOST", "127.0.0.1").strip() or "127.0.0.1"

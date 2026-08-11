@@ -4,6 +4,7 @@
  * waitForServer() lo detecta arriba. Corré con: node lib/server-manager.test.js
  */
 const assert = require("node:assert");
+const http = require("node:http");
 const path = require("node:path");
 const sm = require("./server-manager");
 
@@ -23,15 +24,41 @@ async function main() {
   // 3. pythonCandidates() encuentra un intérprete que puede importar streamlit
   const candidates = sm.pythonCandidates(root);
   const bin = candidates.find((b) => sm.pythonWorks(b, root));
-  assert.ok(bin, `ninguno de los candidatos [${candidates}] tiene streamlit`);
+  assert.ok(bin, `ninguno de los candidatos [${candidates}] tiene fastapi+uvicorn`);
   console.log(`✓ pythonWorks() encontró un intérprete real: ${bin}`);
 
-  // 4. levantamos un Streamlit REAL y confirmamos que waitForServer() lo detecta
-  const proc = sm.spawnStreamlit(bin, root, port);
+  // 4. EL CAMINO DE LA VERSION .EXE: spawnApi levanta la API real y esa
+  //    misma API sirve la interfaz React en /app. Es el recorrido completo
+  //    del programa de escritorio, sin Streamlit por ningún lado.
+  const uiDir = path.join(__dirname, "..", "ui", "dist");
+  const proc = sm.spawnApi(bin, root, port, uiDir);
   try {
     const up = await sm.waitForServer(port, 60000, 500);
-    assert.strictEqual(up, true, "waitForServer no detectó el servidor real a tiempo");
-    console.log(`✓ waitForServer() detectó Streamlit real en :${port}`);
+    assert.strictEqual(up, true, "waitForServer no detectó la API real a tiempo");
+    console.log(`✓ spawnApi() levantó la API real en :${port}`);
+
+    const traer = (ruta) => new Promise((resolve) => {
+      http.get(`http://127.0.0.1:${port}${ruta}`, (res) => {
+        let cuerpo = "";
+        res.on("data", (d) => { cuerpo += d; });
+        res.on("end", () => resolve({ status: res.statusCode, cuerpo }));
+      }).on("error", () => resolve({ status: 0, cuerpo: "" }));
+    });
+
+    const app = await traer("/app/");
+    assert.strictEqual(app.status, 200, "la interfaz React no se sirve en /app");
+    assert.ok(app.cuerpo.includes('id="root"'), "/app no devolvió la app React");
+    assert.ok(!/streamlit/i.test(app.cuerpo), "la interfaz menciona Streamlit");
+    console.log("✓ /app sirve la interfaz React (y no contiene Streamlit)");
+
+    const js = await traer("/app/ui.js");
+    assert.strictEqual(js.status, 200, "el bundle React no se sirve");
+    console.log("✓ /app/ui.js se sirve desde el mismo origen (sin CORS)");
+
+    const kpis = await traer("/api/kpis?lang=es");
+    assert.strictEqual(kpis.status, 200, "la API de gobierno no responde");
+    assert.ok(JSON.parse(kpis.cuerpo).data.length > 0, "la API devolvió 0 KPIs");
+    console.log("✓ la misma API sirve los datos de gobierno");
   } finally {
     sm.stopProcess(proc);
   }
