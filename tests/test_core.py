@@ -2365,6 +2365,20 @@ def test_workflow_electron_arma_la_carpeta_instalador():
     # el ._pth del embeddable desactiva site-packages: sin habilitarlo, pip
     # instala pero los import fallan sin ningun error claro
     assert "import site" in wf and "site-packages" in wf
+    # Y el ._pth tiene que sumar la carpeta de ARRIBA, donde vive el motor.
+    # Regresion de un fallo real: el build murio con "No module named 'mvdg'"
+    # con todas las dependencias instaladas. Con un ._pth presente Python
+    # arranca AISLADO — sys.path es solo lo que dice ese archivo, sin el
+    # directorio actual y sin PYTHONPATH — asi que "python -m bi_api.main",
+    # que es como spawnApi() lanza el motor, no encontraba nada.
+    assert 'Add-Content $pth ".."' in wf, (
+        "sin la carpeta de arriba en el ._pth, el Python embebido no puede "
+        "importar mvdg ni bi_api aunque el cwd sea el correcto")
+    # y la verificacion tiene que hacerse parada en OTRA carpeta: desde la
+    # raiz del repo un sys.path roto queda tapado por el cwd y el instalador
+    # sale roto igual.
+    assert "Push-Location $env:RUNNER_TEMP" in wf
+    assert "import fastapi, uvicorn, pandas, mvdg, bi_api.main" in wf
     # y se verifica que ese Python REALMENTE pueda importar el motor
     assert "import fastapi, uvicorn, pandas, mvdg" in wf
     # la interfaz React se construye antes de empaquetar
