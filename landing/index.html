@@ -1312,12 +1312,18 @@ function renderReviews(){
   document.getElementById('rvCount').textContent='· '+n+' '+word;
   var top=R.slice().sort(function(a,b){return b.rating-a.rating;}).slice(0,3);
   var g=document.getElementById('rvGrid');g.innerHTML='';
-  // Si reviews-data.js no cargó, antes quedaba un hueco vacío sin explicación.
+  // Dos casos distintos, y mostrar el equivocado sería mentir:
+  //  - el archivo no cargó (MVDG_REVIEWS indefinido) → error de carga
+  //  - cargó y está vacío → todavía no hay reseñas reales, y se dice así
   if(!n){
-    g.innerHTML='<p class="rvempty">'+(l==='en'
-      ?'Reviews could not be loaded right now.'
-      :l==='pt'?'Não foi possível carregar as avaliações agora.'
-      :'No pudimos cargar las reseñas en este momento.')+'</p>';
+    var cargo=Array.isArray(window.MVDG_REVIEWS);
+    g.innerHTML='<p class="rvempty">'+(cargo
+      ?(l==='en'?'No verified customer reviews yet — the product is in beta.'
+        :l==='pt'?'Ainda não há avaliações verificadas de clientes — o produto está em beta.'
+        :'Todavía no hay reseñas verificadas de clientes: el programa está en fase beta.')
+      :(l==='en'?'Reviews could not be loaded right now.'
+        :l==='pt'?'Não foi possível carregar as avaliações agora.'
+        :'No pudimos cargar las reseñas en este momento.'))+'</p>';
     return;
   }
   top.forEach(function(r){
