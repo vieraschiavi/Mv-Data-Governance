@@ -2041,6 +2041,112 @@ def _yaml_workflow(nombre):
         return yaml.safe_load(fh), fh
 
 
+def test_la_ui_de_escritorio_no_usa_streamlit():
+    """La versión .exe tiene que ser React consumiendo la API, no Streamlit
+    embebido en una ventana. Es lo que la hace vendible como programa."""
+    import json
+    raiz = _repo_root()
+    # el proceso principal levanta la API, no streamlit
+    with open(os.path.join(raiz, "electron", "main.js"), encoding="utf-8") as fh:
+        main_js = fh.read()
+    assert "sm.spawnApi(" in main_js, "Electron sigue levantando Streamlit"
+    assert "spawnStreamlit(" not in main_js
+    assert "/app/`" in main_js, "no carga la interfaz React servida en /app"
+
+    # la UI en sí no menciona Streamlit por ningún lado
+    for archivo in ("App.jsx", "api.js", "i18n.js"):
+        ruta = os.path.join(raiz, "electron", "ui", "src", archivo)
+        assert os.path.exists(ruta), f"falta {archivo}"
+        with open(ruta, encoding="utf-8") as fh:
+            cuerpo = fh.read()
+        # aparece solo en comentarios que EXPLICAN que no se usa
+        codigo = "\n".join(linea for linea in cuerpo.splitlines()
+                           if not linea.strip().startswith(("*", "//", "/*")))
+        assert "streamlit" not in codigo.lower(), f"{archivo} usa Streamlit"
+
+    # el instalador empaqueta la UI y un Python propio
+    with open(os.path.join(raiz, "electron", "package.json"), encoding="utf-8") as fh:
+        build = json.load(fh)["build"]
+    destinos = [r["to"] for r in build["extraResources"]]
+    assert "ui" in destinos, "el bundle React no viaja en el instalador"
+    assert "server/python" in destinos, (
+        "sin Python adentro, el .exe no arranca en una PC sin Python")
+    assert "server/bi_api" in destinos
+
+
+def test_la_version_bat_sigue_usando_streamlit():
+    """Las DOS formas conviven: el .exe es React, y el .bat sigue abriendo
+    Streamlit para las empresas donde no se pueden correr ejecutables. Sacar
+    una para tener la otra sería perder la mitad de los clientes posibles."""
+    with open(os.path.join(_repo_root(), "MV_DataGovernance.bat"),
+              encoding="ascii") as fh:
+        bat = fh.read()
+    assert "packaging\\mvdg_launcher.py" in bat
+    assert "import streamlit" in bat, (
+        "el .bat dejo de verificar Streamlit: es su interfaz")
+    # y el lanzador de Streamlit sigue existiendo para ese camino
+    with open(os.path.join(_repo_root(), "packaging", "mvdg_launcher.py"),
+              encoding="utf-8") as fh:
+        assert "streamlit" in fh.read().lower()
+
+
+def test_la_api_sirve_la_ui_en_el_mismo_origen(tmp_path, monkeypatch):
+    """La UI se sirve DESDE la API (/app) y no por file://: mismo origen,
+    así no hace falta CORS ni relajar webSecurity en Electron — las dos
+    formas habituales de que un empaquetado termine con un agujero.
+
+    Se arma un bundle de mentira y se apunta MVDG_UI_DIR ahí en vez de
+    depender de electron/ui/dist: ese directorio es un artefacto de build y
+    está en .gitignore, así que en una máquina limpia (y en el CI) no
+    existe. Un test que lo diera por sentado fallaría por no haber corrido
+    `npm run build-ui`, no por un defecto del programa."""
+    import importlib
+    ui = tmp_path / "bundle"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><div id='root'></div>",
+                                   encoding="utf-8")
+    (ui / "ui.js").write_text("/* bundle */", encoding="utf-8")
+    monkeypatch.setenv("MVDG_UI_DIR", str(ui))
+
+    import bi_api.main as bm
+    bm = importlib.reload(bm)
+    try:
+        assert bm._dir_ui() == str(ui)
+        rutas = [getattr(r, "path", "") for r in bm.app.routes]
+        assert any(r.startswith("/app") for r in rutas), "la UI no se monta en /app"
+
+        # y se sirve de verdad, por el MISMO servidor que la API
+        from fastapi.testclient import TestClient
+        with TestClient(bm.app) as c:
+            r = c.get("/app/")
+            assert r.status_code == 200 and "id='root'" in r.text
+            assert c.get("/app/ui.js").status_code == 200
+            assert c.get("/api/kpis?lang=es").status_code == 200
+    finally:
+        # el módulo queda cargado para el resto de la suite: se restaura
+        monkeypatch.delenv("MVDG_UI_DIR", raising=False)
+        importlib.reload(bm)
+
+
+def test_sin_bundle_construido_la_api_sigue_sirviendo_a_bi(tmp_path, monkeypatch):
+    """Sin la UI construida, /app no se monta y la API sigue funcionando
+    igual para Power BI/Tableau — que es su trabajo principal. Montar un
+    directorio inexistente haría explotar el arranque de la API por culpa
+    de una interfaz que ese cliente ni usa."""
+    import importlib
+    monkeypatch.setenv("MVDG_UI_DIR", str(tmp_path / "no-existe"))
+    import bi_api.main as bm
+    bm = importlib.reload(bm)
+    try:
+        from fastapi.testclient import TestClient
+        with TestClient(bm.app) as c:
+            assert c.get("/api/catalog?lang=es").status_code == 200
+            assert c.get("/health").status_code == 200
+    finally:
+        monkeypatch.delenv("MVDG_UI_DIR", raising=False)
+        importlib.reload(bm)
+
+
 def test_todos_los_workflows_son_yaml_valido():
     """Un workflow mal formado NO falla ruidoso: GitHub simplemente no lo
     corre, y el síntoma es "el CI no se disparó" — que ya nos costó una
@@ -2099,9 +2205,19 @@ def test_workflow_electron_arma_la_carpeta_instalador():
     assert "MVDataGovernance_CLIENTE" in wf and "MVDataGovernance_OWNER" in wf
     # el owner exige licencia atada; el cliente no lleva ninguna
     assert "MVDG_OWNER_TOKEN" in wf and "NO esta atado a una maquina" in wf
-    # y el .venv viaja adentro: el cliente no necesita Python instalado
-    assert "python -m venv .venv" in wf
+    # Python EMBEBIBLE, no un venv: un venv guarda la ruta del Python base
+    # de la maquina donde se creo y no arranca en la PC de un cliente que no
+    # tiene Python. El embeddable de python.org es relocalizable por diseño.
+    assert "python-$ver-embed-amd64.zip" in wf, (
+        "empaqueta un venv, que no es relocalizable")
     assert "-r requirements.txt" in wf
+    # el ._pth del embeddable desactiva site-packages: sin habilitarlo, pip
+    # instala pero los import fallan sin ningun error claro
+    assert "import site" in wf and "site-packages" in wf
+    # y se verifica que ese Python REALMENTE pueda importar el motor
+    assert "import fastapi, uvicorn, pandas, mvdg" in wf
+    # la interfaz React se construye antes de empaquetar
+    assert "npm run build-ui" in wf
     # no se publica como Release (el del owner no puede quedar pegado al repo)
     assert "action-gh-release" not in wf and "softprops" not in wf
     # chequeo anti-stub, igual que el otro instalador

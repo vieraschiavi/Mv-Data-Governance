@@ -10,9 +10,10 @@
   "scripts": {
     "test": "node lib/server-manager.test.js",
     "build-launcher": "node scripts/build-launcher.mjs",
-    "start": "npm run build-launcher && electron .",
-    "dist-win": "npm run build-launcher && electron-builder --win",
-    "dist-linux": "npm run build-launcher && electron-builder --linux"
+    "start": "npm run build-launcher && npm run build-ui && electron .",
+    "dist-win": "npm run build-launcher && npm run build-ui && electron-builder --win",
+    "dist-linux": "npm run build-launcher && npm run build-ui && electron-builder --linux",
+    "build-ui": "node scripts/build-ui.mjs"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -24,19 +25,58 @@
   "build": {
     "appId": "com.mvdatagovernance.desktop",
     "productName": "MV Data Governance",
-    "directories": { "output": "dist_electron" },
-    "files": ["main.js", "preload.js", "launcher/dist/**"],
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "launcher/dist/**",
+      "ui/dist/**",
+      "lib/**"
+    ],
     "extraResources": [
-      { "from": "../app", "to": "server/app" },
-      { "from": "../mvdg", "to": "server/mvdg" },
-      { "from": "../bi_api", "to": "server/bi_api" },
-      { "from": "../assets/brand", "to": "server/assets/brand" },
-      { "from": "../assets/samples", "to": "server/assets/samples" },
-      { "from": "../docs", "to": "server/docs" },
-      { "from": "../requirements.txt", "to": "server/requirements.txt" }
+      {
+        "from": "../mvdg",
+        "to": "server/mvdg"
+      },
+      {
+        "from": "../bi_api",
+        "to": "server/bi_api"
+      },
+      {
+        "from": "../assets/brand",
+        "to": "server/assets/brand"
+      },
+      {
+        "from": "../assets/samples",
+        "to": "server/assets/samples"
+      },
+      {
+        "from": "../requirements.txt",
+        "to": "server/requirements.txt"
+      },
+      {
+        "from": "ui/dist",
+        "to": "ui"
+      },
+      {
+        "from": "../build/pyembed",
+        "to": "server/python",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "../assets/brand/mv.ico"
     },
     "nsis": {
@@ -56,7 +96,9 @@
       "artifactName": "MVDataGovernance_Setup_${version}.${ext}"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "../assets/brand/mv_icon_256.png",
       "category": "Office"
     }

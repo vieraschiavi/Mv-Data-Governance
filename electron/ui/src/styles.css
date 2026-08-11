@@ -1,0 +1,140 @@
+/* MV Data Governance · interfaz de escritorio (React).
+   Misma paleta que el dashboard y la landing: navy + ámbar. */
+:root {
+  --navy: #081527;
+  --navy2: #0c2137;
+  --amber: #f2b441;
+  --amber2: #e39a2e;
+  --blue: #2f74c0;
+  --green: #00c896;
+  --red: #e05c5c;
+  --ink: #eaf1fb;
+  --muted: #9db0c8;
+  --faint: #7e93ad;
+  --line: #1d3149;
+  --line2: #2a4160;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: linear-gradient(160deg, var(--navy) 0%, #0a1a2f 100%);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* En Electron no hay página que "seleccionar": se comporta como programa. */
+  user-select: none;
+}
+/* …salvo el contenido de las tablas, que el usuario sí querrá copiar. */
+table, .copiable { user-select: text; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+/* ------------------------------------------------------------- cabecera */
+.top {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 22px; border-bottom: 1px solid var(--line);
+  background: rgba(8, 21, 39, .7);
+}
+.marca { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+.marca .escudo { font-size: 20px; }
+.marca b { font-size: 15px; letter-spacing: -.01em; }
+.marca small { color: var(--faint); font-weight: 600; font-size: 11.5px; display: block; }
+.top .der { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.idiomas { display: flex; gap: 2px; background: rgba(255,255,255,.06);
+  border: 1px solid var(--line2); border-radius: 8px; padding: 3px; }
+.idiomas button {
+  background: none; border: 0; color: var(--faint); font: inherit;
+  font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+  padding: 5px 9px; border-radius: 6px; cursor: pointer;
+}
+.idiomas button.on { background: var(--amber); color: #1c1305; }
+
+/* ------------------------------------------------------------ pestañas */
+.tabs { display: flex; gap: 4px; padding: 10px 18px 0; border-bottom: 1px solid var(--line);
+  overflow-x: auto; }
+.tabs button {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--muted); font: inherit; font-size: 13.5px; font-weight: 650;
+  padding: 9px 14px; cursor: pointer; white-space: nowrap;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button.on { color: var(--amber); border-bottom-color: var(--amber); }
+
+/* ------------------------------------------------------------ contenido */
+.cuerpo { flex: 1; overflow: auto; padding: 22px; }
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.02em; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.kpi { background: rgba(255,255,255,.04); border: 1px solid var(--line2);
+  border-radius: 14px; padding: 16px 18px; }
+.kpi .et { color: var(--muted); font-size: 12px; font-weight: 600; }
+.kpi .val { color: var(--amber); font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+
+.panel { background: rgba(255,255,255,.03); border: 1px solid var(--line2);
+  border-radius: 14px; padding: 18px; margin-top: 20px; }
+.panel h2 { font-size: 15px; margin: 0 0 14px; color: var(--ink); font-weight: 700; }
+
+/* barras: SVG seria mas trabajo para el mismo resultado a esta escala */
+.barra { display: grid; grid-template-columns: 150px 1fr 58px; align-items: center;
+  gap: 12px; margin-bottom: 9px; font-size: 13px; }
+.barra .n { color: var(--muted); }
+.barra .pista { background: rgba(255,255,255,.07); border-radius: 999px; height: 9px; }
+.barra .relleno { background: linear-gradient(90deg, var(--amber2), var(--amber));
+  height: 100%; border-radius: 999px; }
+.barra .v { color: var(--amber); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------------- tablas */
+.herramientas { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.buscador {
+  background: rgba(255,255,255,.05); border: 1px solid var(--line2); border-radius: 9px;
+  color: var(--ink); font: inherit; font-size: 13px; padding: 8px 12px; min-width: 260px;
+}
+.buscador::placeholder { color: var(--faint); }
+.buscador:focus { outline: none; border-color: var(--amber); }
+.conteo { color: var(--faint); font-size: 12.5px; }
+
+.tabla-wrap { overflow: auto; border: 1px solid var(--line2); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--navy2); color: var(--muted);
+  text-align: left; font-weight: 700; font-size: 12px;
+  padding: 10px 12px; border-bottom: 1px solid var(--line2); white-space: nowrap;
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid rgba(29,49,73,.6); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: rgba(255,255,255,.03); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+code { font-family: var(--mono); font-size: 12px; color: #cfe3ff; }
+
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; }
+.pill.pass { background: rgba(0,200,150,.14); color: var(--green); }
+.pill.warn { background: rgba(242,180,65,.16); color: var(--amber); }
+.pill.fail { background: rgba(224,92,92,.16); color: var(--red); }
+.si { color: var(--amber); font-weight: 700; }
+.no { color: var(--faint); }
+
+/* --------------------------------------------------------- estados */
+.centro { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: 14px; text-align: center; padding: 30px; }
+.spinner { width: 34px; height: 34px; border: 3px solid var(--line2);
+  border-top-color: var(--amber); border-radius: 50%; animation: giro .8s linear infinite; }
+@keyframes giro { to { transform: rotate(360deg); } }
+.centro h2 { margin: 0; font-size: 17px; }
+.centro p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 52ch; }
+.detalle { font-family: var(--mono); font-size: 11.5px; color: var(--faint);
+  background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; max-width: 70ch; word-break: break-all; user-select: text; }
+.btn { background: var(--amber); color: #1c1305; border: 0; border-radius: 9px;
+  font: inherit; font-weight: 750; font-size: 13.5px; padding: 9px 18px; cursor: pointer; }
+.btn:hover { background: var(--amber2); }
+
+.pie { padding: 9px 22px; border-top: 1px solid var(--line);
+  color: var(--faint); font-size: 11.5px; display: flex; gap: 14px; }
+.pie .der { margin-left: auto; }
