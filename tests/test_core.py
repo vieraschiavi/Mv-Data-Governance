@@ -1880,12 +1880,19 @@ def test_activacion_del_owner_en_un_solo_paso(tmp_path, monkeypatch):
     copia.mkdir()
     for d in ("mvdg", "packaging"):
         shutil.copytree(os.path.join(_repo_root(), d), copia / d)
+    # El repo YA trae una clave publica configurada (sin ella no valida
+    # ninguna licencia). Este test ejercita el camino de PRIMERA activacion,
+    # asi que la vacia en la copia — nunca en el repo real.
+    lic = copia / "mvdg" / "licensing.py"
+    lic.write_text(re.sub(r'^PUBLIC_KEY_B64 = "[^"]*"$', 'PUBLIC_KEY_B64 = ""',
+                          lic.read_text(encoding="utf-8"), count=1,
+                          flags=re.MULTILINE), encoding="utf-8")
     monkeypatch.syspath_prepend(str(copia))
     for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
         del sys.modules[m]
     try:
         licensing = importlib.import_module("mvdg.licensing")
-        assert licensing.PUBLIC_KEY_B64 == "", "el repo no debe traer claves"
+        assert licensing.PUBLIC_KEY_B64 == ""
         spec = importlib.util.spec_from_file_location(
             "owner_setup_test", copia / "packaging" / "owner_setup.py")
         setup = importlib.util.module_from_spec(spec)
@@ -1934,9 +1941,13 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
     for d in ("mvdg", "packaging"):
         shutil.copytree(os.path.join(_repo_root(), d), copia / d)
     lic = copia / "mvdg" / "licensing.py"
-    lic.write_text(lic.read_text(encoding="utf-8").replace(
-        'PUBLIC_KEY_B64 = ""', 'PUBLIC_KEY_B64 = "unaClavePublicaCualquiera"'),
-        encoding="utf-8")
+    # Anclado con regex y no un replace literal: el repo puede traer la clave
+    # ya configurada o vacia, y un replace de texto suelto fallaria en
+    # silencio en uno de los dos casos (dejando el test verde sin probar nada).
+    lic.write_text(re.sub(r'^PUBLIC_KEY_B64 = "[^"]*"$',
+                          'PUBLIC_KEY_B64 = "unaClavePublicaCualquiera"',
+                          lic.read_text(encoding="utf-8"), count=1,
+                          flags=re.MULTILINE), encoding="utf-8")
     monkeypatch.syspath_prepend(str(copia))
     for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
         del sys.modules[m]
@@ -1952,6 +1963,64 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
     finally:
         for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
             del sys.modules[m]
+
+
+def test_el_emisor_de_licencias_esta_configurado():
+    """Con PUBLIC_KEY_B64 vacia, verify() devuelve None para CUALQUIER token:
+    ni el owner ni un cliente que pago pueden activar nada, y el sintoma es
+    mudo (todo el mundo en demo, sin ningun error). Este test lo vuelve
+    ruidoso: si alguien la borra, el CI se pone en rojo."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from mvdg import licensing
+
+    assert licensing.PUBLIC_KEY_B64, (
+        "PUBLIC_KEY_B64 vacia: ninguna licencia validaria. Generá el par con "
+        "packaging/licencias.py keygen")
+    crudo = licensing._b64u_decode(licensing.PUBLIC_KEY_B64)
+    assert len(crudo) == 32, f"una publica Ed25519 son 32 bytes, no {len(crudo)}"
+    Ed25519PublicKey.from_public_bytes(crudo)   # lanza si no es una clave valida
+
+    # Un token cualquiera NO valida contra ella: la pública sola no desbloquea.
+    assert licensing.verify("MVDG2.falso.falso") is None
+
+
+def test_el_repo_publico_no_lleva_secretos_de_licencia():
+    """El repo es PUBLICO. Un token de owner o la clave privada commiteados
+    equivalen a regalar la version full — y a que cualquiera pueda emitirse
+    licencias. Se revisa lo que git tiene TRACKEADO, que es lo que se publica
+    (un archivo ignorado en el disco del que trabaja no le llega a nadie)."""
+    import subprocess
+
+    raiz = _repo_root()
+    trackeados = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=raiz, capture_output=True, check=True,
+    ).stdout.decode("utf-8").split("\0")
+
+    prohibidos = {"licencia_owner.txt", "clave_privada_licencias.txt",
+                  "licencia.json"}
+    for ruta in filter(None, trackeados):
+        assert os.path.basename(ruta) not in prohibidos, \
+            f"{ruta} no puede estar en un repo publico"
+
+    # Y que no se cuele un token firmado DENTRO de otro archivo. El patron
+    # exige cuerpo y firma largos: asi no matchea el "MVDG2.falso.falso" de
+    # los tests ni el "MVDG2.xxx.yyy" de la documentacion, que son inocuos.
+    token = re.compile(r"MVDG2\.[A-Za-z0-9_-]{40,}\.[A-Za-z0-9_-]{60,}")
+    for ruta in filter(None, trackeados):
+        completa = os.path.join(raiz, ruta)
+        try:
+            with open(completa, encoding="utf-8") as fh:
+                contenido = fh.read()
+        except (OSError, UnicodeDecodeError):
+            continue          # binarios (iconos, xlsx de ejemplo): no aplican
+        hallado = token.search(contenido)
+        assert hallado is None, \
+            f"{ruta} contiene una licencia firmada: {hallado.group()[:24]}..."
+
+    # El .gitignore tiene que cubrirlos, para que no dependa de acordarse.
+    ignorados = open(os.path.join(raiz, ".gitignore"), encoding="utf-8").read()
+    for nombre in ("licencia_owner.txt", "clave_privada_licencias.txt"):
+        assert nombre in ignorados, f"{nombre} deberia estar en .gitignore"
 
 
 def test_bat_de_activacion_del_owner_es_de_un_clic():
@@ -2203,8 +2272,14 @@ def test_workflow_electron_arma_la_carpeta_instalador():
         wf = fh.read()
     assert "INSTALADOR" in wf and "Compress-Archive" in wf
     assert "MVDataGovernance_CLIENTE" in wf and "MVDataGovernance_OWNER" in wf
-    # el owner exige licencia atada; el cliente no lleva ninguna
-    assert "MVDG_OWNER_TOKEN" in wf and "NO esta atado a una maquina" in wf
+    # el owner exige un token firmado; el cliente no lleva ninguno
+    assert "MVDG_OWNER_TOKEN" in wf
+    # Atar el token a la PC es lo deseable pero no siempre es posible (el
+    # "mid" solo se puede calcular EN esa PC). Si no viene atado se construye
+    # igual, pero tiene que AVISAR: un exe de owner sin atar abre desbloqueado
+    # en cualquier lado. Que ese aviso exista es lo que se verifica acá.
+    assert '::warning title=Instalador owner sin atar::' in wf
+    assert 'if p.get("mid"):' in wf
     # Python EMBEBIBLE, no un venv: un venv guarda la ruta del Python base
     # de la maquina donde se creo y no arranca en la PC de un cliente que no
     # tiene Python. El embeddable de python.org es relocalizable por diseño.

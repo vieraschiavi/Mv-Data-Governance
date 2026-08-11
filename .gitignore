@@ -22,6 +22,18 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 
+# Licencias: nada de esto entra al repo, que ES PUBLICO.
+#   · licencia_owner.txt  = token que abre el programa DESBLOQUEADO. El
+#     workflow del instalador lo escribe al lado del motor en tiempo de build,
+#     leyendolo del secreto MVDG_OWNER_TOKEN. Commiteado equivaldria a
+#     publicar la version full para cualquiera que clone.
+#   · clave_privada_licencias.txt = la privada que FIRMA todas las licencias
+#     del producto. Filtrada, cualquiera se emite las suyas y las de los
+#     clientes dejan de significar nada.
+licencia_owner.txt
+mvdg/licencia_owner.txt
+clave_privada_licencias.txt
+
 # Electron shell (electron/README.md explica cómo regenerar)
 electron/node_modules/
 electron/launcher/dist/

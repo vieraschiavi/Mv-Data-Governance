@@ -186,10 +186,19 @@ jobs:
               sys.exit("El token no verifica contra la publica de mvdg/licensing.py")
           if p.get("plan") != licensing.PLAN_OWNER:
               sys.exit(f"El token es plan '{p.get('plan')}', se esperaba 'owner'")
-          if not p.get("mid"):
-              sys.exit("El token NO esta atado a una maquina: un exe filtrado "
-                       "funcionaria en cualquier PC. Reemitilo con --maquina.")
-          print(f"Licencia OK: plan={p['plan']} mid={p['mid']}")
+          # Atar el token a una maquina (campo "mid") exige calcularlo EN esa
+          # maquina: sale del hostname y la MAC. Un token emitido fuera de la
+          # PC del owner no puede llevarlo. Se acepta, porque un owner sin
+          # instalador no le sirve a nadie, pero se avisa fuerte: sin "mid",
+          # ese .exe filtrado abre desbloqueado en cualquier PC.
+          if p.get("mid"):
+              print(f"Licencia OK: plan={p['plan']} atada a la maquina {p['mid']}")
+          else:
+              print(f"Licencia OK: plan={p['plan']} SIN atar a ninguna maquina")
+              print("::warning title=Instalador owner sin atar::Este .exe abre "
+                    "desbloqueado en CUALQUIER PC. No lo compartas. Para atarlo, "
+                    "corre 'python packaging/licencias.py maquina' en tu equipo y "
+                    "reemiti el token con --maquina <id>.")
           PY
 
       - name: Construir instalador OWNER
