@@ -90,6 +90,22 @@ jobs:
             Set-Content $pth
           Add-Content $pth "Lib\site-packages"
 
+          # Y la carpeta de ARRIBA, que es donde vive el motor. Esto no es
+          # decoracion: con un ._pth presente Python arranca AISLADO, y en
+          # modo aislado sys.path es exactamente lo que dice este archivo —
+          # no se agrega el directorio actual ni se respeta PYTHONPATH.
+          # Sin esta linea, "python -m bi_api.main" no encuentra ni bi_api ni
+          # mvdg por mas que el cwd sea el correcto, que es justo como los
+          # lanza spawnApi(). Paso de verdad: el build fallo con
+          # "ModuleNotFoundError: No module named 'mvdg'" con TODAS las
+          # dependencias instaladas al lado.
+          #
+          # ".." es relativo a la carpeta del ._pth (la del python.exe), y da
+          # el mismo destino en los dos lados: en el build, python esta en
+          # build\pyembed y el motor en la raiz del repo; ya instalado, esta
+          # en resources\server\python y el motor en resources\server.
+          Add-Content $pth ".."
+
           Invoke-WebRequest -UseBasicParsing -Uri "https://bootstrap.pypa.io/get-pip.py" `
             -OutFile "$env:RUNNER_TEMP\get-pip.py"
           & "$dest\python.exe" "$env:RUNNER_TEMP\get-pip.py" --no-cache-dir
@@ -98,8 +114,18 @@ jobs:
           # Verificacion REAL: que ese Python pueda importar lo que el
           # programa necesita. Si esto falla, el instalador saldria roto y
           # el cliente lo descubriria al abrirlo.
-          & "$dest\python.exe" -c "import fastapi, uvicorn, pandas, mvdg; print('embebido OK', mvdg.__version__)"
-          if ($LASTEXITCODE -ne 0) { throw "El Python embebido no puede importar el motor" }
+          # Se corre desde OTRA carpeta a proposito. Si se verificara parado
+          # en la raiz del repo, un sys.path mal armado podria quedar tapado
+          # por el directorio actual y el instalador saldria roto igual — el
+          # cliente no tiene el repo, tiene la carpeta de instalacion.
+          # Se importa bi_api.main ademas de mvdg porque es lo que arranca de
+          # verdad (spawnApi hace "python -m bi_api.main").
+          $py = (Resolve-Path "$dest\python.exe").Path
+          Push-Location $env:RUNNER_TEMP
+          & $py -c "import fastapi, uvicorn, pandas, mvdg, bi_api.main; print('embebido OK', mvdg.__version__)"
+          $codigo = $LASTEXITCODE
+          Pop-Location
+          if ($codigo -ne 0) { throw "El Python embebido no puede importar el motor" }
 
       - name: Construir la interfaz React
         working-directory: electron
