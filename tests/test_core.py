@@ -2090,17 +2090,61 @@ def test_la_version_bat_sigue_usando_streamlit():
         assert "streamlit" in fh.read().lower()
 
 
-def test_la_api_sirve_la_ui_en_el_mismo_origen():
+def test_la_api_sirve_la_ui_en_el_mismo_origen(tmp_path, monkeypatch):
     """La UI se sirve DESDE la API (/app) y no por file://: mismo origen,
     así no hace falta CORS ni relajar webSecurity en Electron — las dos
-    formas habituales de que un empaquetado termine con un agujero."""
-    from bi_api import main as bm
-    rutas = [getattr(r, "path", "") for r in bm.app.routes]
-    assert any(r.startswith("/app") for r in rutas), "la UI no se monta en /app"
-    # y el directorio se puede fijar por variable: en el .exe instalado la
-    # carpeta no queda al lado de bi_api/
-    with open(os.path.join(_repo_root(), "bi_api", "main.py"), encoding="utf-8") as fh:
-        assert "MVDG_UI_DIR" in fh.read()
+    formas habituales de que un empaquetado termine con un agujero.
+
+    Se arma un bundle de mentira y se apunta MVDG_UI_DIR ahí en vez de
+    depender de electron/ui/dist: ese directorio es un artefacto de build y
+    está en .gitignore, así que en una máquina limpia (y en el CI) no
+    existe. Un test que lo diera por sentado fallaría por no haber corrido
+    `npm run build-ui`, no por un defecto del programa."""
+    import importlib
+    ui = tmp_path / "bundle"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><div id='root'></div>",
+                                   encoding="utf-8")
+    (ui / "ui.js").write_text("/* bundle */", encoding="utf-8")
+    monkeypatch.setenv("MVDG_UI_DIR", str(ui))
+
+    import bi_api.main as bm
+    bm = importlib.reload(bm)
+    try:
+        assert bm._dir_ui() == str(ui)
+        rutas = [getattr(r, "path", "") for r in bm.app.routes]
+        assert any(r.startswith("/app") for r in rutas), "la UI no se monta en /app"
+
+        # y se sirve de verdad, por el MISMO servidor que la API
+        from fastapi.testclient import TestClient
+        with TestClient(bm.app) as c:
+            r = c.get("/app/")
+            assert r.status_code == 200 and "id='root'" in r.text
+            assert c.get("/app/ui.js").status_code == 200
+            assert c.get("/api/kpis?lang=es").status_code == 200
+    finally:
+        # el módulo queda cargado para el resto de la suite: se restaura
+        monkeypatch.delenv("MVDG_UI_DIR", raising=False)
+        importlib.reload(bm)
+
+
+def test_sin_bundle_construido_la_api_sigue_sirviendo_a_bi(tmp_path, monkeypatch):
+    """Sin la UI construida, /app no se monta y la API sigue funcionando
+    igual para Power BI/Tableau — que es su trabajo principal. Montar un
+    directorio inexistente haría explotar el arranque de la API por culpa
+    de una interfaz que ese cliente ni usa."""
+    import importlib
+    monkeypatch.setenv("MVDG_UI_DIR", str(tmp_path / "no-existe"))
+    import bi_api.main as bm
+    bm = importlib.reload(bm)
+    try:
+        from fastapi.testclient import TestClient
+        with TestClient(bm.app) as c:
+            assert c.get("/api/catalog?lang=es").status_code == 200
+            assert c.get("/health").status_code == 200
+    finally:
+        monkeypatch.delenv("MVDG_UI_DIR", raising=False)
+        importlib.reload(bm)
 
 
 def test_todos_los_workflows_son_yaml_valido():

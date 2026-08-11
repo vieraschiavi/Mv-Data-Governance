@@ -86,25 +86,40 @@ jobs:
               owner, repo, ref: sha, per_page: 100,
             });
 
-            const malos = checks.check_runs.filter(c =>
+            // Un mismo check puede aparecer VARIAS veces sobre el mismo
+            // commit: un PR dispara push y pull_request, y el concurrency de
+            // tests.yml cancela el run duplicado. Esos "cancelled" quedan
+            // pegados al commit para siempre. Sin quedarse con el MAS
+            // RECIENTE de cada nombre, el automerge nunca mergearia nada —
+            // siempre habria un cancelado a mano.
+            const ultimo = new Map();
+            for (const c of checks.check_runs) {
+              const previo = ultimo.get(c.name);
+              const masNuevo = !previo ||
+                new Date(c.started_at || 0) >= new Date(previo.started_at || 0);
+              if (masNuevo) ultimo.set(c.name, c);
+            }
+            const vigentes = [...ultimo.values()];
+
+            const malos = vigentes.filter(c =>
               ['failure', 'cancelled', 'timed_out', 'action_required']
                 .includes(c.conclusion));
             if (malos.length) {
               return salir(`checks en rojo: ${malos.map(c => c.name).join(', ')}`);
             }
 
-            const pendientes = checks.check_runs.filter(c => c.status !== 'completed');
+            const pendientes = vigentes.filter(c => c.status !== 'completed');
             if (pendientes.length) {
               return salir(`checks sin terminar: ${pendientes.map(c => c.name).join(', ')}`);
             }
 
             // Ausencia de rojo NO es verde: los tests tienen que haber
             // corrido de verdad sobre ESTE commit.
-            const tests = checks.check_runs.filter(c =>
+            const tests = vigentes.filter(c =>
               c.name.startsWith('test') && c.conclusion === 'success');
             if (tests.length === 0) {
               return salir(`no corrieron los tests sobre ${sha.slice(0, 7)} ` +
-                           `(checks vistos: ${checks.check_runs.map(c => c.name).join(', ') || 'ninguno'})`);
+                           `(checks vistos: ${vigentes.map(c => c.name).join(', ') || 'ninguno'})`);
             }
 
             core.info(`Mergeando #${pr.number} (${tests.length} jobs de test en verde)`);
