@@ -64,16 +64,46 @@ jobs:
         with:
           python-version: "3.12"
 
-      # El .venv viaja DENTRO del instalador: si dependiera del Python del
-      # cliente, volveríamos al problema que el .bat portable ya tuvo (sin
-      # Python, o con uno a medias). El instalador tiene que andar en una PC
-      # recién formateada.
-      - name: Preparar el entorno Python que se empaqueta
+      # Python EMBEBIBLE, no un venv. Un venv guarda en pyvenv.cfg la ruta
+      # del Python base de la maquina donde se creo: copiado a la PC de un
+      # cliente que no tiene Python, no arranca. La distribucion embeddable
+      # de python.org es relocalizable por diseno — es la unica forma de que
+      # el .exe ande en una PC recien formateada, que es todo el punto de
+      # entregar un instalador.
+      - name: Preparar el Python embebido que viaja adentro
         shell: pwsh
         run: |
-          python -m venv .venv
-          .\.venv\Scripts\python.exe -m pip install --no-cache-dir --upgrade pip
-          .\.venv\Scripts\python.exe -m pip install --no-cache-dir -r requirements.txt
+          $ver = "3.12.7"
+          $dest = "build\pyembed"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $zip = "$env:RUNNER_TEMP\pyembed.zip"
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri "https://www.python.org/ftp/python/$ver/python-$ver-embed-amd64.zip" `
+            -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+
+          # El embeddable trae ._pth que DESACTIVA site-packages: sin
+          # habilitarlo, pip instala pero los import fallan. Es el fallo
+          # clasico de este empaquetado y no da ningun error claro.
+          $pth = Get-ChildItem "$dest\python*._pth" | Select-Object -First 1
+          (Get-Content $pth) -replace '^#\s*import site', 'import site' |
+            Set-Content $pth
+          Add-Content $pth "Lib\site-packages"
+
+          Invoke-WebRequest -UseBasicParsing -Uri "https://bootstrap.pypa.io/get-pip.py" `
+            -OutFile "$env:RUNNER_TEMP\get-pip.py"
+          & "$dest\python.exe" "$env:RUNNER_TEMP\get-pip.py" --no-cache-dir
+          & "$dest\python.exe" -m pip install --no-cache-dir -r requirements.txt
+
+          # Verificacion REAL: que ese Python pueda importar lo que el
+          # programa necesita. Si esto falla, el instalador saldria roto y
+          # el cliente lo descubriria al abrirlo.
+          & "$dest\python.exe" -c "import fastapi, uvicorn, pandas, mvdg; print('embebido OK', mvdg.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "El Python embebido no puede importar el motor" }
+
+      - name: Construir la interfaz React
+        working-directory: electron
+        run: npm run build-ui
 
       - name: Leer la versión del programa
         id: ver

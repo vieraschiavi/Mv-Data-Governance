@@ -21,19 +21,35 @@ function freePort() {
   });
 }
 
+/**
+ * Interpretes a probar, EN ORDEN de preferencia:
+ *   1. el Python EMBEBIDO que viaja dentro del instalador (server/python).
+ *      Es el que hace que el .exe ande en una PC recien formateada, sin
+ *      pedirle a nadie que instale Python.
+ *   2. el .venv del repo (modo desarrollo).
+ *   3. el Python del sistema, como ultimo recurso.
+ *
+ * El embebido va primero a proposito: si el cliente TIENE Python instalado
+ * pero sin fastapi, elegir el suyo haria fallar el arranque teniendo al
+ * lado uno que funciona.
+ */
 function pythonCandidates(repoRoot) {
-  const names = process.platform === "win32"
-    ? ["python.exe", "python3.exe", "py.exe"]
-    : ["python3", "python"];
-  const venvs = process.platform === "win32"
-    ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")]
-    : [path.join(repoRoot, ".venv", "bin", "python")];
-  return [...venvs.filter((p) => fs.existsSync(p)), ...names];
+  const win = process.platform === "win32";
+  const names = win ? ["python.exe", "python3.exe", "py.exe"] : ["python3", "python"];
+  const propios = win
+    ? [path.join(repoRoot, "python", "python.exe"),
+       path.join(repoRoot, ".venv", "Scripts", "python.exe")]
+    : [path.join(repoRoot, "python", "bin", "python3"),
+       path.join(repoRoot, ".venv", "bin", "python")];
+  return [...propios.filter((p) => fs.existsSync(p)), ...names];
 }
 
+// Que importe fastapi + uvicorn y NO streamlit: la version de escritorio
+// sirve la UI React desde bi_api. Pedir streamlit acá haría fallar el
+// arranque en un empaquetado que, correctamente, no lo incluye.
 function pythonWorks(bin, cwd) {
   try {
-    const r = spawnSync(bin, ["-c", "import streamlit"], { cwd, timeout: 20000 });
+    const r = spawnSync(bin, ["-c", "import fastapi, uvicorn"], { cwd, timeout: 20000 });
     return r.status === 0;
   } catch {
     return false;
@@ -42,7 +58,7 @@ function pythonWorks(bin, cwd) {
 
 function serverRoot(resourcesPath, repoRoot) {
   const installed = resourcesPath ? path.join(resourcesPath, "server") : null;
-  if (installed && fs.existsSync(path.join(installed, "app", "app.py"))) {
+  if (installed && fs.existsSync(path.join(installed, "bi_api", "main.py"))) {
     return installed;
   }
   return repoRoot;
@@ -58,6 +74,29 @@ function spawnStreamlit(bin, root, port, extraEnv) {
   return spawn(bin, args, {
     cwd: root,
     env: { ...process.env, PYTHONUNBUFFERED: "1", ...extraEnv },
+  });
+}
+
+/**
+ * Levanta la API de gobierno (FastAPI), que ademas sirve la UI React en
+ * /app. Reemplaza a spawnStreamlit en la version de escritorio.
+ *
+ * MVDG_UI_DIR se pasa explicito porque en el empaquetado de
+ * electron-builder la carpeta del bundle NO queda al lado de bi_api/ — la
+ * heuristica relativa de bi_api serviria para el repo pero no para el .exe
+ * instalado, y el sintoma seria un 404 en /app despues de instalar.
+ */
+function spawnApi(bin, root, port, uiDir, extraEnv) {
+  return spawn(bin, ["-m", "bi_api.main"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: "1",
+      MVDG_API_HOST: "127.0.0.1",
+      MVDG_API_PORT: String(port),
+      ...(uiDir ? { MVDG_UI_DIR: uiDir } : {}),
+      ...extraEnv,
+    },
   });
 }
 
@@ -92,5 +131,5 @@ function stopProcess(proc) {
 
 module.exports = {
   freePort, pythonCandidates, pythonWorks, serverRoot,
-  spawnStreamlit, waitForServer, stopProcess,
+  spawnStreamlit, spawnApi, waitForServer, stopProcess,
 };
