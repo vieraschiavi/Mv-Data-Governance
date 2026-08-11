@@ -1965,6 +1965,82 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
             del sys.modules[m]
 
 
+def test_licencia_json_con_solo_el_token_alcanza(tmp_path, monkeypatch):
+    """El .bat de activacion escribe {"token": "..."} y nada mas — no puede
+    calcular el payload sin firmar nada. Este test fija ese contrato: si
+    current() algun dia exigiera tambien "payload", el .bat dejaria de
+    activar NADA y sin ningun error visible."""
+    import json as _json
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner")
+    (tmp_path / "licencia.json").write_text(
+        _json.dumps({"token": token}), encoding="utf-8")
+    assert licensing.plan() == "owner"
+    assert licensing.has_feature("migracion_purview")
+
+    # y sigue siendo la FIRMA lo que manda: un token editado a mano no entra
+    (tmp_path / "licencia.json").write_text(
+        _json.dumps({"token": token[:-4] + "AAAA"}), encoding="utf-8")
+    assert licensing.plan() == "demo"
+
+
+def test_bat_de_activacion_owner_escribe_donde_el_programa_lee(tmp_path,
+                                                               monkeypatch):
+    """El .bat tiene que cubrir las DOS versiones instaladas y el caso sin
+    permisos de admin: por eso escribe en los cuatro lugares de los que
+    licensing.current() puede leer, no en uno."""
+    import importlib
+    from mvdg import licensing
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "datos"))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    spec = importlib.util.spec_from_file_location(
+        "activar_owner_bat_test",
+        os.path.join(_repo_root(), "packaging", "activar_owner_bat.py"))
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    token = _emitir(priv, plan="owner")
+    salida = tmp_path / "MV_Activar_Owner.bat"
+    assert gen.main(["--token", token, "--salida", str(salida)]) == 0
+
+    crudo = salida.read_bytes()
+    texto = crudo.decode("ascii")          # lanza si se colo un acento
+    assert crudo.startswith(b"@echo off")
+    assert b"\xef\xbb\xbf" not in crudo, "un BOM romperia la lectura del token"
+    assert b"\r\n" in crudo, "cmd.exe necesita finales de linea CRLF"
+
+    # el token va UNA sola vez (en set TOKEN=); el resto lo usa por variable
+    assert texto.count(token) == 1
+
+    # los cuatro destinos, que son los cuatro caminos reales de current()
+    assert "%USERPROFILE%\\.mv_data_governance" in texto   # Electron / sin admin
+    assert "%AQUI%Data" in texto                           # frozen escribible
+    assert "%AQUI%licencia_owner.txt" in texto             # frozen empaquetada
+    assert "resources\\server" in texto                    # motor de Electron
+    # y avisa si MVDG_DATA_DIR le gana a todo lo anterior
+    assert "MVDG_DATA_DIR" in texto
+    # no se cierra la ventana sin que se lea el resultado
+    assert "pause" in texto
+
+    # un token que no verifica NO genera nada: un .bat con un token malo se
+    # ve identico a uno bueno y el sintoma recien aparece al abrir el programa
+    otra = tmp_path / "no.bat"
+    assert gen.main(["--token", "MVDG2.falso.falso",
+                     "--salida", str(otra)]) == 1
+    assert not otra.exists()
+
+    # y un token valido pero que NO es de owner tampoco
+    assert gen.main(["--token", _emitir(priv, plan="professional"),
+                     "--salida", str(otra)]) == 1
+    assert not otra.exists()
+
+
 def test_el_emisor_de_licencias_esta_configurado():
     """Con PUBLIC_KEY_B64 vacia, verify() devuelve None para CUALQUIER token:
     ni el owner ni un cliente que pago pueden activar nada, y el sintoma es

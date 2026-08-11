@@ -30,9 +30,12 @@ Thumbs.db
 #   · clave_privada_licencias.txt = la privada que FIRMA todas las licencias
 #     del producto. Filtrada, cualquiera se emite las suyas y las de los
 #     clientes dejan de significar nada.
+#   · MV_Activar_Owner.bat = lo genera packaging/activar_owner_bat.py y
+#     lleva el token ADENTRO, que es lo que lo hace de un solo clic.
 licencia_owner.txt
 mvdg/licencia_owner.txt
 clave_privada_licencias.txt
+MV_Activar_Owner.bat
 
 # Electron shell (electron/README.md explica cómo regenerar)
 electron/node_modules/
