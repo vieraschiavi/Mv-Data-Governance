@@ -221,13 +221,19 @@ function render(){
   }
   // tarjetas
   var g=document.getElementById('grid');g.innerHTML='';
-  // Si reviews-data.js no cargo, el grid quedaba vacio y sin explicacion.
+  // Dos casos distintos, y mostrar el equivocado seria mentir:
+  //  - el archivo no cargo (MVDG_REVIEWS indefinido) -> error de carga
+  //  - cargo y esta vacio -> todavia no hay resenas reales, y se dice asi
   if(!R.length){
     var li=document.documentElement.lang||'es';
-    g.innerHTML='<p class="rvempty">'+(li==='en'
-      ?'Reviews could not be loaded right now.'
-      :li==='pt'?'Nao foi possivel carregar as avaliacoes agora.'
-      :'No pudimos cargar las resenas en este momento.')+'</p>';
+    var cargo=Array.isArray(window.MVDG_REVIEWS);
+    g.innerHTML='<p class="rvempty">'+(cargo
+      ?(li==='en'?'No verified customer reviews yet - the product is in beta.'
+        :li==='pt'?'Ainda nao ha avaliacoes verificadas de clientes - o produto esta em beta.'
+        :'Todavia no hay resenas verificadas de clientes: el programa esta en fase beta.')
+      :(li==='en'?'Reviews could not be loaded right now.'
+        :li==='pt'?'Nao foi possivel carregar as avaliacoes agora.'
+        :'No pudimos cargar las resenas en este momento.'))+'</p>';
     return;
   }
   R.forEach(function(r){
