@@ -275,16 +275,6 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 @media(max-width:560px){.pgrid.four{grid-template-columns:1fr}}
 .paynote{color:var(--muted-d);font-size:13px;margin:20px 0 0;text-align:center}
 .uyu{color:var(--faint);font-size:12px;font-weight:600;margin-top:3px}
-.crcard .uyu{margin:-2px 0 8px}
-.crgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px}
-@media(max-width:760px){.crgrid{grid-template-columns:1fr}}
-.crcard{background:var(--tint);border:1px solid var(--line-d);border-radius:18px;padding:24px;text-align:center;display:flex;flex-direction:column;position:relative}
-.crcard.pop{border-color:var(--amber);box-shadow:0 16px 40px rgba(242,180,65,.14)}
-.crcard .crtag{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--amber);color:var(--amber-ink);font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;white-space:nowrap}
-.crcard .crn{font-size:20px;font-weight:850;color:var(--ink-d)}
-.crcard .cramt{font-size:32px;font-weight:850;color:var(--ink-d);margin:8px 0 4px}
-.crcard .crx{color:var(--muted-d);font-size:13px;margin-bottom:16px;flex:1}
-.crcard .btn{width:100%}
 .plan{background:var(--paper);border:1px solid var(--line-d);border-radius:18px;padding:26px;display:flex;flex-direction:column}
 .plan.pop{border-color:var(--amber);box-shadow:0 20px 46px rgba(242,180,65,.16);position:relative}
 .plan.pop .tag{position:absolute;top:-11px;left:24px;background:var(--amber);color:var(--amber-ink);font-size:11px;
@@ -722,31 +712,6 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
   <p class="paynote" data-i="pr_pay">Pagá con MercadoPago: tarjeta, débito, efectivo o dinero en cuenta. Al confirmar el pago se habilita la descarga.</p>
 
-  <!-- CREDITOS -->
-  <div class="eyebrow" style="margin-top:44px" data-i="cr_eye">Créditos (opcional)</div>
-  <h2 class="h2" data-i="cr_h2">Potenciá con créditos IA y packs</h2>
-  <p class="lead-d" data-i="cr_lead">Comprá créditos por MercadoPago y usalos cuando quieras en funciones de IA (sugerencias avanzadas, definiciones de glosario, análisis) o para desbloquear packs embebidos: ZIPs de ejemplos, datasets y plantillas de gobierno.</p>
-  <div class="crgrid">
-    <div class="crcard">
-      <div class="crn"><span id="cr100c">100</span> <span data-i="cr_credits">créditos</span></div>
-      <div class="cramt">USD <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
-      <div class="crx" data-i="cr100x">Para probar la IA y bajar un pack de ejemplo.</div>
-      <a class="btn btn-od" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
-    </div>
-    <div class="crcard pop"><span class="crtag" data-i="cr_best">+10% bonus</span>
-      <div class="crn"><span id="cr550c">550</span> <span data-i="cr_credits2">créditos</span></div>
-      <div class="cramt">USD <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
-      <div class="crx" data-i="cr550x">El más elegido para uso regular.</div>
-      <a class="btn btn-a" data-mp="cred550" href="#" data-i="cr_buy2">Comprar</a>
-    </div>
-    <div class="crcard">
-      <div class="crn"><span id="cr2500c">2.500</span> <span data-i="cr_credits3">créditos</span></div>
-      <div class="cramt">USD <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
-      <div class="crx" data-i="cr2500x">Mejor precio por crédito, para equipos.</div>
-      <a class="btn btn-od" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
-    </div>
-  </div>
-  <p class="paynote" data-i="cr_use">Ejemplos de consumo: 1 sugerencia IA = 1 crédito · auto-definición de glosario = 2 créditos · pack de ejemplo (ZIP) = 20 créditos. Los créditos no vencen.</p>
 </div></section>
 
 <!-- RESEÑAS -->
@@ -985,12 +950,6 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
-  cr_eye:"Credits (optional)",cr_h2:"Boost with AI credits and packs",
-  cr_lead:"Buy credits via MercadoPago and use them anytime on AI features (advanced suggestions, glossary definitions, analysis) or to unlock embedded packs: example ZIPs, datasets and governance templates.",
-  cr_credits:"credits",cr_credits2:"credits",cr_credits3:"credits",cr_best:"+10% bonus",
-  cr100x:"To try the AI and download an example pack.",cr550x:"The most popular for regular use.",cr2500x:"Best price per credit, for teams.",
-  cr_buy:"Buy",cr_buy2:"Buy",cr_buy3:"Buy",
-  cr_use:"Usage examples: 1 AI suggestion = 1 credit · glossary auto-definition = 2 credits · example pack (ZIP) = 20 credits. Credits never expire.",
   c_eye:"Contact",c_h2:"Let's talk about your data",
   c_lead:"Tell us what you need to govern and we'll reply with a concrete proposal.",
   c_name:"Name",c_mail:"Email",c_msg:"Message",c_send:"Send",
@@ -1166,12 +1125,6 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
-  cr_eye:"Créditos (opcional)",cr_h2:"Potencialize com créditos IA e packs",
-  cr_lead:"Compre créditos via MercadoPago e use quando quiser em funções de IA (sugestões avançadas, definições de glossário, análises) ou para desbloquear packs embarcados: ZIPs de exemplos, datasets e modelos de governança.",
-  cr_credits:"créditos",cr_credits2:"créditos",cr_credits3:"créditos",cr_best:"+10% bônus",
-  cr100x:"Para testar a IA e baixar um pack de exemplo.",cr550x:"O mais escolhido para uso regular.",cr2500x:"Melhor preço por crédito, para equipes.",
-  cr_buy:"Comprar",cr_buy2:"Comprar",cr_buy3:"Comprar",
-  cr_use:"Exemplos de consumo: 1 sugestão IA = 1 crédito · autodefinição de glossário = 2 créditos · pack de exemplo (ZIP) = 20 créditos. Os créditos não expiram.",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
   c_lead:"Conte o que você precisa governar e responderemos com uma proposta concreta.",
   c_name:"Nome",c_mail:"E-mail",c_msg:"Mensagem",c_send:"Enviar",
@@ -1374,9 +1327,6 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   }
   if(pr.licencia){setTxt('priceLic',pr.licencia.amount);uyu('uyuLic',pr.licencia.amount);}
   if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount);}
-  if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
-  if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
-  if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}
 
   var MP_ERR={es:'No se pudo iniciar el pago. Probá de nuevo en un rato.',
     en:'Could not start the payment. Please try again shortly.',
