@@ -614,7 +614,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <th data-i="cmp_c4">BI cloud<br><small>(Purview, Atlan)</small></th>
     </tr></thead>
     <tbody>
-      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia USD 149 · USD 390/mes</td><td class="no" data-i="cmp_r1b">USD 60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">USD 40k+/año</td></tr>
+      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia USD 149 · Professional USD 390</td><td class="no" data-i="cmp_r1b">USD 60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">USD 40k+/año</td></tr>
       <tr><td data-i="cmp_r2">Datos 100% locales</td><td class="yes">✓</td><td>Parcial</td><td class="yes">✓</td><td class="no">✗ (nube)</td></tr>
       <tr><td data-i="cmp_r3">Listo para usar sin equipo técnico</td><td class="yes">✓</td><td>Parcial</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td data-i="cmp_r4">Trilingüe ES/EN/PT</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
@@ -666,7 +666,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <section class="panel" id="precios"><div class="wrap">
   <div class="eyebrow" data-i="pr_eye">Precios</div>
   <h2 class="h2" data-i="pr_h2">Planes simples, sin sorpresas</h2>
-  <p class="lead-d" data-i="pr_lead">Probá gratis con datos sintéticos. Comprá la licencia de PC con un pago único por MercadoPago, o escalá al plan mensual para equipos.</p>
+  <p class="lead-d" data-i="pr_lead">Probá gratis con datos sintéticos. Comprá la licencia de PC o el plan Professional para equipos, con un pago único por MercadoPago.</p>
   <div class="pgrid four">
     <div class="plan">
       <h3 data-i="pl1t">Gratis</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
@@ -691,8 +691,8 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <a class="btn btn-a" data-mp="licencia" href="#" data-i="pl2btn">Comprar con MercadoPago</a>
     </div>
     <div class="plan">
-      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (mensual).</div>
-      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
+      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (pago único).</div>
+      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2"></small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
       <ul>
         <li data-i="pl3a">API REST para BI ilimitada</li>
         <li data-i="pl3b">Instalador Windows (.exe)</li>
@@ -821,7 +821,7 @@ en:{
   cmp_eye:"Why MV",cmp_h2:"How we compare",
   cmp_lead:"Data governance for those who can't pay an enterprise suite nor run an open-source tool without a dedicated technical team.",
   cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Entry price",cmp_r1a:"Free · License USD 149 · USD 390/mo",cmp_r1b:"USD 60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"USD 40k+/yr",
+  cmp_r1:"Entry price",cmp_r1a:"Free · License USD 149 · Professional USD 390",cmp_r1b:"USD 60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"USD 40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   cmp_r8:"Migrates to and from Purview / Collibra",cmp_r8a:"✓ (real API)",cmp_r8b:"Not applicable (they're the destination)",cmp_r8c:"Partial",cmp_r8d:"Not applicable (they're the destination)",
   nav_guide:"What is it?",
@@ -974,13 +974,13 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   d3t:"100% Web",d3p:"The same platform running on your company server, only on IT-authorized hosts. Launch with MV_DataGovernance_Server.bat / run_server.sh.",
   d3b:"⬇ Download (free)",
   pr_eye:"Pricing",pr_h2:"Simple plans, no surprises",
-  pr_lead:"Try it free on synthetic data. Buy the PC license with a one-time payment via MercadoPago, or scale to the monthly team plan.",
+  pr_lead:"Try it free on synthetic data. Buy the PC license or the Professional team plan, with a one-time payment via MercadoPago.",
   pr_pay:"Pay with MercadoPago: card, debit, cash or account money. The download unlocks once the payment is confirmed.",
   pl1t:"Free",pl1w:"To explore the platform with demo data.",pl1per:"Forever",
   pl1a:"Full demo with synthetic data",pl1b:"3 languages included",pl1c:"CSV / Excel / JSON export",pl1d:"Windows program (.bat)",pl1btn:"Download demo",
   pl2tag:"Best value",pl2t:"PC License",pl2w:"One-time payment, yours forever. Download via MercadoPago.",pl2per:"One-time · 1 machine",
   pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
-  pl3t:"Professional",pl3w:"For teams governing for real (monthly).",pl_mo2:"/mo",pl3per:"Up to 25 users",
+  pl3t:"Professional",pl3w:"For teams governing for real (one-time).",pl_mo2:"",pl3per:"Up to 25 users",
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
   pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
@@ -1002,7 +1002,7 @@ pt:{
   cmp_eye:"Por que MV",cmp_h2:"Como nos comparamos",
   cmp_lead:"Governança de dados para quem não pode pagar uma suíte enterprise nem operar uma ferramenta open source sem equipe técnica dedicada.",
   cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença USD 149 · USD 390/mês",cmp_r1b:"USD 60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"USD 40k+/ano",
+  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença USD 149 · Professional USD 390",cmp_r1b:"USD 60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"USD 40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   cmp_r8:"Migra para e desde Purview / Collibra",cmp_r8a:"✓ (API real)",cmp_r8b:"Não se aplica (são o destino)",cmp_r8c:"Parcial",cmp_r8d:"Não se aplica (são o destino)",
   nav_guide:"O que é?",
@@ -1155,13 +1155,13 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   d3t:"100% Web",d3p:"A mesma plataforma rodando num servidor da sua empresa, só em hosts autorizados pela TI. Inicie com MV_DataGovernance_Server.bat / run_server.sh.",
   d3b:"⬇ Baixar (grátis)",
   pr_eye:"Preços",pr_h2:"Planos simples, sem surpresas",
-  pr_lead:"Teste grátis com dados sintéticos. Compre a licença de PC com um pagamento único via MercadoPago, ou escale ao plano mensal para equipes.",
+  pr_lead:"Teste grátis com dados sintéticos. Compre a licença de PC ou o plano Professional para equipes, com um pagamento único via MercadoPago.",
   pr_pay:"Pague com MercadoPago: cartão, débito, dinheiro ou saldo em conta. O download é liberado assim que o pagamento é confirmado.",
   pl1t:"Grátis",pl1w:"Para conhecer a plataforma com dados de demo.",pl1per:"Para sempre",
   pl1a:"Demo completa com dados sintéticos",pl1b:"3 idiomas incluídos",pl1c:"Exportação CSV / Excel / JSON",pl1d:"Programa Windows (.bat)",pl1btn:"Baixar demo",
   pl2tag:"Melhor valor",pl2t:"Licença PC",pl2w:"Pagamento único, sua para sempre. Download via MercadoPago.",pl2per:"Pagamento único · 1 equipamento",
   pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
-  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários",
+  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (pagamento único).",pl_mo2:"",pl3per:"Até 25 usuários",
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
   pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
@@ -1373,7 +1373,7 @@ document.getElementById('cform').addEventListener('submit',function(ev){
     e.textContent='≈ $ '+v+' UYU'+(unit||'');
   }
   if(pr.licencia){setTxt('priceLic',pr.licencia.amount);uyu('uyuLic',pr.licencia.amount);}
-  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount,'/mes');}
+  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount);}
   if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
   if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
   if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}

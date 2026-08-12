@@ -3,7 +3,7 @@
 // sin haber pagado. Si el pago está aprobado, emite automáticamente la
 // licencia MV Data Governance (firmada).
 
-const { sign, signEd25519, planDeSku } = require("./_license");
+const { sign, signEd25519, planDeSku, diasDeSku } = require("./_license");
 const { rateLimited, clientIp } = require("./_rate_limit");
 
 module.exports = async (req, res) => {
@@ -35,12 +35,19 @@ module.exports = async (req, res) => {
     const sku = (data.metadata && data.metadata.plan) || null;
     const plan = planDeSku(sku);
 
+    const iat = Math.floor(Date.now() / 1000);
     const payload = {
       plan: plan,
       pid: paymentId,
       email: (data.payer && data.payer.email) || null,
-      iat: Math.floor(Date.now() / 1000),
+      iat: iat,
     };
+    // El vencimiento sale de lo que se VENDIO (DIAS_POR_SKU), no de una
+    // constante suelta: si un SKU pasa a ser temporal, el token caduca sin
+    // tocar este archivo. 0 = perpetua, y entonces NO se agrega `exp` —
+    // verify() solo rechaza cuando `exp` existe y ya paso.
+    const dias = diasDeSku(sku);
+    if (dias > 0) payload.exp = iat + dias * 86400;
 
     // MVDG1 (HMAC): se mantiene por compatibilidad con lo ya emitido.
     let license = null;
