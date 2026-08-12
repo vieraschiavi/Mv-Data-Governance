@@ -65,69 +65,64 @@ function signEd25519(payload, privateKeyB64u) {
 }
 
 // --------------------------------------------------------------------------
-// SKU comercial -> plan de licencia.
+// QUE SE VENDE: por cada SKU del checkout, que licencia otorga y por cuanto.
 //
-// Son dos cosas distintas y confundirlas costo caro: el SKU es lo que se cobra
-// en el checkout ("pro"), el plan es el tier que el programa entiende
-// ("professional", ver PLANES en mvdg/licensing.py). Estaban usandose como si
-// fueran lo mismo — el plan del SKU se metia crudo en el token — y el
-// resultado era que el cliente que pagaba US$390/mes recibia un token con
-// plan "pro", que licensing.verify() RECHAZA por plan desconocido. Caia a
-// demo. Sin ningun error: pagaba y no recibia nada.
+// `plan` — el SKU y el plan son cosas distintas, y confundirlos costo caro. El
+//   SKU es lo que se cobra ("pro"); el plan es el tier que el programa
+//   entiende ("professional", ver PLANES en mvdg/licensing.py). Se metia el
+//   SKU crudo en el token, licensing.verify() lo rechazaba por plan
+//   desconocido, y el que pagaba US$390/mes caia a demo sin ningun error.
+//   `null` = ese SKU no otorga licencia. Los packs de creditos son consumo, no
+//   un tier: firmarles un token con plan "cred100" daba una license_key que el
+//   programa rechaza — una clave rota entregada como si fuera buena.
 //
-// null = ese SKU no otorga licencia. Los packs de creditos son consumo, no un
-// tier; firmarles un token con plan "cred100" producia una license_key que el
-// programa rechaza, o sea una clave rota entregada como si fuera buena.
+// `dias` — cuanto dura. 0 = perpetua, o sea sin `exp` en el token. Se vendia
+//   "pro" como MENSUAL y el token salia sin `exp`; como verify() solo rechaza
+//   cuando `exp` existe y ya paso, el cliente pagaba un mes y se quedaba con
+//   Professional para siempre. El mecanismo ya andaba (api/trial.js emite exp
+//   a 14 dias y el trial caduca solo): era el camino de pago el que lo omitia.
 //
-// Cualquier SKU nuevo del checkout tiene que aparecer aca o los tests fallan.
-const PLAN_POR_SKU = {
-  licencia: "licencia",
-  pro: "professional",
-  cred100: null,
-  cred550: null,
-  cred2500: null,
-};
-
+//   Hoy las dos son perpetuas, que es lo unico que esta infraestructura puede
+//   cumplir: sin base de datos (Vercel es sin estado) ni reentrega automatica,
+//   poner 31 dias sin via de renovacion dejaria afuera al mes siguiente a todo
+//   el que pago. Para pasar "pro" a mensual de verdad hacen falta ademas
+//   suscripciones de MercadoPago (preapproval), webhook de cobro recurrente y
+//   entrega de la clave nueva cada mes; hasta entonces la landing tampoco
+//   puede anunciarlo por mes, y hay un test que lo verifica.
+//
+// UNA tabla y no un mapa por atributo: con dos mapas separados se podia
+// registrar MEDIO SKU — declararle el plan y olvidar el plazo — y como el
+// plazo ausente vale 0, ese SKU salia perpetuo sin que nada lo notara.
+// Verificado: pasaba los tests de Python Y los de Node. Es el mismo bug que
+// este archivo vino a arreglar, un nivel mas arriba. Con una sola entrada, la
+// estructura lo impide y no hay que acordarse de escribir el test.
 // --------------------------------------------------------------------------
-// Cuanto DURA lo que se vendio, en dias. 0 = perpetua (sin `exp` en el token).
-//
-// Esto existe porque el checkout vendia "pro" como MENSUAL y el token salia
-// sin `exp`: licensing.verify() solo rechaza si hay un `exp` vencido, asi que
-// el cliente pagaba un mes y se quedaba con Professional para siempre. El
-// mecanismo de vencimiento ya funcionaba (api/trial.js lo usa y el trial
-// caduca solo) — el camino de pago simplemente lo omitia.
-//
-// Hoy las dos son PERPETUAS, que es lo unico que esta infraestructura puede
-// cumplir: sin base de datos (Vercel es sin estado) y sin reentrega
-// automatica, poner exp=31 sin una via de renovacion dejaria afuera al mes
-// siguiente a todo el que pago. Un cliente con algo de mas es un problema; un
-// cliente que pago y quedo bloqueado es otro mucho peor.
-//
-// Para pasar "pro" a mensual de verdad hace falta, ademas de cambiar el 0 por
-// 31 aca: suscripciones de MercadoPago (preapproval), webhook de cobro
-// recurrente, y una forma de hacerle llegar la clave nueva cada mes. Mientras
-// eso no exista, la landing tampoco puede anunciarlo como mensual — y hay un
-// test que lo verifica.
-const DIAS_POR_SKU = {
-  licencia: 0,
-  pro: 0,
-  cred100: 0,
-  cred550: 0,
-  cred2500: 0,
+const SKU = {
+  licencia: { plan: "licencia", dias: 0 },
+  pro: { plan: "professional", dias: 0 },
+  // Los packs de creditos son consumo, no un tier: plan null = sin licencia.
+  cred100: { plan: null, dias: 0 },
+  cred550: { plan: null, dias: 0 },
+  cred2500: { plan: null, dias: 0 },
 };
 
+// Derivados, para quien solo necesita una de las dos caras.
+const PLAN_POR_SKU = Object.fromEntries(
+  Object.entries(SKU).map(([k, v]) => [k, v.plan]));
+
+const DIAS_POR_SKU = Object.fromEntries(
+  Object.entries(SKU).map(([k, v]) => [k, v.dias]));
+
+// Un SKU que no esta en la tabla no recibe licencia (plan null), asi que el
+// plazo no llega a usarse: no hay token que pueda salir perpetuo por omision.
 function diasDeSku(sku) {
-  if (!sku) return 0;
-  return Object.prototype.hasOwnProperty.call(DIAS_POR_SKU, sku)
-    ? DIAS_POR_SKU[sku]
-    : 0;
+  const e = sku && Object.prototype.hasOwnProperty.call(SKU, sku) ? SKU[sku] : null;
+  return e ? e.dias : 0;
 }
 
 function planDeSku(sku) {
-  if (!sku) return null;
-  return Object.prototype.hasOwnProperty.call(PLAN_POR_SKU, sku)
-    ? PLAN_POR_SKU[sku]
-    : null;
+  const e = sku && Object.prototype.hasOwnProperty.call(SKU, sku) ? SKU[sku] : null;
+  return e ? e.plan : null;
 }
 
-module.exports = { sign, verify, signEd25519, PLAN_POR_SKU, planDeSku, DIAS_POR_SKU, diasDeSku };
+module.exports = { sign, verify, signEd25519, SKU, PLAN_POR_SKU, planDeSku, DIAS_POR_SKU, diasDeSku };
