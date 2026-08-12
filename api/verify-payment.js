@@ -35,6 +35,31 @@ module.exports = async (req, res) => {
     const sku = (data.metadata && data.metadata.plan) || null;
     const plan = planDeSku(sku);
 
+    // --- La licencia se emite solo en una ventana corta tras el pago -------
+    //
+    // El payment_id NO es un secreto: MercadoPago lo agrega a la URL de
+    // retorno, asi que queda en la barra del navegador del comprador, en su
+    // historial y en cualquier captura que comparta. Y este endpoint no ata
+    // quien llama con quien pago: cualquiera con ese id pedia una licencia, y
+    // las veces que quisiera. Con licencias perpetuas y sin atar a la maquina,
+    // un solo id compartido alcanzaba para licencias ilimitadas.
+    //
+    // Sin base de datos no se puede llevar registro de ids ya usados (Vercel
+    // es sin estado), pero si acotar CUANDO sirven. El comprador legitimo cae
+    // en /pago.html segundos despues de pagar; un id filtrado se reusa mucho
+    // mas tarde. La ventana no elimina el problema — lo reduce de "para
+    // siempre" a "media hora".
+    const VENTANA_MIN = 30;
+    const aprobadoEn = Date.parse(data.date_approved || data.date_created || "");
+    // Sin fecha utilizable no se puede afirmar que el pago sea reciente, asi
+    // que no se afirma: falla CERRADO. Es el mismo criterio que descargar.js
+    // ("fallar ruidoso es mejor que entregar algo equivocado") — si MP cambia
+    // el formato, las ventas se cortan de golpe y se arregla, en vez de dejar
+    // la ventana abierta en silencio.
+    const fresco = Number.isFinite(aprobadoEn) &&
+      (Date.now() - aprobadoEn) <= VENTANA_MIN * 60_000 &&
+      (aprobadoEn - Date.now()) <= 5 * 60_000;   // tolera reloj adelantado
+
     const iat = Math.floor(Date.now() / 1000);
     const payload = {
       plan: plan,
@@ -52,7 +77,10 @@ module.exports = async (req, res) => {
     // MVDG1 (HMAC): se mantiene por compatibilidad con lo ya emitido.
     let license = null;
     const secret = process.env.LICENSE_SECRET;
-    if (approved && secret) license = sign(payload, secret);
+    // Se aplica la MISMA ventana a la HMAC. Hoy nadie la muestra, pero
+    // dejarla saliendo cuando la Ed25519 se retiene seria una mina: basta
+    // que alguien cablee esa via mas adelante para reabrir el agujero.
+    if (approved && secret && fresco) license = sign(payload, secret);
 
     // MVDG2 (Ed25519): ESTA es la que el programa de escritorio sabe validar
     // (ver mvdg/licensing.py). Si falta LICENSE_PRIVATE_KEY o la firma falla,
@@ -64,7 +92,7 @@ module.exports = async (req, res) => {
     // parece que compro algo que no funciona.
     let licenseKey = null;
     const privKey = process.env.LICENSE_PRIVATE_KEY;
-    if (approved && privKey && plan) {
+    if (approved && privKey && plan && fresco) {
       try {
         licenseKey = signEd25519(payload, privKey);
       } catch (e) {
@@ -78,6 +106,12 @@ module.exports = async (req, res) => {
       // util para soporte cuando hay que entender que recibio el cliente.
       approved: approved, status: data.status, plan: sku, tier: plan,
       license: license, license_key: licenseKey,
+      // Por que no hay licencia, cuando el pago si esta aprobado. La pagina
+      // ya muestra 'escribinos y te la mandamos'; esto es para soporte.
+      motivo: (approved && !licenseKey)
+        ? (!plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
+                 : !fresco ? "fuera_de_ventana" : "error_de_firma")
+        : undefined,
     });
   } catch (e) {
     res.status(500).json({ approved: false, error: "exception" });

@@ -269,7 +269,7 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved",
+            status: "approved", date_approved: new Date().toISOString(),
             // "pro" es el SKU REAL que manda el checkout. Este test decia
             // "professional", que es el PLAN — un valor que MercadoPago nunca
             // envia. Por eso el test estaba verde mientras el circuito real
@@ -315,7 +315,7 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved", metadata: { plan: "pro" },
+            status: "approved", date_approved: new Date().toISOString(), metadata: { plan: "pro" },
             payer: { email: "c@empresa.com" },
           }) }),
           async () => {
@@ -344,7 +344,7 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved", metadata: { plan: "licencia" },
+            status: "approved", date_approved: new Date().toISOString(), metadata: { plan: "licencia" },
             payer: { email: "c@empresa.com" },
           }) }),
           async () => {
@@ -360,6 +360,57 @@ async function main() {
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
       }
     });
+    // --- la ventana de emision -------------------------------------------
+    // El payment_id viaja en la URL de retorno del comprador, y este endpoint
+    // no ata quien llama con quien pago. Sin ventana, un id compartido emitia
+    // licencias perpetuas ilimitadas.
+    const conPago = async (mp) => {
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      try {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => mp }),
+          async () => {
+            await verifyPayment({ query: { payment_id: "2000" }, headers: {} }, res);
+          }
+        );
+        return res._body;
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    };
+    const base = { status: "approved", metadata: { plan: "licencia" }, payer: { email: "c@x.com" } };
+
+    await check("verify-payment: un pago VIEJO no emite licencia", async () => {
+      const hace2h = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+      const b = await conPago({ ...base, date_approved: hace2h });
+      assert.strictEqual(b.approved, true);   // el pago sigue siendo real
+      assert.strictEqual(b.license_key, null);
+      assert.strictEqual(b.license, null);    // tampoco la HMAC
+      assert.strictEqual(b.motivo, "fuera_de_ventana");
+    });
+    await check("verify-payment: un pago SIN fecha falla cerrado", async () => {
+      // No se puede afirmar que sea reciente, asi que no se afirma. Si MP
+      // cambiara el formato, las ventas se cortan de golpe y se arregla — en
+      // vez de dejar la ventana abierta sin que nadie se entere.
+      const b = await conPago({ ...base });
+      assert.strictEqual(b.license_key, null);
+      assert.strictEqual(b.motivo, "fuera_de_ventana");
+    });
+    await check("verify-payment: un pago RECIENTE si emite licencia", async () => {
+      const b = await conPago({ ...base, date_approved: new Date().toISOString() });
+      assert.ok(b.license_key && b.license_key.startsWith("MVDG2."));
+      assert.strictEqual(b.motivo, undefined);
+    });
+    await check("verify-payment: date_created sirve si no hay date_approved", async () => {
+      const b = await conPago({ ...base, date_created: new Date().toISOString() });
+      assert.ok(b.license_key && b.license_key.startsWith("MVDG2."));
+    });
+
     await check("verify-payment: un pack de creditos NO recibe licencia", async () => {
       // Los creditos son consumo, no un tier. Antes se les firmaba un token
       // con plan "cred2500", que el programa rechaza: el cliente pagaba
@@ -372,7 +423,7 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved",
+            status: "approved", date_approved: new Date().toISOString(),
             metadata: { plan: "cred2500" },
             payer: { email: "c@empresa.com" },
           }) }),
@@ -414,7 +465,7 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved", metadata: { plan: "<img src=x onerror=alert(1)>" }, payer: {},
+            status: "approved", date_approved: new Date().toISOString(), metadata: { plan: "<img src=x onerror=alert(1)>" }, payer: {},
           }) }),
           async () => {
             await verifyPayment({ query: { payment_id: "1" }, headers: {} }, res);
