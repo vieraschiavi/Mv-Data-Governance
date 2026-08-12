@@ -40,9 +40,41 @@ _PROVIDERS = {
     "claude": ("ANTHROPIC_API_KEY", "Claude (Anthropic)", "claude-sonnet-5", "MVDG_AI_MODEL_CLAUDE"),
     "openai": ("OPENAI_API_KEY", "ChatGPT (OpenAI)", "gpt-4o-mini", "MVDG_AI_MODEL_OPENAI"),
     "gemini": ("GEMINI_API_KEY", "Gemini (Google)", "gemini-1.5-flash", "MVDG_AI_MODEL_GEMINI"),
+    # Cualquier servicio que hable el formato de OpenAI (/chat/completions).
+    #
+    # Es la respuesta a "que cada cliente use el agente que quiera": en vez de
+    # escribir un conector por proveedor —y quedar siempre atrás del que salió
+    # ayer— se soporta el formato que ya hablan casi todos. Con esto entran
+    # OpenRouter (que a su vez enruta a Claude, GPT, Gemini, Llama y decenas
+    # más), Groq, Mistral, DeepSeek, Together, xAI, Azure OpenAI, y los
+    # locales tipo Ollama o LM Studio — sin tocar una línea de este archivo.
+    #
+    # Necesita DOS variables, no una: la key y a dónde apuntar.
+    "compatible": ("MVDG_AI_API_KEY", "Compatible con OpenAI", "gpt-4o-mini", "MVDG_AI_MODEL"),
 }
-# orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza una
-_PRIORITY = ["claude", "openai", "gemini"]
+# Orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza
+# una. "compatible" va último: si alguien configuró la key oficial de su
+# proveedor, esa es la vía directa.
+_PRIORITY = ["claude", "openai", "gemini", "compatible"]
+
+# A dónde apunta el proveedor compatible. Sin esto no se puede usar: una key
+# suelta no dice contra qué servicio va.
+_BASE_URL_ENV = "MVDG_AI_BASE_URL"
+
+
+def _disponible(provider: str) -> bool:
+    """¿Este proveedor tiene lo que necesita para funcionar?
+
+    Todos piden su API key. "compatible" pide ADEMÁS la URL base: sin ella la
+    key no dice contra qué servicio va, y dar por configurado algo que no
+    puede llamar a nadie haría que la UI ofrezca una opción que siempre falla.
+    """
+    env_var = _PROVIDERS[provider][0]
+    if not os.environ.get(env_var, "").strip():
+        return False
+    if provider == "compatible":
+        return bool(os.environ.get(_BASE_URL_ENV, "").strip())
+    return True
 
 
 def configured_provider() -> str | None:
@@ -52,11 +84,10 @@ def configured_provider() -> str | None:
     si no, se usa el primero disponible en orden de prioridad. None si no
     hay ninguna key configurada — modo local (el de siempre)."""
     forced = os.environ.get("MVDG_AI_PROVIDER", "").strip().lower()
-    if forced in _PROVIDERS and os.environ.get(_PROVIDERS[forced][0]):
+    if forced in _PROVIDERS and _disponible(forced):
         return forced
     for key in _PRIORITY:
-        env_var, _, _, _ = _PROVIDERS[key]
-        if os.environ.get(env_var):
+        if _disponible(key):
             return key
     return None
 
@@ -156,7 +187,25 @@ def _call_gemini(prompt: str, api_key: str, model: str) -> str:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-_CALLERS = {"claude": _call_claude, "openai": _call_openai, "gemini": _call_gemini}
+def _call_compatible(prompt: str, api_key: str, model: str) -> str:
+    """Cualquier servicio con la forma de OpenAI: /chat/completions.
+
+    La URL base se toma tal cual la puso el usuario, sacándole una barra final
+    y el /chat/completions si ya lo escribió — es el error de tipeo más común
+    al copiar la doc de un proveedor, y terminaría en un 404 que se ve como
+    "la IA no anda"."""
+    base = os.environ.get(_BASE_URL_ENV, "").strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")]
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 400}
+    headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+    data = _post_json(f"{base}/chat/completions", headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
+_CALLERS = {"claude": _call_claude, "openai": _call_openai,
+            "gemini": _call_gemini, "compatible": _call_compatible}
 
 
 def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,

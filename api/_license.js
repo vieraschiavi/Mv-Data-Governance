@@ -98,15 +98,8 @@ function signEd25519(payload, privateKeyB64u) {
 // estructura lo impide y no hay que acordarse de escribir el test.
 // --------------------------------------------------------------------------
 const SKU = {
-  licencia: { plan: "licencia", dias: 0, creditos: 0 },
-  pro: { plan: "professional", dias: 0, creditos: 0 },
-  // Los packs de creditos son consumo, no un tier: plan null = sin licencia,
-  // y `creditos` es lo que se acredita en el saldo del proxy de IA. Las
-  // cantidades son las que la landing promete (550 incluye el +10% de bonus
-  // anunciado sobre 500); hay un test que lo verifica contra el HTML.
-  cred100: { plan: null, dias: 0, creditos: 100 },
-  cred550: { plan: null, dias: 0, creditos: 550 },
-  cred2500: { plan: null, dias: 0, creditos: 2500 },
+  licencia: { plan: "licencia", dias: 0 },
+  pro: { plan: "professional", dias: 0 },
 };
 
 // Derivados, para quien solo necesita una de las dos caras.
@@ -115,11 +108,6 @@ const PLAN_POR_SKU = Object.fromEntries(
 
 const DIAS_POR_SKU = Object.fromEntries(
   Object.entries(SKU).map(([k, v]) => [k, v.dias]));
-
-function creditosDeSku(sku) {
-  const e = sku && Object.prototype.hasOwnProperty.call(SKU, sku) ? SKU[sku] : null;
-  return e ? (e.creditos || 0) : 0;
-}
 
 // Un SKU que no esta en la tabla no recibe licencia (plan null), asi que el
 // plazo no llega a usarse: no hay token que pueda salir perpetuo por omision.
@@ -134,4 +122,4 @@ function planDeSku(sku) {
 }
 
 module.exports = { sign, verify, signEd25519, SKU, PLAN_POR_SKU, planDeSku,
-                   DIAS_POR_SKU, diasDeSku, creditosDeSku };
+                   DIAS_POR_SKU, diasDeSku };

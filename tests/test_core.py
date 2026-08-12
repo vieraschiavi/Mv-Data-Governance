@@ -2046,6 +2046,72 @@ def _dias_por_sku() -> dict:
     return _json.loads(salida.stdout)
 
 
+def _limpiar_ia(monkeypatch):
+    for v in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
+              "MVDG_AI_PROVIDER", "MVDG_AI_API_KEY", "MVDG_AI_BASE_URL",
+              "MVDG_AI_MODEL"):
+        monkeypatch.delenv(v, raising=False)
+
+
+def test_cualquier_agente_compatible_con_openai_sirve(monkeypatch):
+    """El pedido es que cada cliente use el agente que quiera con su propia
+    key. Escribir un conector por proveedor deja el producto siempre atrás del
+    que salió ayer; soportar el formato de OpenAI cubre de una vez OpenRouter,
+    Groq, Mistral, DeepSeek, Together, Azure y los locales tipo Ollama."""
+    from mvdg import ai_provider
+    _limpiar_ia(monkeypatch)
+    assert ai_provider.configured_provider() is None
+
+    # Una key SOLA no alcanza: sin URL base no se sabe contra qué servicio va,
+    # y darlo por configurado ofreceria en la UI una opcion que siempre falla.
+    monkeypatch.setenv("MVDG_AI_API_KEY", "sk-lo-que-sea")
+    assert ai_provider.configured_provider() is None
+
+    monkeypatch.setenv("MVDG_AI_BASE_URL", "https://openrouter.ai/api/v1")
+    assert ai_provider.configured_provider() == "compatible"
+
+    # Si ademas tiene la key oficial de su proveedor, esa gana: es la via
+    # directa, sin intermediario.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")
+    assert ai_provider.configured_provider() == "claude"
+    # ...salvo que fuerce el compatible a mano
+    monkeypatch.setenv("MVDG_AI_PROVIDER", "compatible")
+    assert ai_provider.configured_provider() == "compatible"
+
+
+def test_el_proveedor_compatible_arma_bien_la_url_y_el_pedido(monkeypatch):
+    """Y tolera el error de tipeo mas comun: pegar la URL con
+    /chat/completions ya incluida, copiandola de la doc del proveedor. Sin
+    esto termina en un 404 que el usuario ve como "la IA no anda"."""
+    import json as _json
+    from mvdg import ai_provider
+    _limpiar_ia(monkeypatch)
+    monkeypatch.setenv("MVDG_AI_API_KEY", "sk-abc")
+    monkeypatch.setenv("MVDG_AI_MODEL", "llama-3.3-70b")
+
+    visto = {}
+
+    def falso_post(url, headers, body):
+        visto.update(url=url, headers=headers, body=body)
+        return {"choices": [{"message": {"content": _json.dumps(
+            {"root_cause": "c", "short_term": "s",
+             "long_term": "l", "owner": "o"})}}]}
+
+    monkeypatch.setattr(ai_provider, "_post_json", falso_post)
+
+    for base in ("https://api.groq.com/openai/v1",
+                 "https://api.groq.com/openai/v1/",
+                 "https://api.groq.com/openai/v1/chat/completions"):
+        monkeypatch.setenv("MVDG_AI_BASE_URL", base)
+        r = ai_provider.ai_suggest_fix("ventas", "email", "completitud",
+                                       "faltan mails", 3, "es")
+        assert r and r["root_cause"] == "c"
+        assert visto["url"] == "https://api.groq.com/openai/v1/chat/completions", base
+    # el modelo sale de MVDG_AI_MODEL, no de un default de otro proveedor
+    assert visto["body"]["model"] == "llama-3.3-70b"
+    assert visto["headers"]["Authorization"] == "Bearer sk-abc"
+
+
 def test_ningun_sku_queda_declarado_a_medias():
     """Cada SKU tiene que declarar plan Y plazo en la misma entrada.
 
@@ -2063,55 +2129,13 @@ def test_ningun_sku_queda_declarado_a_medias():
     for sku in _skus_del_checkout():
         assert sku in tabla, f"el checkout cobra '{sku}' y no esta en SKU"
     for sku, e in tabla.items():
-        assert set(e) == {"plan", "dias", "creditos"}, (
+        assert set(e) == {"plan", "dias"}, (
             f"'{sku}' declara {sorted(e)}: cada SKU tiene que decir que plan "
-            f"da, por cuanto tiempo y cuantos creditos. Un campo ausente vale "
-            f"0/null y se entrega de menos (o perpetuo) sin que nada avise")
+            f"da y por cuanto tiempo. Un campo ausente vale 0/null y se "
+            f"entrega perpetuo sin que nada avise")
         assert isinstance(e["dias"], int) and e["dias"] >= 0
-        assert isinstance(e["creditos"], int) and e["creditos"] >= 0
 
 
-def test_los_creditos_que_se_acreditan_son_los_que_promete_la_landing():
-    """Las cantidades viven en dos lados: el HTML que ve el comprador y la
-    tabla SKU que acredita el saldo. Si divergen, alguien paga por 2.500 y
-    recibe otra cosa — el mismo tipo de desfasaje entre copy y codigo que ya
-    aparecio con el plan mensual."""
-    import json as _json
-    import subprocess
-    tabla = _json.loads(subprocess.run(
-        ["node", "-e", "console.log(JSON.stringify(require('./api/_license').SKU))"],
-        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
-
-    with open(os.path.join(_repo_root(), "landing", "index.html"),
-              encoding="utf-8") as fh:
-        html = fh.read()
-
-    # La landing muestra la cantidad en <span id="cr100c">100</span>
-    for sku, ident in (("cred100", "cr100c"), ("cred550", "cr550c"),
-                       ("cred2500", "cr2500c")):
-        m = re.search(rf'id="{ident}">([\d.,]+)<', html)
-        assert m, f"no se encontro el numero de creditos de {sku} en la landing"
-        anunciados = int(m.group(1).replace(".", "").replace(",", ""))
-        assert tabla[sku]["creditos"] == anunciados, (
-            f"la landing promete {anunciados} creditos para {sku} y se "
-            f"acreditan {tabla[sku]['creditos']}")
-
-
-def test_lo_que_cuesta_cada_operacion_coincide_con_lo_anunciado():
-    """La landing dice "1 sugerencia IA = 1 credito, glosario = 2". Esos
-    numeros son un compromiso con el cliente, no una constante interna."""
-    import json as _json
-    import subprocess
-    costos = _json.loads(subprocess.run(
-        ["node", "-e", "console.log(JSON.stringify(require('./api/_creditos').COSTOS))"],
-        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
-    assert costos == {"sugerencia": 1, "glosario": 2}
-
-    with open(os.path.join(_repo_root(), "landing", "index.html"),
-              encoding="utf-8") as fh:
-        html = fh.read()
-    assert "1 sugerencia IA = 1 crédito" in html
-    assert "auto-definición de glosario = 2 créditos" in html
 
 
 def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
@@ -4342,16 +4366,16 @@ def test_landing_prices_use_usd_not_us_dollar_sign():
     assert visible == [], f"precios con US$ visibles: {visible}"
 
 
-def test_landing_credit_buy_buttons_are_not_white_on_white():
-    """Regresión: los botones 'Comprar' de créditos usaban btn-o (texto
-    blanco, fondo transparente) sobre tarjetas blancas — invisibles. Tienen
-    que usar btn-od (fondo blanco, texto oscuro)."""
+def test_la_landing_no_vende_creditos():
+    """Los packs de creditos se sacaron: el producto pasa a que cada cliente
+    ponga su propia API key. Este test evita que vuelvan por accidente (por
+    ejemplo restaurando un bloque viejo del HTML) sin el sistema detras — que
+    fue exactamente el problema: se vendian US$9/39/149 por algo que no
+    existia en el codigo."""
     with open(os.path.join(_repo_root(), "landing", "index.html"), encoding="utf-8") as fh:
         src = fh.read()
-    for key in ("cred100", "cred2500"):
-        line = next(ln for ln in src.splitlines() if f'data-mp="{key}"' in ln)
-        assert "btn-od" in line, f"{key}: {line.strip()}"
-        assert "btn-o " not in line and 'btn-o"' not in line
+    for rastro in ("cred100", "cred550", "cred2500", "crgrid", "crcard"):
+        assert rastro not in src, f"volvio a aparecer {rastro} en la landing"
 
 
 def test_landing_contact_form_has_visible_mail_fallback():

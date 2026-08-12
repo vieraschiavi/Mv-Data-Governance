@@ -19,9 +19,6 @@ const { rateLimited, clientIp } = require("./_rate_limit");
 const PLANS = {
   licencia: { title: "MV Data Governance · Licencia PC (pago único)", price: 149.0 },
   pro:      { title: "MV Data Governance · Professional (mensual)",   price: 390.0 },
-  cred100:  { title: "MV Data Governance · 100 créditos",             price: 9.0 },
-  cred550:  { title: "MV Data Governance · 550 créditos",             price: 39.0 },
-  cred2500: { title: "MV Data Governance · 2.500 créditos",           price: 149.0 },
 };
 const CURRENCY = process.env.MP_CURRENCY || "USD";  // coincide con los precios mostrados en la landing (US$)
 
