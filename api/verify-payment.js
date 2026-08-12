@@ -3,7 +3,8 @@
 // sin haber pagado. Si el pago está aprobado, emite automáticamente la
 // licencia MV Data Governance (firmada).
 
-const { sign, signEd25519, planDeSku, diasDeSku } = require("./_license");
+const { sign, signEd25519, planDeSku, diasDeSku, creditosDeSku } = require("./_license");
+const cred = require("./_creditos");
 const { rateLimited, clientIp } = require("./_rate_limit");
 const { registrar } = require("./_usados");
 
@@ -35,6 +36,7 @@ module.exports = async (req, res) => {
     // licensing.verify() lo rechazara por plan desconocido.
     const sku = (data.metadata && data.metadata.plan) || null;
     const plan = planDeSku(sku);
+    const creditos = creditosDeSku(sku);
 
     // --- La licencia se emite solo en una ventana corta tras el pago -------
     //
@@ -99,8 +101,13 @@ module.exports = async (req, res) => {
     // usado un pago al que igual no le ibamos a emitir licencia — eso
     // quemaria el id del comprador legitimo.
     const privKey = process.env.LICENSE_PRIVATE_KEY;
+    // Se registra si la compra otorga ALGO — licencia o creditos. Cubrir solo
+    // la licencia dejaba los packs de creditos afuera (tienen plan null), y
+    // entonces un payment_id compartido servia para acreditarse creditos una
+    // y otra vez. Cada cosa que se entrega tiene que pasar por el registro.
+    const otorga = (plan && privKey) || creditos > 0;
     let usado = "sin_registro";
-    if (approved && privKey && plan && fresco) {
+    if (approved && fresco && otorga) {
       usado = await registrar(paymentId);
     }
     const emitible = usado !== "repetido";
@@ -116,16 +123,34 @@ module.exports = async (req, res) => {
       }
     }
 
+    // --- packs de creditos ------------------------------------------------
+    // No dan licencia: acreditan saldo en el proxy de IA. Se emite una clave
+    // al azar y se le suma la cantidad comprada. Se reusa el MISMO registro de
+    // pagos ya usados que la licencia, asi un payment_id compartido tampoco
+    // sirve para acreditarse creditos dos veces.
+    let claveCreditos = null, saldoCreditos = null;
+    if (approved && creditos > 0 && fresco && emitible && cred.configurado()) {
+      claveCreditos = cred.nuevaClave();
+      saldoCreditos = await cred.acreditar(claveCreditos, creditos);
+      // Si el KV no confirmo la acreditacion, no se entrega una clave con
+      // saldo desconocido: el cliente creeria que tiene creditos que no tiene.
+      if (saldoCreditos === null) claveCreditos = null;
+    }
+
     res.status(200).json({
       // `plan` sigue siendo el SKU: es lo que la pagina de pago muestra y su
       // tabla PLAN_NAMES esta indexada asi. `tier` es el plan de licencia,
       // util para soporte cuando hay que entender que recibio el cliente.
       approved: approved, status: data.status, plan: sku, tier: plan,
       license: license, license_key: licenseKey,
+      // Solo para los packs de creditos. La clave ES el saldo: quien la
+      // tiene, gasta. Se muestra una sola vez, como una API key.
+      credit_key: claveCreditos, creditos: saldoCreditos,
       // Por que no hay licencia, cuando el pago si esta aprobado. La pagina
       // ya muestra 'escribinos y te la mandamos'; esto es para soporte.
       motivo: (approved && !licenseKey)
-        ? (!plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
+        ? (creditos > 0 ? undefined
+                 : !plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
                  : !fresco ? "fuera_de_ventana"
                  : usado === "repetido" ? "ya_emitida" : "error_de_firma")
         : undefined,

@@ -2063,10 +2063,55 @@ def test_ningun_sku_queda_declarado_a_medias():
     for sku in _skus_del_checkout():
         assert sku in tabla, f"el checkout cobra '{sku}' y no esta en SKU"
     for sku, e in tabla.items():
-        assert set(e) == {"plan", "dias"}, (
-            f"'{sku}' declara {sorted(e)}: falta plan o dias, y un plazo "
-            f"ausente vale 0 = licencia perpetua")
+        assert set(e) == {"plan", "dias", "creditos"}, (
+            f"'{sku}' declara {sorted(e)}: cada SKU tiene que decir que plan "
+            f"da, por cuanto tiempo y cuantos creditos. Un campo ausente vale "
+            f"0/null y se entrega de menos (o perpetuo) sin que nada avise")
         assert isinstance(e["dias"], int) and e["dias"] >= 0
+        assert isinstance(e["creditos"], int) and e["creditos"] >= 0
+
+
+def test_los_creditos_que_se_acreditan_son_los_que_promete_la_landing():
+    """Las cantidades viven en dos lados: el HTML que ve el comprador y la
+    tabla SKU que acredita el saldo. Si divergen, alguien paga por 2.500 y
+    recibe otra cosa — el mismo tipo de desfasaje entre copy y codigo que ya
+    aparecio con el plan mensual."""
+    import json as _json
+    import subprocess
+    tabla = _json.loads(subprocess.run(
+        ["node", "-e", "console.log(JSON.stringify(require('./api/_license').SKU))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
+
+    with open(os.path.join(_repo_root(), "landing", "index.html"),
+              encoding="utf-8") as fh:
+        html = fh.read()
+
+    # La landing muestra la cantidad en <span id="cr100c">100</span>
+    for sku, ident in (("cred100", "cr100c"), ("cred550", "cr550c"),
+                       ("cred2500", "cr2500c")):
+        m = re.search(rf'id="{ident}">([\d.,]+)<', html)
+        assert m, f"no se encontro el numero de creditos de {sku} en la landing"
+        anunciados = int(m.group(1).replace(".", "").replace(",", ""))
+        assert tabla[sku]["creditos"] == anunciados, (
+            f"la landing promete {anunciados} creditos para {sku} y se "
+            f"acreditan {tabla[sku]['creditos']}")
+
+
+def test_lo_que_cuesta_cada_operacion_coincide_con_lo_anunciado():
+    """La landing dice "1 sugerencia IA = 1 credito, glosario = 2". Esos
+    numeros son un compromiso con el cliente, no una constante interna."""
+    import json as _json
+    import subprocess
+    costos = _json.loads(subprocess.run(
+        ["node", "-e", "console.log(JSON.stringify(require('./api/_creditos').COSTOS))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
+    assert costos == {"sugerencia": 1, "glosario": 2}
+
+    with open(os.path.join(_repo_root(), "landing", "index.html"),
+              encoding="utf-8") as fh:
+        html = fh.read()
+    assert "1 sugerencia IA = 1 crédito" in html
+    assert "auto-definición de glosario = 2 créditos" in html
 
 
 def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
