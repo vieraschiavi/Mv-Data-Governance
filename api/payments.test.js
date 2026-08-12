@@ -270,7 +270,11 @@ async function main() {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
             status: "approved",
-            metadata: { plan: "professional" },
+            // "pro" es el SKU REAL que manda el checkout. Este test decia
+            // "professional", que es el PLAN — un valor que MercadoPago nunca
+            // envia. Por eso el test estaba verde mientras el circuito real
+            // estaba roto: verificaba un escenario que no puede ocurrir.
+            metadata: { plan: "pro" },
             payer: { email: "c@empresa.com" },
           }) }),
           async () => {
@@ -278,8 +282,45 @@ async function main() {
           }
         );
         assert.strictEqual(res._body.approved, true);
-        assert.strictEqual(res._body.plan, "professional");
+        assert.strictEqual(res._body.plan, "pro");            // SKU, lo que muestra la pagina
+        assert.strictEqual(res._body.tier, "professional");   // plan que entiende el programa
         assert.ok(res._body.license_key && res._body.license_key.startsWith("MVDG2."));
+        // y el token tiene que llevar el PLAN, no el SKU: con "pro" adentro,
+        // licensing.verify() lo rechaza por plan desconocido y el cliente que
+        // pago US$390/mes queda en demo.
+        const cuerpo = JSON.parse(Buffer.from(
+          res._body.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
+          "base64").toString("utf8"));
+        assert.strictEqual(cuerpo.plan, "professional");
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    });
+    await check("verify-payment: un pack de creditos NO recibe licencia", async () => {
+      // Los creditos son consumo, no un tier. Antes se les firmaba un token
+      // con plan "cred2500", que el programa rechaza: el cliente pagaba
+      // US$149 y se llevaba una license_key rota, presentada como buena.
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (buf) => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      try {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => ({
+            status: "approved",
+            metadata: { plan: "cred2500" },
+            payer: { email: "c@empresa.com" },
+          }) }),
+          async () => {
+            await verifyPayment({ query: { payment_id: "1000" }, headers: {} }, res);
+          }
+        );
+        assert.strictEqual(res._body.approved, true);
+        assert.strictEqual(res._body.plan, "cred2500");
+        assert.strictEqual(res._body.tier, null);
+        assert.strictEqual(res._body.license_key, null);
       } finally {
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;

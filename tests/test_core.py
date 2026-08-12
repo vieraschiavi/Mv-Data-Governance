@@ -1965,6 +1965,87 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
             del sys.modules[m]
 
 
+def _sku_a_plan() -> dict:
+    """El mapa SKU->plan leido del propio JS, sin reimplementarlo."""
+    import json as _json
+    import subprocess
+    salida = subprocess.run(
+        ["node", "-e",
+         "console.log(JSON.stringify(require('./api/_license').PLAN_POR_SKU))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True)
+    return _json.loads(salida.stdout)
+
+
+def _skus_del_checkout() -> list[str]:
+    """Los SKUs que el checkout sabe cobrar, leidos de api/checkout.js."""
+    ruta = os.path.join(_repo_root(), "api", "checkout.js")
+    with open(ruta, encoding="utf-8") as fh:
+        cuerpo = re.search(r"const PLANS = \{(.*?)\n\};", fh.read(), re.S).group(1)
+    return re.findall(r"^\s*(\w+):", cuerpo, re.M)
+
+
+def test_todo_sku_que_se_cobra_esta_mapeado_a_un_plan():
+    """Si el checkout aprende a cobrar un SKU nuevo y nadie lo mapea, el
+    cliente paga y recibe un token con un plan que licensing.verify() rechaza.
+    Paso de verdad con "pro": el checkout cobraba US$390/mes y el programa
+    solo conoce "professional"."""
+    from mvdg import licensing
+    mapa = _sku_a_plan()
+    for sku in _skus_del_checkout():
+        assert sku in mapa, (
+            f"el checkout cobra '{sku}' y no esta en PLAN_POR_SKU: el cliente "
+            f"pagaria y recibiria una licencia que el programa rechaza")
+        plan = mapa[sku]
+        if plan is not None:
+            assert plan in licensing.PLANES, (
+                f"'{sku}' mapea al plan '{plan}', que no esta en PLANES")
+
+
+def test_todo_plan_pago_le_da_al_cliente_mas_que_la_demo(tmp_path, monkeypatch):
+    """El test que faltaba, y el que hubiera evitado todo esto: cada plan que
+    se cobra tiene que habilitar ESTRICTAMENTE mas que no pagar. Los cinco
+    SKUs del checkout entregaban la demo — dos motivos distintos ("pro" no
+    validaba, "licencia" validaba pero no abria nada) y ningun sintoma."""
+    import json as _json
+    from mvdg import licensing
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+    pagas = sorted(licensing.FUNCIONES_PAGAS)
+
+    def habilitadas(token=None):
+        carpeta = tmp_path / (token[-12:] if token else "demo")
+        carpeta.mkdir(exist_ok=True)
+        monkeypatch.setenv("MVDG_DATA_DIR", str(carpeta))
+        if token:
+            (carpeta / "licencia.json").write_text(
+                _json.dumps({"token": token}), encoding="utf-8")
+        return {f for f in pagas if licensing.has_feature(f)}
+
+    demo = habilitadas()
+    assert demo == set(), "la demo no deberia traer ninguna funcion paga"
+
+    mapa = _sku_a_plan()
+    for sku in _skus_del_checkout():
+        plan = mapa[sku]
+        if plan is None:
+            continue          # packs de creditos: no otorgan licencia
+        abiertas = habilitadas(_emitir(priv, plan=plan))
+        assert abiertas > demo, (
+            f"el SKU '{sku}' (plan '{plan}') le da al cliente exactamente lo "
+            f"mismo que no pagar: {sorted(abiertas)}")
+
+
+def test_la_pagina_de_pago_muestra_la_licencia_que_el_programa_valida():
+    """pago.html mostraba d.license, que es la MVDG1/HMAC. El programa solo
+    valida MVDG2, asi que el cliente copiaba una clave que se rechaza en el
+    primer chequeo: pagaba, la pegaba y no se activaba nada."""
+    ruta = os.path.join(_repo_root(), "landing", "pago.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+    assert "STATE.license=d.license_key" in html, (
+        "la pagina de pago tiene que mostrar license_key (MVDG2), no la HMAC")
+
+
 def test_licencia_json_con_solo_el_token_alcanza(tmp_path, monkeypatch):
     """El .bat de activacion escribe {"token": "..."} y nada mas — no puede
     calcular el payload sin firmar nada. Este test fija ese contrato: si

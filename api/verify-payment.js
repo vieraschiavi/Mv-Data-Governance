@@ -3,7 +3,7 @@
 // sin haber pagado. Si el pago está aprobado, emite automáticamente la
 // licencia MV Data Governance (firmada).
 
-const { sign, signEd25519 } = require("./_license");
+const { sign, signEd25519, planDeSku } = require("./_license");
 const { rateLimited, clientIp } = require("./_rate_limit");
 
 module.exports = async (req, res) => {
@@ -29,7 +29,11 @@ module.exports = async (req, res) => {
     if (!r.ok) { res.status(502).json({ approved: false, error: "mp_error" }); return; }
 
     const approved = data.status === "approved";
-    const plan = (data.metadata && data.metadata.plan) || null;
+    // El SKU es lo que se cobro; el plan es el tier que el programa entiende.
+    // Traducir es obligatorio: meter el SKU crudo en el token hacia que
+    // licensing.verify() lo rechazara por plan desconocido.
+    const sku = (data.metadata && data.metadata.plan) || null;
+    const plan = planDeSku(sku);
 
     const payload = {
       plan: plan,
@@ -47,9 +51,13 @@ module.exports = async (req, res) => {
     // (ver mvdg/licensing.py). Si falta LICENSE_PRIVATE_KEY o la firma falla,
     // se devuelve null y el cliente ve "no se pudo emitir la licencia" — nunca
     // se entrega una licencia rota como si fuera buena.
+    // Se exige `plan`: un SKU sin tier (los packs de creditos) NO recibe
+    // licencia. Antes se le firmaba una igual, y el cliente se llevaba una
+    // license_key que el programa rechaza — peor que no darle ninguna, porque
+    // parece que compro algo que no funciona.
     let licenseKey = null;
     const privKey = process.env.LICENSE_PRIVATE_KEY;
-    if (approved && privKey) {
+    if (approved && privKey && plan) {
       try {
         licenseKey = signEd25519(payload, privKey);
       } catch (e) {
@@ -58,7 +66,10 @@ module.exports = async (req, res) => {
     }
 
     res.status(200).json({
-      approved: approved, status: data.status, plan: plan,
+      // `plan` sigue siendo el SKU: es lo que la pagina de pago muestra y su
+      // tabla PLAN_NAMES esta indexada asi. `tier` es el plan de licencia,
+      // util para soporte cuando hay que entender que recibio el cliente.
+      approved: approved, status: data.status, plan: sku, tier: plan,
       license: license, license_key: licenseKey,
     });
   } catch (e) {

@@ -202,7 +202,11 @@ else {
   fetch('/api/verify-payment?payment_id='+encodeURIComponent(paymentId))
     .then(function(r){return r.json();})
     .then(function(d){
-      if (d.approved) { STATE.mode='ok'; STATE.plan=d.plan; STATE.license=d.license; render(); }
+      // license_key (MVDG2/Ed25519) y NO license (MVDG1/HMAC): el programa de
+      // escritorio solo valida MVDG2. Mostrar la HMAC hacia que el cliente
+      // copiara una clave que licensing.verify() rechaza en el primer chequeo
+      // — pagaba, la pegaba en la pestana Ayuda y no se activaba nada.
+      if (d.approved) { STATE.mode='ok'; STATE.plan=d.plan; STATE.license=d.license_key||null; render(); }
       else if (d.status==='pending' || d.status==='in_process') { STATE.mode='pending'; render(); }
       else { STATE.mode='fail'; render(); }
     })
