@@ -106,13 +106,25 @@ PLANES = (PLAN_DEMO, "licencia", PLAN_TRIAL, "professional", "enterprise", PLAN_
 # Si querés un demo más restringido (por ejemplo, pedir licencia para usar
 # datos propios), agregá "mis_datos" a FUNCIONES_PAGAS y listo.
 # ---------------------------------------------------------------------------
+# Todo plan que se PAGA habilita las funciones pagas. "licencia" (la Licencia
+# PC de pago único) estaba fuera de las tres tuplas: el token verificaba, el
+# plan quedaba en "licencia"… y has_feature() devolvía False para las tres. El
+# que pagaba recibía, función por función, exactamente la demo.
+#
+# La diferencia entre los tiers es COMERCIAL, no de features: "licencia" es una
+# PC y pago único, "professional" es suscripción, "enterprise" agrega soporte y
+# volumen. Si querés que la Licencia PC no llegue a las integraciones, sacá
+# PLAN_LICENCIA de la tupla que corresponda — es una línea y nada más.
+PLAN_LICENCIA = "licencia"
+_PAGOS = (PLAN_LICENCIA, "professional", "enterprise", PLAN_TRIAL)
+
 FUNCIONES_PAGAS: dict[str, tuple[str, ...]] = {
     # función -> planes que la habilitan. "trial" da acceso a lo mismo que
     # "professional" (es el mismo plan, por 14 días) — así el trial demuestra
     # el tier completo, no una versión recortada de "a ver si les gusta".
-    "migracion_purview": ("professional", "enterprise", PLAN_TRIAL),
-    "migracion_collibra": ("professional", "enterprise", PLAN_TRIAL),
-    "escaneo_tenant_bi": ("professional", "enterprise", PLAN_TRIAL),
+    "migracion_purview": _PAGOS,
+    "migracion_collibra": _PAGOS,
+    "escaneo_tenant_bi": _PAGOS,
 }
 
 

@@ -64,4 +64,35 @@ function signEd25519(payload, privateKeyB64u) {
   return "MVDG2." + body + "." + b64u(sig);
 }
 
-module.exports = { sign, verify, signEd25519 };
+// --------------------------------------------------------------------------
+// SKU comercial -> plan de licencia.
+//
+// Son dos cosas distintas y confundirlas costo caro: el SKU es lo que se cobra
+// en el checkout ("pro"), el plan es el tier que el programa entiende
+// ("professional", ver PLANES en mvdg/licensing.py). Estaban usandose como si
+// fueran lo mismo — el plan del SKU se metia crudo en el token — y el
+// resultado era que el cliente que pagaba US$390/mes recibia un token con
+// plan "pro", que licensing.verify() RECHAZA por plan desconocido. Caia a
+// demo. Sin ningun error: pagaba y no recibia nada.
+//
+// null = ese SKU no otorga licencia. Los packs de creditos son consumo, no un
+// tier; firmarles un token con plan "cred100" producia una license_key que el
+// programa rechaza, o sea una clave rota entregada como si fuera buena.
+//
+// Cualquier SKU nuevo del checkout tiene que aparecer aca o los tests fallan.
+const PLAN_POR_SKU = {
+  licencia: "licencia",
+  pro: "professional",
+  cred100: null,
+  cred550: null,
+  cred2500: null,
+};
+
+function planDeSku(sku) {
+  if (!sku) return null;
+  return Object.prototype.hasOwnProperty.call(PLAN_POR_SKU, sku)
+    ? PLAN_POR_SKU[sku]
+    : null;
+}
+
+module.exports = { sign, verify, signEd25519, PLAN_POR_SKU, planDeSku };
