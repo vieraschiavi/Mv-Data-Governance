@@ -232,6 +232,8 @@ async function main() {
     delete require.cache[require.resolve("./verify-payment")];
     rateLimit.resetForTests();
     const verifyPayment = require("./verify-payment");
+    const ia = require("./ia");
+    const creditos = require("./_creditos");
 
     await check("verify-payment: payment_id vacío -> 400", async () => {
       const res = mockRes();
@@ -503,6 +505,211 @@ async function main() {
         if (env.u !== undefined) process.env.KV_REST_API_URL = env.u;
         if (env.t !== undefined) process.env.KV_REST_API_TOKEN = env.t;
       }
+    });
+
+    // --- creditos: compra y proxy de IA -----------------------------------
+    // El saldo vive en el servidor porque cada credito gastado le cuesta plata
+    // REAL al dueño (las llamadas van con SUS API keys). Un saldo en el disco
+    // del usuario se resetea borrando un archivo.
+    const kvCreditos = () => {
+      const store = new Map();
+      return {
+        store,
+        fetch: async (url, opts) => {
+          const cmds = JSON.parse(opts.body);
+          return { ok: true, json: async () => cmds.map((c) => {
+            const [op, k] = c;
+            if (op === "SET") {
+              if (store.has(k)) return { result: null };
+              store.set(k, c[2]); return { result: "OK" };
+            }
+            if (op === "INCRBY") {
+              const n = Number(store.get(k) || 0) + Number(c[2]);
+              store.set(k, String(n)); return { result: n };
+            }
+            if (op === "EVAL") {
+              // Mismo contrato que el Lua real: -1 si no alcanza.
+              const clave = c[3], costo = Number(c[4]);
+              const s = Number(store.get(clave) || 0);
+              if (s < costo) return { result: -1 };
+              store.set(clave, String(s - costo)); return { result: s - costo };
+            }
+            return { result: store.has(k) ? store.get(k) : null };
+          }) };
+        },
+      };
+    };
+    const conCreditos = async (kv, extra, fn) => {
+      const env = {};
+      const set = (k, v) => { env[k] = process.env[k]; process.env[k] = v; };
+      set("KV_REST_API_URL", "https://kv.de.test");
+      set("KV_REST_API_TOKEN", "tok");
+      for (const [k, v] of Object.entries(extra || {})) set(k, v);
+      try { return await fn(); } finally {
+        for (const [k, v] of Object.entries(env)) {
+          if (v !== undefined) process.env[k] = v; else delete process.env[k];
+        }
+      }
+    };
+
+    await check("creditos: comprar un pack acredita saldo y NO da licencia", async () => {
+      const kv = kvCreditos();
+      const b = await conCreditos(kv, {}, async () => {
+        const res = mockRes();
+        const e1 = process.env.MP_ACCESS_TOKEN;
+        process.env.MP_ACCESS_TOKEN = "token-de-test";
+        try {
+          await withMockFetch(
+            async (url, opts) => (String(url).includes("kv.de.test")
+              ? kv.fetch(url, opts)
+              : { ok: true, json: async () => ({
+                  status: "approved", date_approved: new Date().toISOString(),
+                  metadata: { plan: "cred550" }, payer: { email: "c@x.com" },
+                }) }),
+            async () => {
+              await verifyPayment({ query: { payment_id: "4001" }, headers: {} }, res);
+            });
+          return res._body;
+        } finally {
+          if (e1 !== undefined) process.env.MP_ACCESS_TOKEN = e1; else delete process.env.MP_ACCESS_TOKEN;
+        }
+      });
+      assert.strictEqual(b.license_key, null, "un pack de creditos no da licencia");
+      assert.ok(b.credit_key && b.credit_key.startsWith("mvdgc_"));
+      assert.strictEqual(b.creditos, 550);
+      assert.strictEqual(b.motivo, undefined, "no es un error: compro creditos");
+    });
+
+    await check("creditos: el consumo descuenta y corta al llegar a cero", async () => {
+      const kv = kvCreditos();
+      await conCreditos(kv, {}, async () => {
+        await withMockFetch(kv.fetch, async () => {
+          const clave = creditos.nuevaClave();
+          assert.strictEqual(await creditos.acreditar(clave, 3), 3);
+          assert.strictEqual(await creditos.consumir(clave, 2), 1);
+          assert.strictEqual(await creditos.consumir(clave, 2), -1, "no alcanza");
+          assert.strictEqual(await creditos.saldo(clave), 1, "no se descuenta si no alcanza");
+        });
+      });
+    });
+
+    await check("creditos: si el KV no responde, consumir NO dice que alcanza", async () => {
+      // Distinguir "no alcanza" (-1) de "no se pudo consultar" (null) es lo
+      // que evita que una caida del KV regale llamadas pagas.
+      await conCreditos(null, {}, async () => {
+        await withMockFetch(async () => { throw new Error("KV caido"); }, async () => {
+          const r = await creditos.consumir(creditos.nuevaClave(), 1);
+          assert.strictEqual(r, null);
+        });
+      });
+    });
+
+    await check("creditos: una respuesta ilegible del KV tampoco dice que alcanza", async () => {
+      // Encontrado mutando el codigo: el test de "KV caido" cubria la rama de
+      // excepcion, pero NO esta — el KV contesta 200 con un cuerpo que no se
+      // puede interpretar. Sin esto, cambiar ese `null` por un numero pasaba
+      // desapercibido y regalaba llamadas pagas.
+      await conCreditos(null, {}, async () => {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => ({ vaya: "cosa" }) }),
+          async () => {
+            assert.strictEqual(await creditos.consumir(creditos.nuevaClave(), 1), null);
+            assert.strictEqual(await creditos.saldo(creditos.nuevaClave()), null);
+          });
+        // y un result que no es numero
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => [{ result: "ni idea" }] }),
+          async () => {
+            assert.strictEqual(await creditos.consumir(creditos.nuevaClave(), 1), null);
+          });
+      });
+    });
+
+    await check("ia: sin saldo devuelve 402 y NO llama al modelo", async () => {
+      const kv = kvCreditos();
+      let llamoAlModelo = false;
+      await conCreditos(kv, { MVDG_IA_OPENAI: "sk-test" }, async () => {
+        const clave = creditos.nuevaClave();
+        const res = mockRes();
+        await withMockFetch(async (url, opts) => {
+          if (String(url).includes("kv.de.test")) return kv.fetch(url, opts);
+          llamoAlModelo = true;
+          return { ok: true, json: async () => ({}) };
+        }, async () => {
+          await ia({ method: "POST", headers: {},
+                     body: { clave, operacion: "sugerencia", prompt: "hola" } }, res);
+        });
+        assert.strictEqual(res._status, 402);
+        assert.strictEqual(res._body.error, "sin_creditos");
+      });
+      assert.strictEqual(llamoAlModelo, false, "sin saldo no se puede gastar plata");
+    });
+
+    await check("ia: con saldo responde y descuenta exactamente el costo", async () => {
+      const kv = kvCreditos();
+      await conCreditos(kv, { MVDG_IA_OPENAI: "sk-test" }, async () => {
+        const clave = creditos.nuevaClave();
+        await withMockFetch(kv.fetch, async () => { await creditos.acreditar(clave, 10); });
+        const res = mockRes();
+        await withMockFetch(async (url, opts) => {
+          if (String(url).includes("kv.de.test")) return kv.fetch(url, opts);
+          return { ok: true, json: async () => ({
+            choices: [{ message: { content: "una sugerencia" } }] }) };
+        }, async () => {
+          await ia({ method: "POST", headers: {},
+                     body: { clave, operacion: "glosario", prompt: "definí cliente" } }, res);
+        });
+        assert.strictEqual(res._status, 200);
+        assert.strictEqual(res._body.texto, "una sugerencia");
+        assert.strictEqual(res._body.saldo, 8, "glosario cuesta 2");
+      });
+    });
+
+    await check("ia: si el modelo falla, el credito se DEVUELVE", async () => {
+      const kv = kvCreditos();
+      await conCreditos(kv, { MVDG_IA_OPENAI: "sk-test" }, async () => {
+        const clave = creditos.nuevaClave();
+        await withMockFetch(kv.fetch, async () => { await creditos.acreditar(clave, 5); });
+        const res = mockRes();
+        await withMockFetch(async (url, opts) => {
+          if (String(url).includes("kv.de.test")) return kv.fetch(url, opts);
+          return { ok: false, status: 500, json: async () => ({}) };
+        }, async () => {
+          await ia({ method: "POST", headers: {},
+                     body: { clave, operacion: "sugerencia", prompt: "x" } }, res);
+        });
+        assert.strictEqual(res._status, 502);
+        await withMockFetch(kv.fetch, async () => {
+          assert.strictEqual(await creditos.saldo(clave), 5,
+            "nadie paga por una respuesta que no recibio");
+        });
+      });
+    });
+
+    await check("ia: un prompt gigante se rechaza antes de gastar", async () => {
+      // Sin techo, un prompt enorme cuesta muchas veces mas que el credito
+      // cobrado: el precio dejaria de tener relacion con el gasto.
+      const kv = kvCreditos();
+      await conCreditos(kv, { MVDG_IA_OPENAI: "sk-test" }, async () => {
+        const res = mockRes();
+        await ia({ method: "POST", headers: {},
+                   body: { clave: creditos.nuevaClave(), operacion: "sugerencia",
+                           prompt: "x".repeat(99_999) } }, res);
+        assert.strictEqual(res._status, 400);
+        assert.strictEqual(res._body.error, "prompt_invalido");
+      });
+    });
+
+    await check("ia: clave y operacion invalidas se rechazan", async () => {
+      const res1 = mockRes();
+      await ia({ method: "POST", headers: {}, body: { clave: "robada", operacion: "sugerencia", prompt: "x" } }, res1);
+      assert.strictEqual(res1._status, 400);
+      const res2 = mockRes();
+      await ia({ method: "POST", headers: {}, body: { clave: creditos.nuevaClave(), operacion: "gratis", prompt: "x" } }, res2);
+      assert.strictEqual(res2._status, 400);
+      const res3 = mockRes();
+      await ia({ method: "GET", headers: {} }, res3);
+      assert.strictEqual(res3._status, 405);
     });
 
     await check("verify-payment: un pack de creditos NO recibe licencia", async () => {
