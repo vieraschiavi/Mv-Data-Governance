@@ -2035,6 +2035,69 @@ def test_todo_plan_pago_le_da_al_cliente_mas_que_la_demo(tmp_path, monkeypatch):
             f"mismo que no pagar: {sorted(abiertas)}")
 
 
+def _dias_por_sku() -> dict:
+    """Cuanto dura cada SKU, leido del propio JS."""
+    import json as _json
+    import subprocess
+    salida = subprocess.run(
+        ["node", "-e",
+         "console.log(JSON.stringify(require('./api/_license').DIAS_POR_SKU))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True)
+    return _json.loads(salida.stdout)
+
+
+def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
+    """El checkout vendia "pro" como MENSUAL (US$390/mes) y el token salia sin
+    `exp`: el cliente pagaba un mes y se quedaba con Professional para
+    siempre. Nada detectaba el desfasaje porque la condicion de venta vivia en
+    el HTML y el vencimiento en el JS, sin nada que los atara.
+
+    Esto los ata: si un SKU esta declarado perpetuo (0 dias), la landing no
+    puede anunciarlo por mes. Y al reves — si algun dia "pro" pasa a
+    DIAS_POR_SKU=31, este test deja de exigir nada y hay que volver a poner el
+    "/mes" en la landing, que es lo correcto."""
+    dias = _dias_por_sku()
+    ruta = os.path.join(_repo_root(), "landing", "index.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+
+    # Marcas de cobro recurrente en los tres idiomas.
+    recurrente = ("mensual", "mensal", "monthly", "/mes", "/mês", '/mo"')
+    if dias.get("pro", 0) == 0:
+        encontradas = [m for m in recurrente if m in html]
+        assert not encontradas, (
+            f"la landing anuncia cobro recurrente {encontradas} pero el SKU "
+            f"'pro' esta declarado PERPETUO en DIAS_POR_SKU: el cliente pagaria "
+            f"un mes y se quedaria con la licencia para siempre")
+
+
+def test_el_vencimiento_del_token_sale_de_lo_que_se_vendio():
+    """Un SKU con dias>0 tiene que producir un token con `exp`, y uno perpetuo
+    NO puede llevarlo. verify() solo rechaza cuando `exp` existe y ya paso, asi
+    que omitirlo es exactamente lo que hacia perpetua una suscripcion."""
+    import json as _json
+    import subprocess
+    guion = """
+      const {signEd25519, diasDeSku} = require('./api/_license');
+      const priv = require('crypto').randomBytes(32).toString('base64')
+        .replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+      const out = {};
+      for (const sku of Object.keys(require('./api/_license').DIAS_POR_SKU)) {
+        const iat = 1000000, dias = diasDeSku(sku);
+        const p = {plan:'professional', iat};
+        if (dias > 0) p.exp = iat + dias * 86400;
+        out[sku] = {dias, tiene_exp: 'exp' in p};
+        signEd25519(p, priv);   // que la firma no reviente con este payload
+      }
+      console.log(JSON.stringify(out));
+    """
+    salida = subprocess.run(["node", "-e", guion], cwd=_repo_root(),
+                            capture_output=True, text=True, check=True)
+    for sku, r in _json.loads(salida.stdout).items():
+        assert r["tiene_exp"] == (r["dias"] > 0), (
+            f"'{sku}' declara {r['dias']} dias y tiene_exp={r['tiene_exp']}")
+
+
 def test_la_pagina_de_pago_muestra_la_licencia_que_el_programa_valida():
     """pago.html mostraba d.license, que es la MVDG1/HMAC. El programa solo
     valida MVDG2, asi que el cliente copiaba una clave que se rechaza en el

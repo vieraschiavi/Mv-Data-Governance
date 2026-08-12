@@ -297,6 +297,66 @@ async function main() {
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
       }
     });
+    await check("verify-payment: un SKU temporal emite el token CON vencimiento", async () => {
+      // El bug real: "pro" se vendia mensual y el token salia sin `exp`, asi
+      // que la suscripcion era perpetua. Este test atraviesa el handler de
+      // verdad — no reimplementa la regla — subiendo pro a 31 dias.
+      const lic = require("./_license");
+      const original = lic.DIAS_POR_SKU.pro;
+      lic.DIAS_POR_SKU.pro = 31;
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (buf) => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      try {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => ({
+            status: "approved", metadata: { plan: "pro" },
+            payer: { email: "c@empresa.com" },
+          }) }),
+          async () => {
+            await verifyPayment({ query: { payment_id: "1001" }, headers: {} }, res);
+          }
+        );
+        const cuerpo = JSON.parse(Buffer.from(
+          res._body.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
+          "base64").toString("utf8"));
+        assert.ok(cuerpo.exp, "un SKU de 31 dias tiene que emitir `exp`");
+        assert.strictEqual(cuerpo.exp - cuerpo.iat, 31 * 86400);
+      } finally {
+        lic.DIAS_POR_SKU.pro = original;
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    });
+    await check("verify-payment: un SKU perpetuo NO lleva vencimiento", async () => {
+      // El otro lado: con 0 dias el token no puede llevar `exp`, o el cliente
+      // que compro una licencia de pago unico se quedaria sin ella.
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (buf) => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      try {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => ({
+            status: "approved", metadata: { plan: "licencia" },
+            payer: { email: "c@empresa.com" },
+          }) }),
+          async () => {
+            await verifyPayment({ query: { payment_id: "1002" }, headers: {} }, res);
+          }
+        );
+        const cuerpo = JSON.parse(Buffer.from(
+          res._body.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
+          "base64").toString("utf8"));
+        assert.strictEqual(cuerpo.exp, undefined);
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    });
     await check("verify-payment: un pack de creditos NO recibe licencia", async () => {
       // Los creditos son consumo, no un tier. Antes se les firmaba un token
       // con plan "cred2500", que el programa rechaza: el cliente pagaba

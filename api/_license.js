@@ -88,6 +88,41 @@ const PLAN_POR_SKU = {
   cred2500: null,
 };
 
+// --------------------------------------------------------------------------
+// Cuanto DURA lo que se vendio, en dias. 0 = perpetua (sin `exp` en el token).
+//
+// Esto existe porque el checkout vendia "pro" como MENSUAL y el token salia
+// sin `exp`: licensing.verify() solo rechaza si hay un `exp` vencido, asi que
+// el cliente pagaba un mes y se quedaba con Professional para siempre. El
+// mecanismo de vencimiento ya funcionaba (api/trial.js lo usa y el trial
+// caduca solo) — el camino de pago simplemente lo omitia.
+//
+// Hoy las dos son PERPETUAS, que es lo unico que esta infraestructura puede
+// cumplir: sin base de datos (Vercel es sin estado) y sin reentrega
+// automatica, poner exp=31 sin una via de renovacion dejaria afuera al mes
+// siguiente a todo el que pago. Un cliente con algo de mas es un problema; un
+// cliente que pago y quedo bloqueado es otro mucho peor.
+//
+// Para pasar "pro" a mensual de verdad hace falta, ademas de cambiar el 0 por
+// 31 aca: suscripciones de MercadoPago (preapproval), webhook de cobro
+// recurrente, y una forma de hacerle llegar la clave nueva cada mes. Mientras
+// eso no exista, la landing tampoco puede anunciarlo como mensual — y hay un
+// test que lo verifica.
+const DIAS_POR_SKU = {
+  licencia: 0,
+  pro: 0,
+  cred100: 0,
+  cred550: 0,
+  cred2500: 0,
+};
+
+function diasDeSku(sku) {
+  if (!sku) return 0;
+  return Object.prototype.hasOwnProperty.call(DIAS_POR_SKU, sku)
+    ? DIAS_POR_SKU[sku]
+    : 0;
+}
+
 function planDeSku(sku) {
   if (!sku) return null;
   return Object.prototype.hasOwnProperty.call(PLAN_POR_SKU, sku)
@@ -95,4 +130,4 @@ function planDeSku(sku) {
     : null;
 }
 
-module.exports = { sign, verify, signEd25519, PLAN_POR_SKU, planDeSku };
+module.exports = { sign, verify, signEd25519, PLAN_POR_SKU, planDeSku, DIAS_POR_SKU, diasDeSku };
