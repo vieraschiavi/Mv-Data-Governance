@@ -411,6 +411,100 @@ async function main() {
       assert.ok(b.license_key && b.license_key.startsWith("MVDG2."));
     });
 
+    // --- el registro de pagos ya usados ----------------------------------
+    // Cierra lo que la ventana solo achicaba: adentro de esos 30 minutos el
+    // id servia infinitas veces. Se simula el KV en memoria con la misma
+    // semantica de Upstash (SET NX devuelve "OK" o null).
+    const kvFalso = () => {
+      const store = new Map();
+      return {
+        store,
+        fetch: async (url, opts) => {
+          const cmds = JSON.parse(opts.body);
+          return { ok: true, json: async () => cmds.map(([op, k, v]) => {
+            if (op === "SET") {
+              if (store.has(k)) return { result: null };   // NX: ya estaba
+              store.set(k, v); return { result: "OK" };
+            }
+            return { result: store.has(k) ? store.get(k) : null };
+          }) };
+        },
+      };
+    };
+    const conKV = async (kv, mpBody, paymentId) => {
+      const res = mockRes();
+      const env = {
+        MP_ACCESS_TOKEN: process.env.MP_ACCESS_TOKEN,
+        LICENSE_PRIVATE_KEY: process.env.LICENSE_PRIVATE_KEY,
+        KV_REST_API_URL: process.env.KV_REST_API_URL,
+        KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+      };
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      process.env.KV_REST_API_URL = "https://kv.de.test";
+      process.env.KV_REST_API_TOKEN = "tok";
+      try {
+        await withMockFetch(
+          async (url, opts) => (String(url).includes("kv.de.test")
+            ? kv.fetch(url, opts)
+            : { ok: true, json: async () => mpBody }),
+          async () => {
+            await verifyPayment({ query: { payment_id: paymentId }, headers: {} }, res);
+          }
+        );
+        return res._body;
+      } finally {
+        for (const [k, v] of Object.entries(env)) {
+          if (v !== undefined) process.env[k] = v; else delete process.env[k];
+        }
+      }
+    };
+    const pagoFresco = () => ({
+      status: "approved", date_approved: new Date().toISOString(),
+      metadata: { plan: "licencia" }, payer: { email: "c@x.com" },
+    });
+
+    await check("registro: el MISMO payment_id no emite una segunda licencia", async () => {
+      const kv = kvFalso();
+      const a = await conKV(kv, pagoFresco(), "3001");
+      assert.ok(a.license_key, "la primera vez si tiene que emitir");
+      // Se envejece la marca mas alla de la gracia: ya no es una recarga.
+      const clave = "mvdg:pago:3001";
+      kv.store.set(clave, String(Date.now() - 60 * 60_000));
+      const b = await conKV(kv, pagoFresco(), "3001");
+      assert.strictEqual(b.license_key, null);
+      assert.strictEqual(b.license, null);       // tampoco la HMAC
+      assert.strictEqual(b.motivo, "ya_emitida");
+    });
+    await check("registro: recargar la pagina SI vuelve a mostrar la licencia", async () => {
+      // Un solo uso estricto dejaria sin licencia al que aprieta F5. Eso es
+      // un ticket de soporte garantizado, asi que hay una gracia corta.
+      const kv = kvFalso();
+      const a = await conKV(kv, pagoFresco(), "3002");
+      const b = await conKV(kv, pagoFresco(), "3002");
+      assert.ok(a.license_key && b.license_key);
+      assert.strictEqual(b.motivo, undefined);
+    });
+    await check("registro: si el KV se cae, la venta NO se corta", async () => {
+      // Fallar cerrado significaria que una caida de Upstash impide comprar a
+      // TODOS. Se degrada a la ventana de tiempo, que es lo de antes.
+      const kv = { fetch: async () => { throw new Error("KV caido"); } };
+      const b = await conKV(kv, pagoFresco(), "3003");
+      assert.ok(b.license_key, "una caida del KV no puede bloquear una compra");
+    });
+    await check("registro: sin KV configurado se comporta como antes", async () => {
+      const { registrar } = require("./_usados");
+      const env = { u: process.env.KV_REST_API_URL, t: process.env.KV_REST_API_TOKEN };
+      delete process.env.KV_REST_API_URL; delete process.env.KV_REST_API_TOKEN;
+      try {
+        assert.strictEqual(await registrar("9999"), "sin_registro");
+      } finally {
+        if (env.u !== undefined) process.env.KV_REST_API_URL = env.u;
+        if (env.t !== undefined) process.env.KV_REST_API_TOKEN = env.t;
+      }
+    });
+
     await check("verify-payment: un pack de creditos NO recibe licencia", async () => {
       // Los creditos son consumo, no un tier. Antes se les firmaba un token
       // con plan "cred2500", que el programa rechaza: el cliente pagaba

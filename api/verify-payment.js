@@ -5,6 +5,7 @@
 
 const { sign, signEd25519, planDeSku, diasDeSku } = require("./_license");
 const { rateLimited, clientIp } = require("./_rate_limit");
+const { registrar } = require("./_usados");
 
 module.exports = async (req, res) => {
   // 30/min por IP: la página solo llama esto una vez al cargar /pago.html,
@@ -80,7 +81,10 @@ module.exports = async (req, res) => {
     // Se aplica la MISMA ventana a la HMAC. Hoy nadie la muestra, pero
     // dejarla saliendo cuando la Ed25519 se retiene seria una mina: basta
     // que alguien cablee esa via mas adelante para reabrir el agujero.
-    if (approved && secret && fresco) license = sign(payload, secret);
+    // La HMAC se decide junto con la Ed25519 mas abajo (necesita `emitible`,
+    // que sale del registro). Se calcula despues para no emitir una si se
+    // retiene la otra.
+    const puedeHmac = approved && secret && fresco;
 
     // MVDG2 (Ed25519): ESTA es la que el programa de escritorio sabe validar
     // (ver mvdg/licensing.py). Si falta LICENSE_PRIVATE_KEY o la firma falla,
@@ -90,9 +94,21 @@ module.exports = async (req, res) => {
     // licencia. Antes se le firmaba una igual, y el cliente se llevaba una
     // license_key que el programa rechaza — peor que no darle ninguna, porque
     // parece que compro algo que no funciona.
-    let licenseKey = null;
+    // Registro de pagos ya usados: cierra lo que la ventana solo achicaba.
+    // Se consulta SOLO si todo lo demas ya dio verde, para no marcar como
+    // usado un pago al que igual no le ibamos a emitir licencia — eso
+    // quemaria el id del comprador legitimo.
     const privKey = process.env.LICENSE_PRIVATE_KEY;
+    let usado = "sin_registro";
     if (approved && privKey && plan && fresco) {
+      usado = await registrar(paymentId);
+    }
+    const emitible = usado !== "repetido";
+
+    if (puedeHmac && emitible) license = sign(payload, secret);
+
+    let licenseKey = null;
+    if (approved && privKey && plan && fresco && emitible) {
       try {
         licenseKey = signEd25519(payload, privKey);
       } catch (e) {
@@ -110,7 +126,8 @@ module.exports = async (req, res) => {
       // ya muestra 'escribinos y te la mandamos'; esto es para soporte.
       motivo: (approved && !licenseKey)
         ? (!plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
-                 : !fresco ? "fuera_de_ventana" : "error_de_firma")
+                 : !fresco ? "fuera_de_ventana"
+                 : usado === "repetido" ? "ya_emitida" : "error_de_firma")
         : undefined,
     });
   } catch (e) {
