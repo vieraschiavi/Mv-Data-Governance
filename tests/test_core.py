@@ -2046,6 +2046,29 @@ def _dias_por_sku() -> dict:
     return _json.loads(salida.stdout)
 
 
+def test_ningun_sku_queda_declarado_a_medias():
+    """Cada SKU tiene que declarar plan Y plazo en la misma entrada.
+
+    Cuando eran dos mapas separados se podia registrar el plan y olvidar el
+    plazo; el plazo ausente vale 0, asi que ese SKU salia PERPETUO y pasaba
+    todos los tests — de Python y de Node. Esto exige la entrada completa."""
+    import json as _json
+    import subprocess
+    tabla = _json.loads(subprocess.run(
+        ["node", "-e",
+         "console.log(JSON.stringify(require('./api/_license').SKU))"],
+        cwd=_repo_root(), capture_output=True, text=True,
+        check=True).stdout)
+
+    for sku in _skus_del_checkout():
+        assert sku in tabla, f"el checkout cobra '{sku}' y no esta en SKU"
+    for sku, e in tabla.items():
+        assert set(e) == {"plan", "dias"}, (
+            f"'{sku}' declara {sorted(e)}: falta plan o dias, y un plazo "
+            f"ausente vale 0 = licencia perpetua")
+        assert isinstance(e["dias"], int) and e["dias"] >= 0
+
+
 def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
     """El checkout vendia "pro" como MENSUAL (US$390/mes) y el token salia sin
     `exp`: el cliente pagaba un mes y se quedaba con Professional para

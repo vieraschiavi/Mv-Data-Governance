@@ -301,9 +301,12 @@ async function main() {
       // El bug real: "pro" se vendia mensual y el token salia sin `exp`, asi
       // que la suscripcion era perpetua. Este test atraviesa el handler de
       // verdad — no reimplementa la regla — subiendo pro a 31 dias.
+      // Se muta SKU y no DIAS_POR_SKU: ese ultimo es una copia derivada, y
+      // tocarlo no cambiaria nada. Que el test se rompa al mover la fuente de
+      // verdad es correcto — significa que esta atado a ella y no a un espejo.
       const lic = require("./_license");
-      const original = lic.DIAS_POR_SKU.pro;
-      lic.DIAS_POR_SKU.pro = 31;
+      const original = lic.SKU.pro.dias;
+      lic.SKU.pro.dias = 31;
       const res = mockRes();
       const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
       process.env.MP_ACCESS_TOKEN = "token-de-test";
@@ -325,7 +328,7 @@ async function main() {
         assert.ok(cuerpo.exp, "un SKU de 31 dias tiene que emitir `exp`");
         assert.strictEqual(cuerpo.exp - cuerpo.iat, 31 * 86400);
       } finally {
-        lic.DIAS_POR_SKU.pro = original;
+        lic.SKU.pro.dias = original;
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
       }
