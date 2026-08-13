@@ -2053,6 +2053,126 @@ def _limpiar_ia(monkeypatch):
         monkeypatch.delenv(v, raising=False)
 
 
+def test_elegir_modelo_desde_la_configuracion(tmp_path, monkeypatch):
+    """Poder elegir el modelo no es estetico: entre el mas chico y el mas
+    grande de un mismo proveedor hay un orden de magnitud de diferencia en
+    costo por llamada, y el que paga es el usuario con su propia key."""
+    from mvdg import ai_provider, ai_settings
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    _limpiar_ia(monkeypatch)
+    monkeypatch.delenv("MVDG_AI_MODEL_CLAUDE", raising=False)
+
+    assert ai_provider.configured_provider() is None
+    ai_settings.guardar_key("claude", "sk-ant-x")
+    assert ai_provider.configured_provider() == "claude", (
+        "la key cargada desde la interfaz tiene que servir igual que la "
+        "variable de entorno")
+    assert ai_provider._model_for("claude") == "claude-sonnet-5"  # default
+
+    ai_settings.guardar_modelo("claude", "claude-haiku-4-5")
+    assert ai_provider._model_for("claude") == "claude-haiku-4-5"
+
+    # La variable de entorno sigue mandando: es la configuracion explicita de
+    # quien automatiza, y no puede quedar tapada por algo guardado una vez.
+    monkeypatch.setenv("MVDG_AI_MODEL_CLAUDE", "claude-opus-5")
+    assert ai_provider._model_for("claude") == "claude-opus-5"
+
+
+def test_el_boton_actualizar_trae_los_modelos_de_cada_proveedor(tmp_path, monkeypatch):
+    """Una lista de modelos hardcodeada envejece mal: a los dos meses ofrece
+    modelos viejos y esconde los nuevos, que suelen ser mas baratos. Por eso
+    se le pregunta al proveedor."""
+    from mvdg import ai_settings
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    _limpiar_ia(monkeypatch)
+
+    pedidos = []
+
+    def fake_get(url, headers):
+        pedidos.append((url, headers))
+        if "anthropic" in url:
+            return {"data": [{"id": "claude-opus-5"}, {"id": "claude-haiku-4-5"}]}
+        if "generativelanguage" in url:
+            return {"models": [{"name": "models/gemini-2.5-pro"}]}
+        return {"data": [{"id": "grok-4"}, {"id": "grok-2-latest"}]}
+
+    monkeypatch.setattr(ai_settings, "_get_json", fake_get)
+
+    for prov, esperado in (("claude", ["claude-haiku-4-5", "claude-opus-5"]),
+                           ("gemini", ["gemini-2.5-pro"]),
+                           ("grok", ["grok-2-latest", "grok-4"])):
+        ai_settings.guardar_key(prov, "sk-" + prov)
+        assert ai_settings.refrescar_modelos(prov) == esperado, prov
+
+    # Cada proveedor se autentica a su manera; mandar el header equivocado
+    # devolveria 401 y el usuario veria "no se pudo traer la lista".
+    urls = {u: h for u, h in pedidos}
+    assert any("x-api-key" in h for u, h in pedidos if "anthropic" in u)
+    assert any("key=sk-gemini" in u for u, h in pedidos if "generativelanguage" in u)
+    assert any(h.get("Authorization") == "Bearer sk-grok"
+               for u, h in pedidos if "x.ai" in u)
+    # Gemini devuelve "models/xxx": se guarda el nombre corto, que es el que
+    # despues hay que mandar en la llamada.
+    assert not any(m.startswith("models/") for m in ai_settings.modelos_conocidos("gemini"))
+    del urls
+
+
+def test_si_falla_la_consulta_no_se_pierde_la_lista(tmp_path, monkeypatch):
+    """Dejar al usuario sin opciones porque se cayo internet un segundo seria
+    peor que mostrarle la lista de ayer."""
+    from mvdg import ai_settings
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    _limpiar_ia(monkeypatch)
+    ai_settings.guardar_key("openai", "sk-x")
+
+    monkeypatch.setattr(ai_settings, "_get_json",
+                        lambda u, h: {"data": [{"id": "gpt-5"}, {"id": "gpt-5-mini"}]})
+    assert ai_settings.refrescar_modelos("openai") == ["gpt-5", "gpt-5-mini"]
+
+    def cae(url, headers):
+        raise OSError("sin red")
+
+    monkeypatch.setattr(ai_settings, "_get_json", cae)
+    assert ai_settings.refrescar_modelos("openai") == ["gpt-5", "gpt-5-mini"]
+    assert ai_settings.listar_modelos("openai") == []   # pero no inventa nada
+
+
+def test_la_api_key_no_queda_en_claro_en_disco(tmp_path, monkeypatch):
+    """Sin llavero del sistema se guarda ofuscada — que no es cifrado, y la
+    interfaz lo avisa — pero NUNCA en texto plano."""
+    from mvdg import ai_settings
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    _limpiar_ia(monkeypatch)
+
+    secreto = "sk-ant-secreto-que-no-debe-verse"
+    ai_settings.guardar_key("claude", secreto)
+    assert ai_settings.leer_key("claude") == secreto
+
+    for ruta in tmp_path.rglob("*"):
+        if ruta.is_file():
+            try:
+                assert secreto not in ruta.read_text(encoding="utf-8", errors="ignore"), ruta
+            except OSError:
+                pass
+
+    # y borrarla la saca de verdad
+    ai_settings.guardar_key("claude", "")
+    assert ai_settings.leer_key("claude") == ""
+
+
+def test_copilot_no_se_ofrece_como_proveedor():
+    """No expone una API para pedir texto con solo una key: se autentica por
+    OAuth adentro de un editor. Ofrecerlo seria poner una opcion que nunca
+    puede funcionar, y el usuario perderia el rato buscando su key."""
+    from mvdg import ai_settings
+    assert "copilot" not in ai_settings.PROVEEDORES
+    assert "copilot" in ai_settings.SIN_API_PROPIA
+    # y la interfaz tiene que explicarlo, no callarlo
+    from mvdg.i18n import t
+    for lang in ("es", "en", "pt"):
+        assert "Copilot" in t("ia_copilot", lang)
+
+
 def test_cualquier_agente_compatible_con_openai_sirve(monkeypatch):
     """El pedido es que cada cliente use el agente que quiera con su propia
     key. Escribir un conector por proveedor deja el producto siempre atrás del

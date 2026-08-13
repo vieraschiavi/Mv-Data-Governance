@@ -3,16 +3,18 @@ MV Data Governance · IA externa opcional para las sugerencias de corrección.
 
 Por defecto, las sugerencias de "cómo corregir cada falla" (mvdg.remediation)
 son 100% locales y determinísticas — nada sale de la máquina. Este módulo
-agrega una capa OPCIONAL: si el usuario configura su propia API key de
-Claude, ChatGPT (OpenAI) o Gemini como variable de entorno, cada regla puede
-pedir además una sugerencia generada en vivo por ese modelo.
+agrega una capa OPCIONAL: si el usuario configura su propia API key —Claude,
+ChatGPT, Gemini, Grok, o cualquier servicio compatible con OpenAI— cada regla
+puede pedir además una sugerencia generada en vivo por ese modelo. Qué
+proveedor y qué MODELO se usan sale de mvdg/ai_settings.py.
 
 Reglas de diseño (no negociables):
   - Apagado por defecto. Sin ninguna variable de entorno configurada, el
     programa funciona exactamente igual que antes (asistencia local).
-  - La API key la pone el usuario en su propio entorno — el programa nunca
-    la pide, nunca la guarda, nunca la manda a ningún lado más que al
-    proveedor elegido.
+  - La API key la pone el usuario: como variable de entorno, o desde
+    Configuración (ver mvdg/ai_settings.py, que la guarda en el keyring del
+    sistema operativo). Nunca se manda a ningún lado más que al proveedor
+    elegido.
   - Solo se manda METADATO de la falla (dataset, columna, dimensión,
     descripción de la regla, cantidad de filas afectadas) — nunca datos
     reales de las filas.
@@ -40,26 +42,34 @@ _PROVIDERS = {
     "claude": ("ANTHROPIC_API_KEY", "Claude (Anthropic)", "claude-sonnet-5", "MVDG_AI_MODEL_CLAUDE"),
     "openai": ("OPENAI_API_KEY", "ChatGPT (OpenAI)", "gpt-4o-mini", "MVDG_AI_MODEL_OPENAI"),
     "gemini": ("GEMINI_API_KEY", "Gemini (Google)", "gemini-1.5-flash", "MVDG_AI_MODEL_GEMINI"),
-    # Cualquier servicio que hable el formato de OpenAI (/chat/completions).
+    "grok": ("XAI_API_KEY", "Grok (xAI)", "grok-2-latest", "MVDG_AI_MODEL_GROK"),
+    # Cualquier OTRO servicio que hable el formato de OpenAI
+    # (/chat/completions). Es la respuesta a "que cada cliente use el agente
+    # que quiera": escribir un conector por proveedor deja el producto siempre
+    # atrás del que salió ayer. Con esto entran OpenRouter —que a su vez
+    # enruta a Claude, GPT, Gemini, Llama y decenas más—, Groq, Mistral,
+    # DeepSeek, Together, Azure OpenAI y los locales tipo Ollama o LM Studio,
+    # sin tocar una línea de este archivo.
     #
-    # Es la respuesta a "que cada cliente use el agente que quiera": en vez de
-    # escribir un conector por proveedor —y quedar siempre atrás del que salió
-    # ayer— se soporta el formato que ya hablan casi todos. Con esto entran
-    # OpenRouter (que a su vez enruta a Claude, GPT, Gemini, Llama y decenas
-    # más), Groq, Mistral, DeepSeek, Together, xAI, Azure OpenAI, y los
-    # locales tipo Ollama o LM Studio — sin tocar una línea de este archivo.
-    #
-    # Necesita DOS variables, no una: la key y a dónde apuntar.
+    # Necesita DOS datos, no uno: la key y a dónde apuntar.
     "compatible": ("MVDG_AI_API_KEY", "Compatible con OpenAI", "gpt-4o-mini", "MVDG_AI_MODEL"),
 }
 # Orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza
 # una. "compatible" va último: si alguien configuró la key oficial de su
 # proveedor, esa es la vía directa.
-_PRIORITY = ["claude", "openai", "gemini", "compatible"]
+_PRIORITY = ["claude", "openai", "gemini", "grok", "compatible"]
 
 # A dónde apunta el proveedor compatible. Sin esto no se puede usar: una key
 # suelta no dice contra qué servicio va.
 _BASE_URL_ENV = "MVDG_AI_BASE_URL"
+
+
+def _key_for(provider: str) -> str:
+    """La API key vigente. Delega en ai_settings, que resuelve el orden
+    entorno -> keyring -> respaldo: si esto leyera os.environ por su cuenta,
+    la key cargada desde la interfaz no serviria para nada."""
+    from . import ai_settings
+    return ai_settings.leer_key(provider)
 
 
 def _disponible(provider: str) -> bool:
@@ -69,11 +79,11 @@ def _disponible(provider: str) -> bool:
     key no dice contra qué servicio va, y dar por configurado algo que no
     puede llamar a nadie haría que la UI ofrezca una opción que siempre falla.
     """
-    env_var = _PROVIDERS[provider][0]
-    if not os.environ.get(env_var, "").strip():
+    if not _key_for(provider):
         return False
     if provider == "compatible":
-        return bool(os.environ.get(_BASE_URL_ENV, "").strip())
+        from . import ai_settings
+        return bool(ai_settings.base_url("compatible"))
     return True
 
 
@@ -97,8 +107,17 @@ def provider_label(provider: str) -> str:
 
 
 def _model_for(provider: str) -> str:
-    env_var, _, default, model_env = _PROVIDERS[provider]
-    return os.environ.get(model_env, default)
+    """El modelo a usar. La variable de entorno especifica manda; si no, el
+    que el usuario eligio en Configuracion; si no, el default del proveedor.
+    Elegirlo importa: entre el modelo mas chico y el mas grande de un mismo
+    proveedor hay un orden de magnitud de diferencia en costo por llamada, y
+    el que paga es el usuario."""
+    _, _, default, model_env = _PROVIDERS[provider]
+    del_entorno = os.environ.get(model_env, "").strip() if model_env else ""
+    if del_entorno:
+        return del_entorno
+    from . import ai_settings
+    return ai_settings.modelo_elegido(provider) or default
 
 
 _PROMPT_TMPL = {
@@ -187,6 +206,19 @@ def _call_gemini(prompt: str, api_key: str, model: str) -> str:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
+def _call_grok(prompt: str, api_key: str, model: str) -> str:
+    return _openai_shape(prompt, api_key, model, "https://api.x.ai/v1")
+
+
+def _openai_shape(prompt: str, api_key: str, model: str, base: str) -> str:
+    """El cuerpo /chat/completions, que hablan OpenAI, xAI y los compatibles."""
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 400}
+    headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+    data = _post_json(f"{base.rstrip('/')}/chat/completions", headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
 def _call_compatible(prompt: str, api_key: str, model: str) -> str:
     """Cualquier servicio con la forma de OpenAI: /chat/completions.
 
@@ -205,7 +237,8 @@ def _call_compatible(prompt: str, api_key: str, model: str) -> str:
 
 
 _CALLERS = {"claude": _call_claude, "openai": _call_openai,
-            "gemini": _call_gemini, "compatible": _call_compatible}
+            "gemini": _call_gemini, "grok": _call_grok,
+            "compatible": _call_compatible}
 
 
 def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
@@ -218,8 +251,7 @@ def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_prompt(dataset, column, dimension, description, affected_rows, lang)
@@ -296,8 +328,7 @@ def ai_refactor_dax(measure: str, dax: str, table: str = "",
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_dax_prompt(measure, dax, table, lang)
@@ -377,8 +408,7 @@ def ai_refactor_calc(field: str, formula: str, datasource: str = "",
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_calc_prompt(field, formula, datasource, lang)
@@ -477,8 +507,7 @@ def ai_parse_orgchart_image(image_bytes: bytes, media_type: str = "image/png",
     provider = provider or configured_provider()
     if not provider or provider not in _VISION_CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key or not image_bytes:
         return None
     import base64

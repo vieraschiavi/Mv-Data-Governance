@@ -57,6 +57,7 @@ from mvdg import server as mvdg_server
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
+from mvdg import ai_settings
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -1957,6 +1958,76 @@ with tab_ws:
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
     st.info(t("h_intro", lang), icon="❓")
+
+    # --- Configuración de IA ------------------------------------------------
+    # Antes esto solo se podía hacer con variables de entorno, que para alguien
+    # que abre un .exe significa cerrar el programa, tocar el sistema y volver
+    # a abrirlo. Y no había forma de elegir el MODELO, que es lo que decide
+    # cuánto gasta el usuario en su propia cuenta.
+    st.subheader(t("ia_title", lang))
+    st.caption(t("ia_intro", lang))
+
+    _ia_prov = st.selectbox(
+        t("ia_provider", lang), list(ai_settings.PROVEEDORES),
+        format_func=lambda p: ai_settings.PROVEEDORES[p]["etiqueta"],
+        key="ia_prov")
+
+    _ia_c1, _ia_c2 = st.columns([2, 1])
+    with _ia_c1:
+        _ia_key = st.text_input(t("ia_key", lang), type="password",
+                                value="", placeholder="••••••••",
+                                help=t("ia_key_help", lang), key="ia_key_in")
+        if _ia_key:
+            _donde = ai_settings.guardar_key(_ia_prov, _ia_key)
+            if _donde == "ofuscada":
+                st.warning(t("ia_saved_obf", lang), icon="⚠️")
+            else:
+                st.success(t("ia_saved", lang), icon="✅")
+
+        # Solo "compatible" necesita que le digan a dónde apuntar; para los
+        # demás la URL es fija y preguntarla sería ruido.
+        if _ia_prov == "compatible":
+            _ia_base = st.text_input(t("ia_base_url", lang),
+                                     value=ai_settings.base_url("compatible"),
+                                     help=t("ia_base_help", lang), key="ia_base_in")
+            if _ia_base != ai_settings.base_url("compatible"):
+                ai_settings.guardar_base_url(_ia_base)
+
+    with _ia_c2:
+        st.write("")
+        if st.button(t("ia_refresh", lang), help=t("ia_refresh_help", lang),
+                     key="ia_refresh_btn", use_container_width=True):
+            if not ai_settings.leer_key(_ia_prov):
+                st.warning(t("ia_need_key", lang), icon="🔑")
+            else:
+                _antes = ai_settings.modelos_conocidos(_ia_prov)
+                _lista = ai_settings.refrescar_modelos(_ia_prov)
+                # refrescar_modelos conserva la lista anterior si falla, así que
+                # "no cambió nada" es la señal de que no se pudo traer.
+                if _lista == _antes and not ai_settings.actualizado_en(_ia_prov):
+                    st.warning(t("ia_refresh_fail", lang), icon="📡")
+                else:
+                    st.success(t("ia_refresh_ok", lang).format(n=len(_lista)),
+                               icon="✅")
+
+    _ia_modelos = ai_settings.modelos_conocidos(_ia_prov)
+    if _ia_modelos:
+        _actual = ai_settings.modelo_elegido(_ia_prov)
+        _idx = _ia_modelos.index(_actual) if _actual in _ia_modelos else 0
+        _elegido = st.selectbox(t("ia_model", lang), _ia_modelos, index=_idx,
+                                help=t("ia_model_help", lang), key="ia_model_sel")
+        if _elegido != _actual:
+            ai_settings.guardar_modelo(_ia_prov, _elegido)
+
+    _ia_activo = configured_provider()
+    if _ia_activo:
+        st.caption(t("ia_active", lang).format(
+            prov=provider_label(_ia_activo),
+            model=ai_settings.modelo_elegido(_ia_activo) or "—"))
+    else:
+        st.caption(t("ia_none", lang))
+    st.caption(t("ia_copilot", lang))
+    st.divider()
 
     # --- Licencia -----------------------------------------------------------
     st.subheader(t("lic_title", lang))
