@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Suite de pruebas del motor, i18n, exportadores y API.
 
@@ -2414,6 +2416,50 @@ def test_el_emisor_de_licencias_esta_configurado():
 
     # Un token cualquiera NO valida contra ella: la pública sola no desbloquea.
     assert licensing.verify("MVDG2.falso.falso") is None
+
+
+def test_todo_archivo_fuente_lleva_el_aviso_de_copyright():
+    """El repo es PUBLICO y el software es propietario: el aviso de copyright
+    en cada archivo es lo que hace que quien copie un modulo suelto no pueda
+    decir que no sabia. El propio LICENSE prohibe removerlo (clausula 3.d).
+
+    Sin un test, un archivo nuevo nace sin aviso y nadie lo nota hasta que ya
+    circula."""
+    import subprocess
+    raiz = _repo_root()
+    trackeados = subprocess.run(["git", "ls-files", "-z"], cwd=raiz,
+                                capture_output=True, check=True
+                                ).stdout.decode("utf-8").split("\0")
+    # payments-config.js esta fuera: la configuracion de settings.json prohibe
+    # leerlo (puede traer links de pago), asi que este test tampoco lo abre.
+    excluir = ("node_modules/", "dist/", "landing/payments-config.js")
+    sin_aviso = []
+    for ruta in filter(None, trackeados):
+        if any(x in ruta for x in excluir):
+            continue
+        if not ruta.endswith((".py", ".js", ".jsx", ".mjs", ".cjs")):
+            continue
+        try:
+            with open(os.path.join(raiz, ruta), encoding="utf-8") as fh:
+                cabeza = fh.read(400)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "Martín Viera" not in cabeza or "derechos reservados" not in cabeza:
+            sin_aviso.append(ruta)
+    assert not sin_aviso, f"archivos fuente sin aviso de copyright: {sin_aviso}"
+
+
+def test_el_license_nombra_al_titular():
+    """"El titular indicado en el aviso de copyright" es a quien apuntan la
+    clausula de propiedad y el contacto comercial. Si ahi no hay una persona
+    nombrada, el texto se queda sin sujeto."""
+    with open(os.path.join(_repo_root(), "LICENSE"), encoding="utf-8") as fh:
+        texto = fh.read()
+    assert "© 2026 Martín Viera" in texto
+    assert "Todos los derechos reservados" in texto
+    # y que siga siendo el texto propietario completo, en los tres idiomas
+    for marca in ("ESPAÑOL", "ENGLISH", "PORTUGUÊS", "NO es de código abierto"):
+        assert marca in texto
 
 
 def test_el_repo_publico_no_lleva_secretos_de_licencia():

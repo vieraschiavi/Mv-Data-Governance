@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Rate limiting en memoria para las funciones serverless de pago/licencia.
 // Prefijo "_" para que Vercel NO la trate como endpoint — es un módulo
 // interno, igual que _license.js.

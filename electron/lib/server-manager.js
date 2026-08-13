@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 /*
  * MV Data Governance · lógica de arranque del servidor local — separada de
  * main.js a propósito para poder testearla con Node puro (sin el runtime de

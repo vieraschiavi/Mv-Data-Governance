@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Checkout de MercadoPago — función serverless (Vercel, CommonJS).
 // El Access Token de MercadoPago vive SOLO como variable de entorno del
 // servidor (MP_ACCESS_TOKEN). Nunca se expone al navegador ni se guarda en

@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 /*
  * Test de comportamiento REAL de las funciones serverless de pago/licencia.
  * Antes estos 3 archivos (checkout.js, verify-payment.js, _license.js)

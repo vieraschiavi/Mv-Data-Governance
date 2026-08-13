@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Centro de ayuda: qué se automatiza y qué no,
 y speeches de IA para lograr la parte no automatizable.

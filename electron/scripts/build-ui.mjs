@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Empaqueta la interfaz de escritorio (React) -> ui/dist/.
 //
 // Autocontenido: React queda DENTRO del bundle, nada se baja de internet.

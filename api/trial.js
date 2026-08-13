@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Prueba gratuita de 14 días del plan Professional (USD 390/mes) — SIN
 // tarjeta de crédito ni paso por MercadoPago. Emite la misma licencia Ed25519
 // (MVDG2) que recibiría alguien que pagó, pero con `exp` a 14 días: el

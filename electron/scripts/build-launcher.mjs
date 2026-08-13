@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Empaqueta el launcher React (esbuild) -> launcher/dist/ (autocontenido,
 // sin CDN: React queda adentro del bundle — nada se baja de internet).
 import { build } from "esbuild";

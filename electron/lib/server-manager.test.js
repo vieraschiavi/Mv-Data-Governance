@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 /*
  * Test end-to-end de server-manager.js con Node puro (sin Electron): arranca
  * un Streamlit REAL contra app/app.py de este repo y confirma que
