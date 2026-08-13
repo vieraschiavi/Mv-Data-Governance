@@ -233,7 +233,7 @@ def _licencia_ok(funcion: str, lang: str) -> bool:
     return False
 
 
-def _render_fixes(results_df, lang):
+def _render_fixes(results_df, lang, ns=""):
     """Por cada regla en warn/fail: sugerencia local para corregirla, al
     lado de la falla — causa probable, corto plazo y prevención. Si el
     usuario configuró su propia API key (Claude/ChatGPT/Gemini), además se
@@ -248,6 +248,17 @@ def _render_fixes(results_df, lang):
     if broken.empty:
         st.success(t("fix_none", lang), icon="✅")
         return
+    # Las keys de los widgets tienen que ser únicas en TODA la corrida, no solo
+    # dentro de este bloque: Streamlit ejecuta el script entero en cada rerun y
+    # las pestañas NO son perezosas, así que las tres llamadas a _render_fixes
+    # conviven en la misma pasada. Con "Mis datos" activado, el mismo dataset y
+    # la misma regla aparecen en más de una, y la key chocaba.
+    #
+    # El error estuvo latente desde siempre: estos botones solo se dibujan si
+    # hay un proveedor de IA configurado, y hasta que se pudo configurar uno
+    # desde la interfaz nadie los veía. `ns` distingue el bloque; el resto
+    # distingue la fila.
+    vistas = {}
     for _, row in broken.iterrows():
         icon = "🟠" if row["status"] == "warn" else "🔴"
         with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
@@ -260,7 +271,13 @@ def _render_fixes(results_df, lang):
             st.caption(f"{t('fix_owner', lang)}: {fix['owner']}")
 
             if provider:
-                cache_key = f"ai_fix_{row['dataset']}_{row['rule_id']}_{lang}"
+                # dataset+regla no alcanza: una misma regla puede evaluarse
+                # sobre varias columnas. Y si aun asi se repite, se agrega un
+                # sufijo — vale mas una key fea que una pantalla que revienta.
+                base = (f"ai_fix_{ns}_{row['dataset']}_{row['rule_id']}"
+                        f"_{row['column']}_{lang}")
+                vistas[base] = vistas.get(base, 0) + 1
+                cache_key = base if vistas[base] == 1 else f"{base}#{vistas[base]}"
                 if st.button(t("fix_ai_button", lang).format(provider=provider_label(provider)),
                             key=f"btn_{cache_key}"):
                     with st.spinner(t("fix_ai_loading", lang)):
@@ -782,7 +799,7 @@ with tab_q:
         "affected_rows": t("q_affected", lang),
     }), width="stretch", hide_index=True)
 
-    _render_fixes(results, lang)
+    _render_fixes(results, lang, ns="calidad")
 
     matrix = quality_matrix(results)
     matrix.columns = [_DIM_LABEL[c] for c in matrix.columns]
@@ -1173,7 +1190,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
                           yaxis_title=None, height=260)
         st.plotly_chart(fig, width="stretch",
                         key=f"pr_auto_dims_{dataset_name or 'sinnombre'}")
-        _render_fixes(ares, lang)
+        _render_fixes(ares, lang, ns="analisis")
 
     st.subheader(t("pr_suggestions", lang))
     st.caption(t("pr_suggestions_note", lang))
@@ -1253,7 +1270,7 @@ with tab_pr:
                           yaxis_title=None, height=300)
         st.plotly_chart(fig, width="stretch", key=f"pr_example_dims_{skey}")
 
-        _render_fixes(sres, lang)
+        _render_fixes(sres, lang, ns="misdatos")
 
         # --- 3. Definiciones (glosario) ---
         st.subheader(f"📖 {t('pr_example_glossary_title', lang)}")
