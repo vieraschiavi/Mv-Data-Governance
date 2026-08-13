@@ -222,6 +222,105 @@ _T: dict[str, dict[str, str]] = {
     },
     # ---------------------------------------------------- login (modo servidor)
     # --- Licencias ---
+    # --- Configuración de IA (pestaña Ayuda) --------------------------------
+    "ia_title": {"es": "🤖 Configuración de IA",
+                 "en": "🤖 AI settings",
+                 "pt": "🤖 Configuração de IA"},
+    "ia_intro": {
+        "es": "Opcional. El programa funciona completo sin esto: las sugerencias "
+              "locales no necesitan internet ni API key. Si cargás la tuya, cada "
+              "sugerencia puede además generarse en vivo con el modelo que elijas. "
+              "Las llamadas las paga tu cuenta del proveedor, no MV.",
+        "en": "Optional. The app works fully without this: local suggestions need "
+              "no internet and no API key. If you add yours, each suggestion can "
+              "also be generated live with the model you pick. Calls are billed to "
+              "your provider account, not to MV.",
+        "pt": "Opcional. O programa funciona completo sem isto: as sugestões locais "
+              "não precisam de internet nem de API key. Se você informar a sua, cada "
+              "sugestão também pode ser gerada ao vivo com o modelo que escolher. As "
+              "chamadas são cobradas na sua conta do provedor, não na da MV."},
+    "ia_provider": {"es": "Proveedor", "en": "Provider", "pt": "Provedor"},
+    "ia_key": {"es": "Tu API key", "en": "Your API key", "pt": "Sua API key"},
+    "ia_key_help": {
+        "es": "Se guarda en el llavero del sistema operativo. Nunca se manda a "
+              "otro lado que no sea el proveedor que elegiste.",
+        "en": "Stored in your operating system keyring. Never sent anywhere other "
+              "than the provider you picked.",
+        "pt": "Guardada no chaveiro do sistema operacional. Nunca é enviada para "
+              "outro lugar além do provedor escolhido."},
+    "ia_base_url": {"es": "URL base del servicio",
+                    "en": "Service base URL",
+                    "pt": "URL base do serviço"},
+    "ia_base_help": {
+        "es": "Por ejemplo https://openrouter.ai/api/v1 o http://localhost:11434/v1 "
+              "para Ollama. Sirve cualquier servicio compatible con OpenAI.",
+        "en": "For example https://openrouter.ai/api/v1 or http://localhost:11434/v1 "
+              "for Ollama. Any OpenAI-compatible service works.",
+        "pt": "Por exemplo https://openrouter.ai/api/v1 ou http://localhost:11434/v1 "
+              "para Ollama. Qualquer serviço compatível com OpenAI funciona."},
+    "ia_model": {"es": "Modelo", "en": "Model", "pt": "Modelo"},
+    "ia_model_help": {
+        "es": "Elegí según lo que quieras gastar: entre el modelo más chico y el "
+              "más grande de un mismo proveedor puede haber diez veces de "
+              "diferencia por llamada.",
+        "en": "Pick according to what you want to spend: between the smallest and "
+              "the largest model of one provider there can be a tenfold difference "
+              "per call.",
+        "pt": "Escolha conforme o quanto quer gastar: entre o menor e o maior "
+              "modelo de um mesmo provedor pode haver dez vezes de diferença por "
+              "chamada."},
+    "ia_refresh": {"es": "🔄 Actualizar modelos",
+                   "en": "🔄 Refresh models",
+                   "pt": "🔄 Atualizar modelos"},
+    "ia_refresh_help": {
+        "es": "Le pregunta al proveedor qué modelos hay disponibles hoy para tu "
+              "key. Los proveedores sacan modelos nuevos seguido, y los nuevos "
+              "suelen ser más baratos.",
+        "en": "Asks the provider which models are available today for your key. "
+              "Providers ship new models often, and newer ones are usually cheaper.",
+        "pt": "Pergunta ao provedor quais modelos estão disponíveis hoje para sua "
+              "key. Os provedores lançam modelos novos com frequência, e os novos "
+              "costumam ser mais baratos."},
+    "ia_saved": {"es": "Guardado ✔", "en": "Saved ✔", "pt": "Salvo ✔"},
+    "ia_saved_obf": {
+        "es": "Guardada, pero este equipo no tiene llavero del sistema: quedó "
+              "ofuscada en la carpeta de datos. Ofuscado no es cifrado.",
+        "en": "Saved, but this machine has no system keyring: it was obfuscated in "
+              "the data folder. Obfuscated is not encrypted.",
+        "pt": "Salva, mas esta máquina não tem chaveiro do sistema: ficou ofuscada "
+              "na pasta de dados. Ofuscado não é criptografado."},
+    "ia_need_key": {
+        "es": "Cargá primero tu API key para poder traer los modelos.",
+        "en": "Add your API key first to fetch the models.",
+        "pt": "Informe primeiro sua API key para buscar os modelos."},
+    "ia_refresh_fail": {
+        "es": "No se pudo traer la lista (key inválida, sin internet, o el "
+              "proveedor no responde). Se mantiene la lista anterior.",
+        "en": "Could not fetch the list (invalid key, no internet, or the provider "
+              "is not responding). The previous list is kept.",
+        "pt": "Não foi possível buscar a lista (key inválida, sem internet, ou o "
+              "provedor não responde). A lista anterior é mantida."},
+    "ia_refresh_ok": {"es": "{n} modelos disponibles",
+                      "en": "{n} models available",
+                      "pt": "{n} modelos disponíveis"},
+    "ia_active": {"es": "En uso: {prov} · {model}",
+                  "en": "In use: {prov} · {model}",
+                  "pt": "Em uso: {prov} · {model}"},
+    "ia_none": {"es": "Sin IA externa: se usan las sugerencias locales.",
+                "en": "No external AI: local suggestions are used.",
+                "pt": "Sem IA externa: são usadas as sugestões locais."},
+    "ia_copilot": {
+        "es": "GitHub Copilot no aparece en la lista porque no expone una API "
+              "para pedirle un texto con solo una key: se autentica por OAuth "
+              "dentro de un editor. Si usás un gateway que lo exponga en formato "
+              "OpenAI, entra por «Otro».",
+        "en": "GitHub Copilot is not listed because it exposes no API to request "
+              "text with just a key: it authenticates via OAuth inside an editor. "
+              "If you use a gateway that exposes it in OpenAI format, use «Other».",
+        "pt": "O GitHub Copilot não aparece na lista porque não expõe uma API para "
+              "pedir texto apenas com uma key: autentica por OAuth dentro de um "
+              "editor. Se você usa um gateway que o exponha em formato OpenAI, use "
+              "«Outro»."},
     "lic_title": {"es": "🔑 Licencia", "en": "🔑 License", "pt": "🔑 Licença"},
     "lic_plan": {"es": "Plan actual", "en": "Current plan", "pt": "Plano atual"},
     "lic_demo": {"es": "Demo (gratis)", "en": "Demo (free)", "pt": "Demo (grátis)"},
