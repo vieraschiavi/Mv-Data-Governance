@@ -64,8 +64,8 @@ PLANTILLA = r"""@echo off
 REM ===================================================================
 REM  MV Data Governance - Activar version OWNER
 REM ===================================================================
-REM  Copia este archivo a la carpeta donde esta instalado el programa
-REM  y hace doble clic. No pide nada.
+REM  Doble clic desde donde sea: BUSCA SOLO donde esta instalado el
+REM  programa. No hace falta copiarlo a ninguna carpeta.
 REM
 REM  ESTE ARCHIVO CONTIENE TU LICENCIA: no lo compartas ni lo subas a
 REM  ningun lado. Cualquiera que lo tenga desbloquea el programa.
@@ -82,76 +82,115 @@ echo    MV Data Governance - Activacion OWNER
 echo   =============================================
 echo.
 
-REM --- 1. Perfil del usuario. Es el que usa la version Electron, y el
-REM        unico que SIEMPRE se puede escribir sin permisos de admin.
-set "D1=%USERPROFILE%\.mv_data_governance"
-if not exist "%D1%" mkdir "%D1%" >nul 2>&1
->"%D1%\licencia.json" echo {"token":"%TOKEN%"}
-if exist "%D1%\licencia.json" (
-  echo   [OK] %D1%\licencia.json
-  set /a HECHOS+=1
-) else (
-  echo   [--] no se pudo escribir en %D1%
-)
+REM --- 1. Perfil del usuario -----------------------------------------
+REM Es de donde lee la version Electron, y el unico lugar que SIEMPRE se
+REM puede escribir sin permisos de administrador. Con esto solo, la
+REM activacion ya funciona: todo lo que sigue es para cubrir tambien la
+REM version portable y el .exe de PyInstaller.
+call :jsonEn "%USERPROFILE%\.mv_data_governance"
 
-REM --- 2. Data al lado del exe: lo que usa el .exe de PyInstaller cuando
-REM        esta instalado en una carpeta escribible (D:\, un pendrive).
-set "D2=%AQUI%Data"
-if not exist "%D2%" mkdir "%D2%" >nul 2>&1
->"%D2%\licencia.json" echo {"token":"%TOKEN%"}
-if exist "%D2%\licencia.json" (
-  echo   [OK] %D2%\licencia.json
-  set /a HECHOS+=1
-) else (
-  echo   [--] %D2% no se puede escribir ^(hace falta admin^) - se ignora
-)
+REM --- 2. La carpeta donde esta este .bat -----------------------------
+REM Por si lo copiaste al lado del programa, como antes.
+call :txtEn  "%AQUI%"
+call :jsonEn "%AQUI%Data"
+call :txtEn  "%AQUI%resources\server"
 
-REM --- 3. Licencia empaquetada al lado del exe congelado.
->"%AQUI%licencia_owner.txt" echo %TOKEN%
-if exist "%AQUI%licencia_owner.txt" (
-  echo   [OK] %AQUI%licencia_owner.txt
-  set /a HECHOS+=1
-) else (
-  echo   [--] %AQUI% no se puede escribir ^(hace falta admin^) - se ignora
-)
+REM --- 3. DONDE DICE WINDOWS QUE SE INSTALO ---------------------------
+REM Aca esta la deteccion automatica. El instalador permite elegir
+REM carpeta y disco, asi que adivinar rutas no alcanza: se le pregunta al
+REM registro de desinstalacion, que es donde el instalador anota su
+REM InstallLocation real. Se miran las dos ramas porque la instalacion
+REM puede ser por usuario (HKCU) o para todo el equipo (HKLM).
+call :buscarEn HKCU
+call :buscarEn HKLM
 
-REM --- 4. Licencia empaquetada al lado del motor de la version Electron.
-REM        Suele estar en Archivos de programa: si falla, no importa, el
-REM        punto 1 ya alcanza.
-set "D4=%AQUI%resources\server"
-if exist "%D4%\mvdg\licensing.py" (
-  >"%D4%\licencia_owner.txt" echo %TOKEN%
-  if exist "%D4%\licencia_owner.txt" (
-    echo   [OK] %D4%\licencia_owner.txt
-    set /a HECHOS+=1
-  ) else (
-    echo   [--] %D4% no se puede escribir ^(hace falta admin^) - se ignora
-  )
-)
+REM --- 4. Rutas habituales, por si el registro no dijo nada -----------
+call :txtEn "%LOCALAPPDATA%\Programs\MV Data Governance\resources\server"
+call :txtEn "%ProgramFiles%\MV Data Governance\resources\server"
+call :txtEn "%ProgramFiles(x86)%\MV Data Governance\resources\server"
 
 echo.
-if "%HECHOS%"=="0" (
-  echo   ERROR: no se pudo escribir en ningun lado.
-  echo   Proba hacer clic derecho ^> "Ejecutar como administrador".
-  echo.
-  pause
-  exit /b 1
-)
+if not "%HECHOS%"=="0" goto :huboAlgo
+echo   ERROR: no se encontro ninguna instalacion y no se pudo escribir
+echo   en tu perfil de usuario.
+echo   Proba con clic derecho ^> "Ejecutar como administrador".
+echo.
+pause
+exit /b 1
+:huboAlgo
 
-REM Una variable de entorno MVDG_DATA_DIR mandaria sobre todo lo anterior:
-REM si esta puesta, el programa leeria de ahi y no de donde escribimos.
-if defined MVDG_DATA_DIR (
-  echo   AVISO: tenes MVDG_DATA_DIR=%MVDG_DATA_DIR%
-  echo   El programa lee la licencia de ahi. Copia el licencia.json
-  echo   generado a esa carpeta si no se activa.
-  echo.
-)
+REM MVDG_DATA_DIR mandaria sobre todo lo anterior: si esta puesta, el
+REM programa lee la licencia de ahi y no de donde escribimos.
+if not defined MVDG_DATA_DIR goto :sinDataDir
+echo   AVISO: tenes MVDG_DATA_DIR=%MVDG_DATA_DIR%
+echo   El programa lee la licencia de ahi. Copia el licencia.json
+echo   generado a esa carpeta si no se activa.
+echo.
+:sinDataDir
 
-echo   Listo. Abri MV Data Governance: entra como OWNER, sin clave.
+echo   Listo ^(%HECHOS% ubicacion/es^). Abri MV Data Governance: entra
+echo   como OWNER, sin escribir ninguna clave.
 echo   ^(si ya estaba abierto, cerralo y volve a abrirlo^)
 echo.
 pause
 endlocal
+exit /b 0
+
+REM ===================================================================
+REM  Subrutinas. Se usa "call" y no bloques con parentesis a proposito:
+REM  adentro de un bloque, %VAR% se expande cuando se PARSEA el bloque
+REM  entero, asi que el contador nunca avanzaria. Con subrutinas cada
+REM  linea se evalua al ejecutarse.
+REM ===================================================================
+
+:buscarEn
+REM Busca la entrada de desinstalacion por su nombre visible y saca de
+REM ahi la carpeta real de instalacion.
+for /f "delims=" %%K in ('reg query "%~1\Software\Microsoft\Windows\CurrentVersion\Uninstall" /s /f "MV Data Governance" /d 2^>nul ^| findstr /i /r "^HK"') do call :desdeClave "%%K"
+exit /b
+
+:desdeClave
+for /f "tokens=2,*" %%A in ('reg query "%~1" /v InstallLocation 2^>nul ^| findstr /i "InstallLocation"') do call :instaladoEn "%%B"
+exit /b
+
+:instaladoEn
+REM %~1 es la carpeta de instalacion. El motor de la version Electron
+REM vive en resources\server; el .exe portable, en la carpeta misma.
+if "%~1"=="" exit /b
+echo   .. instalacion detectada en %~1
+call :txtEn  "%~1\resources\server"
+call :txtEn  "%~1"
+call :jsonEn "%~1\Data"
+exit /b
+
+:jsonEn
+REM licencia.json en una carpeta de datos. Se crea si no existe.
+if not exist "%~1" mkdir "%~1" >nul 2>&1
+if not exist "%~1" exit /b
+>"%~1\licencia.json" echo {"token":"%TOKEN%"}
+REM Sin bloques con parentesis: una ruta como "C:\Program Files (x86)\..."
+REM trae un ")" que cerraria el bloque antes de tiempo y romperia el script.
+if not exist "%~1\licencia.json" goto :jsonNo
+echo   [OK] %~1\licencia.json
+set /a HECHOS+=1
+exit /b
+:jsonNo
+echo   [--] no se pudo escribir en %~1
+exit /b
+
+:txtEn
+REM licencia_owner.txt al lado del programa. Solo si la carpeta EXISTE:
+REM crearla no tendria sentido, y escribir en una carpeta que no es la
+REM del programa solo deja basura.
+if not exist "%~1" exit /b
+>"%~1\licencia_owner.txt" echo %TOKEN%
+if not exist "%~1\licencia_owner.txt" goto :txtNo
+echo   [OK] %~1\licencia_owner.txt
+set /a HECHOS+=1
+exit /b
+:txtNo
+echo   [--] %~1 no se puede escribir ^(hace falta admin^) - se ignora
+exit /b
 """
 
 
@@ -214,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("  SIN atar a una maquina: sirve en cualquier PC. No lo "
               "compartas.")
-    print("\n  Copialo a la carpeta del programa y hace doble clic.\n")
+    print("\n  Doble clic y listo: busca solo donde esta instalado.\n")
     return 0
 
 

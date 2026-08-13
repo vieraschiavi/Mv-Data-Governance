@@ -2376,15 +2376,41 @@ def test_bat_de_activacion_owner_escribe_donde_el_programa_lee(tmp_path,
     # el token va UNA sola vez (en set TOKEN=); el resto lo usa por variable
     assert texto.count(token) == 1
 
-    # los cuatro destinos, que son los cuatro caminos reales de current()
-    assert "%USERPROFILE%\\.mv_data_governance" in texto   # Electron / sin admin
-    assert "%AQUI%Data" in texto                           # frozen escribible
-    assert "%AQUI%licencia_owner.txt" in texto             # frozen empaquetada
-    assert "resources\\server" in texto                    # motor de Electron
+    # los destinos, que son los caminos reales de current()
+    assert '"%USERPROFILE%\\.mv_data_governance"' in texto  # Electron / sin admin
+    assert '"%AQUI%Data"' in texto                          # frozen escribible
+    assert 'call :txtEn  "%AQUI%"' in texto                 # frozen empaquetada
+    assert "resources\\server" in texto                     # motor de Electron
     # y avisa si MVDG_DATA_DIR le gana a todo lo anterior
     assert "MVDG_DATA_DIR" in texto
     # no se cierra la ventana sin que se lea el resultado
     assert "pause" in texto
+
+    # DETECCION AUTOMATICA: el instalador deja elegir carpeta y disco
+    # (allowToChangeInstallationDirectory), asi que adivinar rutas no alcanza.
+    # Se le pregunta al registro de desinstalacion, donde el instalador anota
+    # su InstallLocation real, en las dos ramas posibles.
+    assert "reg query" in texto and "InstallLocation" in texto
+    assert "Uninstall" in texto
+    for rama in ("HKCU", "HKLM"):
+        assert f"call :buscarEn {rama}" in texto
+
+    # Toda subrutina llamada tiene que existir: un ":algo" que no esta
+    # definido no falla ruidoso en batch, simplemente no hace nada.
+    definidas = {ln.strip()[1:] for ln in texto.splitlines()
+                 if ln.strip().startswith(":") and not ln.strip().startswith("::")}
+    llamadas = {ln.split("call :")[1].split()[0]
+                for ln in texto.splitlines() if "call :" in ln}
+    assert llamadas <= definidas, f"subrutinas sin definir: {llamadas - definidas}"
+
+    # NINGUN bloque "( ... )" puede expandir una ruta adentro. Es el error
+    # clasico de batch: %ProgramFiles(x86)% trae un ")" que cierra el bloque
+    # antes de tiempo y rompe el script entero. Por eso las subrutinas usan
+    # saltos y no bloques.
+    bloques = re.findall(r"\((?:[^()]|\^\(|\^\))*\)", texto, re.S)
+    con_ruta = [b for b in bloques
+                if ("%~1" in b or "%MVDG_DATA_DIR%" in b) and "reg query" not in b]
+    assert not con_ruta, f"bloques que expanden rutas adentro: {con_ruta}"
 
     # un token que no verifica NO genera nada: un .bat con un token malo se
     # ve identico a uno bueno y el sintoma recien aparece al abrir el programa
