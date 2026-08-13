@@ -2418,6 +2418,71 @@ def test_el_emisor_de_licencias_esta_configurado():
     assert licensing.verify("MVDG2.falso.falso") is None
 
 
+def _correr_la_app(monkeypatch, tmp_path, con_ia: bool):
+    """Levanta el dashboard entero con AppTest y devuelve la corrida."""
+    from streamlit.testing.v1 import AppTest
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    for v in ("OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
+              "MVDG_AI_API_KEY", "MVDG_AI_PROVIDER"):
+        monkeypatch.delenv(v, raising=False)
+    if con_ia:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-de-prueba")
+    else:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    at = AppTest.from_file(os.path.join(_repo_root(), "app", "app.py"),
+                           default_timeout=300)
+    at.run()
+    return at
+
+
+def _keys_de(at) -> list:
+    tipos = ("button", "checkbox", "selectbox", "multiselect", "radio",
+             "text_input", "number_input", "slider", "text_area", "toggle",
+             "date_input", "color_picker")
+    keys = []
+    for tp in tipos:
+        try:
+            keys += [w.key for w in getattr(at, tp) if w.key]
+        except (AttributeError, KeyError):
+            continue
+    return keys
+
+
+def test_la_app_arranca_sin_excepciones_con_ia_configurada(tmp_path, monkeypatch):
+    """Regresión de un crash REAL en la pantalla del usuario:
+
+        StreamlitDuplicateElementKey: key='btn_ai_fix_rotulado_alimentos_RAL-02_es'
+
+    Los botones de sugerencia por IA solo se dibujan si hay un proveedor
+    configurado. Mientras eso solo se podía hacer por variable de entorno,
+    nadie los veía y el choque de keys quedó latente. Al poder configurarlo
+    desde la interfaz, salió a la superficie.
+
+    Streamlit ejecuta el script ENTERO en cada rerun y las pestañas no son
+    perezosas: las tres llamadas a _render_fixes conviven en la misma pasada,
+    y con "Mis datos" activo comparten dataset y regla."""
+    at = _correr_la_app(monkeypatch, tmp_path, con_ia=True)
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+    # y los botones tienen que estar DE VERDAD: si no se dibujaran, este test
+    # pasaría sin probar nada — que es como el bug sobrevivió hasta ahora.
+    botones_ia = [b.key for b in at.button if b.key and "ai_fix" in b.key]
+    assert len(botones_ia) > 1, "sin botones de IA no se prueba el caso que fallaba"
+
+
+def test_ningun_widget_de_la_app_comparte_key(tmp_path, monkeypatch):
+    """El caso general del bug de arriba: dos widgets con la misma key hacen
+    reventar la pantalla entera, no solo ese widget. Se revisa TODA la app en
+    los dos estados que cambian qué se dibuja."""
+    from collections import Counter
+    for con_ia in (True, False):
+        at = _correr_la_app(monkeypatch, tmp_path, con_ia=con_ia)
+        assert not at.exception, [str(e.value)[:300] for e in at.exception]
+        keys = _keys_de(at)
+        repetidas = [k for k, n in Counter(keys).items() if n > 1]
+        assert not repetidas, f"con_ia={con_ia}: keys repetidas {repetidas}"
+        assert len(keys) > 20, f"con_ia={con_ia}: solo {len(keys)} widgets con key"
+
+
 def test_todo_archivo_fuente_lleva_el_aviso_de_copyright():
     """El repo es PUBLICO y el software es propietario: el aviso de copyright
     en cada archivo es lo que hace que quien copie un modulo suelto no pueda
