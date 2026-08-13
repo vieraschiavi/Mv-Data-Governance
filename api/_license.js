@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Firma y verificación de licencias MV Data Governance (HMAC-SHA256, sin
 // dependencias externas). Prefijo "_" para que Vercel NO la trate como
 // endpoint — es un módulo interno, no una función pública.

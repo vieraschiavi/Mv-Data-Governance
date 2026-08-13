@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Generador del video de demo (PIL + imageio-ffmpeg) con
 narración en voz por idioma (Piper TTS): español (es_AR "daniela"), inglés

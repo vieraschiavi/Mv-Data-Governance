@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 const P = require("pptxgenjs");
 const fs = require("fs");
 const { variants } = require("./content_i18n.js");

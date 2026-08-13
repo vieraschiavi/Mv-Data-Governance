@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 import React, { useEffect, useState } from "react";
 
 // Textos del launcher en los 3 idiomas del producto; el idioma sale del

@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Registro de pagos ya usados para emitir licencia — el cierre del agujero
 // que la ventana de tiempo solo achicaba.
 //

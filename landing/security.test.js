@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 /*
  * Test de regresión de seguridad: ejecuta las funciones de escape REALES
  * (esc()/rvEsc()) tal como viven hoy en el HTML de producción — no una

@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // Contenido por variante. Cifras IDÉNTICAS en todos los idiomas (salen de model.py).
 // Tipos de slide: cover, badcards, table4, tagcards, flow, statscallout, charts, ticklist, closing.
 
