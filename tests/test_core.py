@@ -6973,6 +6973,92 @@ def _mcp_env(tmp_path):
                 os.path.abspath(__file__)))}
 
 
+def test_los_servidores_mcp_de_bi_estan_completos_y_coherentes():
+    """Cada servidor tiene que declarar todo lo que hace falta para
+    conectarlo. Un preset a medias es peor que no tenerlo: el usuario copia
+    una configuracion incompleta y el fallo aparece recien en su cliente MCP,
+    sin decir que falta."""
+    from mvdg import mcp_presets as P
+
+    comunes = {"etiqueta", "plataforma", "transporte", "requisitos", "auth",
+               "para_que", "docs"}
+    for nombre, cfg in P.SERVIDORES.items():
+        faltan = comunes - set(cfg)
+        assert not faltan, f"{nombre}: faltan {sorted(faltan)}"
+        assert cfg["transporte"] in (P.STDIO, P.HTTP), nombre
+        if cfg["transporte"] == P.STDIO:
+            assert cfg.get("comando") and cfg.get("args"), nombre
+            assert "url" not in cfg, f"{nombre}: stdio no lleva url"
+        else:
+            assert cfg.get("url", "").startswith("https://"), nombre
+            assert "comando" not in cfg, f"{nombre}: http no se lanza local"
+        assert cfg["docs"].startswith("https://"), nombre
+
+    # Las dos plataformas pedidas tienen que estar, cada una con su servidor
+    # local y su remoto: son escenarios distintos, no alternativas.
+    assert set(P.por_plataforma("Power BI")) == {"powerbi_local", "powerbi_remoto"}
+    assert set(P.por_plataforma("Tableau")) == {"tableau_local", "tableau_cloud"}
+
+
+def test_el_mcp_json_generado_es_el_que_documenta_cada_proveedor():
+    """La configuracion se GENERA del registro y no se escribe a mano en la
+    interfaz: si manana cambia un nombre de paquete, cambia en un solo lugar.
+
+    Los valores son los de la documentacion oficial (agosto 2026), no de
+    memoria — inventar un paquete npm daria una pantalla que parece andar y
+    falla en la maquina del usuario."""
+    import json as _json
+    from mvdg import mcp_presets as P
+
+    # Power BI remoto: Microsoft documenta exactamente esta forma.
+    remoto = _json.loads(P.config_json("powerbi_remoto"))
+    assert remoto["servers"]["powerbi-remoto"] == {
+        "type": "http",
+        "url": "https://api.fabric.microsoft.com/v1/mcp/powerbi",
+    }
+    # Tableau Cloud: servicio administrado con OAuth 2.1.
+    assert _json.loads(P.config_json("tableau_cloud"))["servers"][
+        "tableau-cloud"]["url"] == "https://mcp.tableau.com"
+    # Locales: paquetes npm oficiales, lanzados con npx.
+    pbi = _json.loads(P.config_json("powerbi_local"))["servers"]["powerbi-local"]
+    assert pbi["command"] == "npx"
+    assert "@microsoft/powerbi-modeling-mcp@latest" in pbi["args"]
+    tab = _json.loads(P.config_json("tableau_local"))["servers"]["tableau-local"]
+    assert "@tableau/mcp-server" in tab["args"]
+
+    with pytest.raises(KeyError):
+        P.config_json("no_existe")
+
+
+def test_los_remotos_no_se_intentan_lanzar_desde_el_programa():
+    """Power BI/Fabric remoto y Tableau Cloud autentican con OAuth
+    interactivo. Ofrecer un boton de "conectar" seria ofrecer algo que siempre
+    falla; se corta con un mensaje que dice que hacer en su lugar."""
+    from mvdg import mcp_presets as P
+
+    assert P.lanzable_localmente("powerbi_local")
+    assert P.lanzable_localmente("tableau_local")
+    for remoto in ("powerbi_remoto", "tableau_cloud"):
+        assert not P.lanzable_localmente(remoto)
+        with pytest.raises(ValueError) as e:
+            P.herramientas(remoto)
+        assert "config_json" in str(e.value), "el error tiene que decir la salida"
+
+
+def test_el_camino_stdio_de_los_presets_funciona_de_verdad(tmp_path):
+    """No se puede probar en vivo contra Power BI o Tableau: hacen falta un
+    tenant, credenciales y (en Power BI) que el admin habilite la opcion. Lo
+    que SI se prueba es el mecanismo que van a usar — lanzar un servidor MCP
+    por stdio y listar sus herramientas — apuntando al servidor MCP del propio
+    programa. Si esto anda, lo unico no verificado es el proveedor."""
+    from mvdg import mcp_client, mcp_presets
+
+    assert mcp_presets.lanzable_localmente("powerbi_local")
+    tools = mcp_client.list_tools(sys.executable, ["-m", "mvdg.mcp_server"],
+                                  env=_mcp_env(tmp_path))
+    assert [t for t in tools if t["name"] == "mvdg_catalog"], tools
+
+
 def test_mcp_server_full_roundtrip_over_real_stdio(tmp_path):
     """El servidor MCP de gobernanza responde por el protocolo REAL (stdio):
     cliente oficial ↔ subproceso servidor, sin mocks de transporte."""
