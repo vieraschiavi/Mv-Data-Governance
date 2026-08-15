@@ -30,10 +30,11 @@
  * servidor) vive en lib/server-manager.js, sin depender de Electron, para
  * poder testearla con Node puro — ver lib/server-manager.test.js.
  */
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const sm = require("./lib/server-manager");
+const nav = require("./lib/navegacion");
 
 let win = null;
 let serverProc = null;
@@ -136,6 +137,17 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
+  // La ventana solo puede mostrar NUESTRA interfaz. La decision de que es
+  // "nuestro" vive en lib/navegacion.js para poder testearla sin Electron
+  // (ver el comentario de ese archivo).
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (nav.alAbrirVentana(url) === "externo") shell.openExternal(url);
+    return { action: "deny" };     // nunca una ventana de Electron
+  });
+  win.webContents.on("will-navigate", (ev, url) => {
+    if (nav.alNavegar(url) === "bloquear") ev.preventDefault();
+  });
+
   win.setMenuBarVisibility(false);
   win.once("ready-to-show", () => win.show());
   await win.loadFile(launcherFile());

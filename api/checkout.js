@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
   const p = PLANS[plan];
   if (!p) { res.status(400).json({ error: "plan_invalido" }); return; }
 
-  const base = "https://" + (req.headers.host || "mv-data-governance.vercel.app");
+  const base = "https://" + sitioDeConfianza(req.headers && req.headers.host);
   const token = process.env.MP_ACCESS_TOKEN;
   const link = process.env["MP_LINK_" + plan.toUpperCase()];
 
@@ -78,4 +78,34 @@ module.exports = async (req, res) => {
 
 function safeJson(s) { try { return JSON.parse(s); } catch (e) { return {}; } }
 
+// El dominio al que MercadoPago devuelve al comprador DESPUES de pagar.
+//
+// Antes salia directo de `req.headers.host`, que lo pone quien hace el pedido.
+// Hoy Vercel solo enruta hosts que son del proyecto, asi que no era explotable
+// — pero el dia que eso cambie, o si esto se mueve a otro hosting, un Host
+// falseado mandaria al comprador (con su payment_id en la URL) a un sitio
+// ajeno, y ese sitio podria pedir la licencia con ese id. Es barato no
+// depender de que el borde nos proteja.
+//
+// Se acepta: el dominio propio, cualquier *.vercel.app (los previews de cada
+// PR, que tienen que seguir funcionando) y lo que se declare en MVDG_SITE_HOST.
+// Si mañana se pone un dominio propio, se agrega ahi; mientras tanto el
+// comprador vuelve al dominio canonico — feo pero funcional, nunca a un
+// tercero.
+const HOST_CANONICO = "mv-data-governance.vercel.app";
+
+function sitioDeConfianza(host) {
+  const h = String(host || "").trim().toLowerCase();
+  // Un host valido es solo letras, digitos, puntos, guiones y un puerto.
+  // Cualquier otra cosa (barras, arrobas, espacios) es un intento de
+  // torcer la URL, no un dominio.
+  if (!/^[a-z0-9.-]+(:[0-9]{1,5})?$/.test(h)) return HOST_CANONICO;
+  const propio = (process.env.MVDG_SITE_HOST || "").trim().toLowerCase();
+  if (propio && h === propio) return h;
+  if (h === HOST_CANONICO) return h;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/.test(h)) return h;
+  return HOST_CANONICO;
+}
+
 module.exports.PLANS = PLANS;
+module.exports.sitioDeConfianza = sitioDeConfianza;

@@ -49,6 +49,13 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px;max-width:1000px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800}
 .mk{width:30px;height:30px;border-radius:8px;display:block}
 .brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+/* En un celular la barra no entra: logo + selector de idioma + boton de
+   volver suman mas que el ancho, y la pagina se iba de lado (medido:
+   17px de desborde en 390px). Se ocultan las dos cosas redundantes.
+   El boton de volver no se pierde: el LOGO ya linkea a index.html,
+   que es exactamente el mismo destino. index.html oculta su CTA de
+   nav igual, por lo mismo. */
+@media(max-width:640px){.brand small{display:none}.right .btn{display:none}}
 .right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
 .lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
