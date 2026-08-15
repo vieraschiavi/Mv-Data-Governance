@@ -323,6 +323,33 @@ _T: dict[str, dict[str, str]] = {
               "pedir texto apenas com uma key: autentica por OAuth dentro de um "
               "editor. Se você usa um gateway que o exponha em formato OpenAI, use "
               "«Outro»."},
+    # --- Servidores MCP de las plataformas de BI ----------------------------
+    "mcp_bi_title": {"es": "Servidores MCP oficiales de tus plataformas",
+                     "en": "Official MCP servers of your platforms",
+                     "pt": "Servidores MCP oficiais das suas plataformas"},
+    "mcp_bi_intro": {
+        "es": "Copiá el bloque en el archivo de configuración de tu cliente MCP "
+              "(VS Code, Claude Desktop). MV Data Governance no guarda ni pide "
+              "las credenciales de esas plataformas.",
+        "en": "Copy the block into your MCP client's configuration file "
+              "(VS Code, Claude Desktop). MV Data Governance neither stores nor "
+              "asks for those platforms' credentials.",
+        "pt": "Copie o bloco no arquivo de configuração do seu cliente MCP "
+              "(VS Code, Claude Desktop). O MV Data Governance não guarda nem "
+              "pede as credenciais dessas plataformas."},
+    "mcp_bi_stdio": {
+        "es": "Corre en tu máquina (stdio). El programa también puede lanzarlo.",
+        "en": "Runs on your machine (stdio). The app can also launch it.",
+        "pt": "Roda na sua máquina (stdio). O programa também pode iniciá-lo."},
+    "mcp_bi_http": {
+        "es": "Servicio remoto con inicio de sesión interactivo: se conecta "
+              "desde tu cliente MCP, no desde acá.",
+        "en": "Remote service with interactive sign-in: connect it from your "
+              "MCP client, not from here.",
+        "pt": "Serviço remoto com login interativo: conecte-o pelo seu cliente "
+              "MCP, não daqui."},
+    "mcp_bi_docs": {"es": "Documentación oficial", "en": "Official docs",
+                    "pt": "Documentação oficial"},
     "lic_title": {"es": "🔑 Licencia", "en": "🔑 License", "pt": "🔑 Licença"},
     "lic_plan": {"es": "Plan actual", "en": "Current plan", "pt": "Plano atual"},
     "lic_demo": {"es": "Demo (gratis)", "en": "Demo (free)", "pt": "Demo (grátis)"},

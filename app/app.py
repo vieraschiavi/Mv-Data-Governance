@@ -59,7 +59,7 @@ from mvdg import server as mvdg_server
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
-from mvdg import ai_settings
+from mvdg import ai_settings, mcp_presets
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -2431,6 +2431,28 @@ with tab_pbi:
     with st.expander(t("mcp_remote_title", lang)):
         st.markdown(t("mcp_remote_body", lang))
         st.caption(t("mcp_docs_note", lang))
+
+    # Los servidores MCP oficiales de cada plataforma, con su configuración
+    # generada del registro (mvdg/mcp_presets.py) y no escrita a mano acá: si
+    # cambia un nombre de paquete, cambia en un solo lugar.
+    st.markdown(f'**{t("mcp_bi_title", lang)}**')
+    st.caption(t("mcp_bi_intro", lang))
+    for _plat in ("Power BI", "Tableau"):
+        _srv = mcp_presets.por_plataforma(_plat)
+        with st.expander(f"{_plat} — {len(_srv)}"):
+            for _pid, _cfg in _srv.items():
+                st.markdown(f"**{_cfg['etiqueta']}**")
+                st.caption(_cfg["para_que"])
+                _c1, _c2 = st.columns(2)
+                _c1.caption(f"🔑 {_cfg['auth']}")
+                _c2.caption(f"📋 {_cfg['requisitos']}")
+                if mcp_presets.lanzable_localmente(_pid):
+                    st.caption(t("mcp_bi_stdio", lang))
+                else:
+                    st.caption(t("mcp_bi_http", lang))
+                st.code(mcp_presets.config_json(_pid), language="json")
+                st.caption(f"[{t('mcp_bi_docs', lang)}]({_cfg['docs']})")
+                st.divider()
 
     st.markdown(f'**{t("mcp_expose_title", lang)}**')
     st.markdown(t("mcp_expose_body", lang))
