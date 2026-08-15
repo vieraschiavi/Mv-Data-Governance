@@ -35,7 +35,8 @@ test-py: install
 # CI (que sí tiene Node) es el que los hace obligatorios de verdad.
 test-js:
 	@if command -v $(NODE) >/dev/null 2>&1; then \
-		$(NODE) api/payments.test.js && $(NODE) landing/security.test.js; \
+		$(NODE) api/payments.test.js && $(NODE) landing/security.test.js \
+			&& $(NODE) electron/lib/navegacion.test.js; \
 	else \
 		echo "⚠️  node no está en el PATH: se saltean los tests de JS (pago/licencia + XSS)."; \
 		echo "    Instalá Node 18+ y corré: make test-js"; \

@@ -693,7 +693,8 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <button type="button" class="trial-link" id="trialToggle" data-i="pl3trial">o probá 14 días gratis · sin tarjeta</button>
       <form id="trialForm" class="trial-form" hidden>
         <input type="email" id="trialEmail" required
-              data-i-ph="pl3trial_ph" placeholder="tu@empresa.com" autocomplete="email">
+              data-i-ph="pl3trial_ph" placeholder="tu@empresa.com" autocomplete="email"
+              data-i-al="pl3trial_al" aria-label="Tu email para la prueba de 14 días">
         <button type="submit" class="btn btn-od" data-i="pl3trial_go">Empezar prueba de 14 días</button>
         <p class="trial-msg" id="trialMsg" hidden></p>
       </form>
@@ -947,7 +948,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
   pl3t:"Professional",pl3w:"For teams governing for real (one-time).",pl_mo2:"",pl3per:"Up to 25 users",
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
-  pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
+  pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_al:"Your email for the 14-day trial",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
   c_eye:"Contact",c_h2:"Let's talk about your data",
@@ -1122,7 +1123,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
   pl3t:"Professional",pl3w:"Para equipes que governam de verdade (pagamento único).",pl_mo2:"",pl3per:"Até 25 usuários",
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
-  pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
+  pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_al:"Seu email para o teste de 14 dias",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
@@ -1143,6 +1144,9 @@ ES.alt_tab_bi="Pestaña BI y API: tablas de gobierno publicadas para Power BI y 
 /* Igual que los alt de las capturas: el placeholder del email del trial no
    sale de un [data-i] (vive en el atributo placeholder, no en el texto). */
 document.querySelectorAll('[data-i-ph]').forEach(function(el){ES[el.getAttribute('data-i-ph')]=el.placeholder;});
+/* aria-label traducible: un placeholder NO es nombre accesible — un lector de
+   pantalla no lo anuncia como etiqueta y ademas desaparece al tipear. */
+document.querySelectorAll('[data-i-al]').forEach(function(el){ES[el.getAttribute('data-i-al')]=el.getAttribute('aria-label');});
 /* title + meta social por idioma. Antes setLang() cambiaba el texto visible
    pero dejaba <title> y los meta (description/og/twitter) siempre en
    español — quien compartía el link estando en EN/PT igual mandaba una
@@ -1183,6 +1187,10 @@ function setLang(lang){
   document.querySelectorAll('[data-i-ph]').forEach(function(el){
     var k=el.getAttribute('data-i-ph');
     el.placeholder=(dict&&dict[k]!==undefined)?dict[k]:ES[k];
+  });
+  document.querySelectorAll('[data-i-al]').forEach(function(el){
+    var k=el.getAttribute('data-i-al');
+    el.setAttribute('aria-label',(dict&&dict[k]!==undefined)?dict[k]:ES[k]);
   });
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;

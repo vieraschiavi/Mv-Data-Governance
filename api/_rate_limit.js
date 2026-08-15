@@ -28,9 +28,23 @@ function rateLimited(key, { max, windowMs }) {
   while (hits.length && now - hits[0] > windowMs) hits.shift();
   if (hits.length >= max) return true;
   hits.push(now);
-  // higiene: no acumular IPs muertas para siempre
+  // Higiene: no acumular IPs muertas para siempre.
+  //
+  // La version anterior barria borrando solo las entradas con array VACIO, y
+  // los arrays se podan unicamente cuando esa misma clave se vuelve a
+  // consultar (el `while` de arriba). O sea que una IP que entra una vez y no
+  // vuelve deja su timestamp para siempre, su array nunca queda vacio, y el
+  // barrido no borraba NADA. Medido: 3000 IPs con la ventana ya vencida
+  // dejaban las 3000 entradas en el Map.
+  //
+  // Ahora se mira la ULTIMA marca de cada clave: si ya quedo fuera de la
+  // ventana, esa clave no puede limitar a nadie y se va. Peor caso si otro
+  // endpoint usa una ventana mas larga: alguien recupera su cupo antes de
+  // tiempo — muy preferible a que el proceso crezca sin techo.
   if (HITS.size > 2048) {
-    for (const [k, v] of HITS) if (!v.length) HITS.delete(k);
+    for (const [k, v] of HITS) {
+      if (!v.length || now - v[v.length - 1] > windowMs) HITS.delete(k);
+    }
   }
   return false;
 }

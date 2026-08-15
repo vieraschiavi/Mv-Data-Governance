@@ -812,6 +812,92 @@ async function main() {
     });
   }
 
+  // ------------------------------------- coherencia de la cadena comercial
+  //
+  // Lo que se OFRECE, lo que se puede COBRAR y lo que se ENTREGA son tres
+  // listas en tres archivos distintos, y nada las ataba. Hoy coinciden porque
+  // se cuidaron a mano; alcanza con agregar un plan en la landing y olvidarse
+  // del checkout para que el boton devuelva 400, o agregarlo al checkout y
+  // olvidarse de la tabla SKU para cobrar algo que no entrega licencia.
+  //
+  // Es exactamente el bug que _license.js ya cerro un nivel mas abajo (un SKU
+  // con plan y sin plazo). La leccion de aquella vez fue que un test que hay
+  // que acordarse de escribir no sirve: lo que sirve es que la estructura lo
+  // impida o que algo lo verifique solo. Aca no se pueden fusionar los tres
+  // archivos (uno es HTML estatico), asi que se verifica.
+  {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const checkout = require("./checkout");
+    const planesCheckout = Object.keys(checkout.PLANS).sort();
+    const skus = Object.keys(license.SKU).sort();
+
+    await check("comercial: todo plan cobrable tiene entrada en la tabla SKU",
+      () => {
+        const huerfanos = planesCheckout.filter((p) => !skus.includes(p));
+        assert.deepStrictEqual(huerfanos, [],
+          `estos planes se cobran pero no entregan licencia: ${huerfanos}`);
+      });
+
+    await check("comercial: todo SKU que entrega licencia se puede cobrar",
+      () => {
+        const invendibles = skus.filter((s) => !planesCheckout.includes(s));
+        assert.deepStrictEqual(invendibles, [],
+          `estos SKU otorgan licencia pero no hay forma de comprarlos: ${invendibles}`);
+      });
+
+    await check("comercial: cada boton de compra de la landing existe en el checkout",
+      () => {
+        const html = fs.readFileSync(
+          path.join(__dirname, "..", "landing", "index.html"), "utf8");
+        const botones = [...html.matchAll(/data-mp="([a-z0-9_]+)"/g)]
+          .map((m) => m[1]);
+        assert.ok(botones.length > 0, "no se encontro ningun boton data-mp");
+        const rotos = botones.filter((b) => !planesCheckout.includes(b));
+        assert.deepStrictEqual(rotos, [],
+          `botones que responderian 400 plan_invalido: ${rotos}`);
+      });
+  }
+
+  // ------------------------------------------ checkout: dominio de retorno
+  {
+    const { sitioDeConfianza } = require("./checkout");
+    const CANON = "mv-data-governance.vercel.app";
+
+    await check("checkout: un Host ajeno NO decide a donde vuelve el comprador",
+      () => {
+        assert.strictEqual(sitioDeConfianza("atacante.com"), CANON);
+        assert.strictEqual(sitioDeConfianza("evil.com:443"), CANON);
+        // formas de torcer la URL, no dominios
+        assert.strictEqual(sitioDeConfianza("evil.com/x"), CANON);
+        assert.strictEqual(sitioDeConfianza("a@evil.com"), CANON);
+        assert.strictEqual(sitioDeConfianza(""), CANON);
+        assert.strictEqual(sitioDeConfianza(undefined), CANON);
+      });
+
+    await check("checkout: los previews de Vercel siguen funcionando", () => {
+      const preview = "mv-data-governance-git-rama-mv13.vercel.app";
+      assert.strictEqual(sitioDeConfianza(preview), preview);
+      assert.strictEqual(sitioDeConfianza(CANON), CANON);
+      // ...pero no un dominio que solo TERMINA parecido
+      assert.strictEqual(sitioDeConfianza("vercel.app.evil.com"), CANON);
+    });
+
+    await check("checkout: un dominio propio se habilita con MVDG_SITE_HOST",
+      () => {
+        const antes = process.env.MVDG_SITE_HOST;
+        process.env.MVDG_SITE_HOST = "mvdatagovernance.com";
+        try {
+          assert.strictEqual(sitioDeConfianza("mvdatagovernance.com"),
+                             "mvdatagovernance.com");
+          assert.strictEqual(sitioDeConfianza("otro.com"), CANON);
+        } finally {
+          if (antes === undefined) delete process.env.MVDG_SITE_HOST;
+          else process.env.MVDG_SITE_HOST = antes;
+        }
+      });
+  }
+
   console.log(`\nTodos los checks de pago/licencia pasaron (${checks}).`);
 }
 
