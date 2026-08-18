@@ -20,6 +20,44 @@ const T = {
   linaje: { es: "Linaje", en: "Lineage", pt: "Linhagem" },
   glosario: { es: "Glosario", en: "Glossary", pt: "Glossário" },
   politicas: { es: "Políticas", en: "Policies", pt: "Políticas" },
+  licencia: { es: "Licencia", en: "License", pt: "Licença" },
+
+  // --- licencia ---
+  lic_plan: { es: "Plan vigente", en: "Current plan", pt: "Plano vigente" },
+  lic_demo_ayuda: {
+    es: "Estás en la versión demo. Si compraste, pegá abajo la clave que recibiste.",
+    en: "You are on the demo version. If you purchased, paste the key you received below.",
+    pt: "Você está na versão demo. Se comprou, cole abaixo a chave que recebeu." },
+  lic_activa_ayuda: {
+    es: "Licencia activa. Se verifica su firma cada vez que abrís el programa.",
+    en: "License active. Its signature is verified every time you open the program.",
+    pt: "Licença ativa. Sua assinatura é verificada sempre que você abre o programa." },
+  lic_clave: { es: "Clave de licencia", en: "License key", pt: "Chave de licença" },
+  lic_activar: { es: "Activar", en: "Activate", pt: "Ativar" },
+  lic_quitar: { es: "Quitar licencia", en: "Remove license", pt: "Remover licença" },
+  lic_ok: { es: "Licencia activada.", en: "License activated.", pt: "Licença ativada." },
+  lic_email: { es: "Registrada a", en: "Registered to", pt: "Registrada para" },
+  lic_vence: { es: "Vence", en: "Expires", pt: "Expira" },
+  lic_funciones: { es: "Funciones que requieren licencia",
+                   en: "Features that require a license",
+                   pt: "Funções que exigem licença" },
+  // Nombre legible de cada funcion paga. Sin esto la pantalla mostraba el
+  // identificador interno ("escaneo_tenant_bi"), que es lenguaje de
+  // programador: el cliente no tiene por que saber como se llama la clave.
+  fn_migracion_purview: { es: "Migrar el catálogo a Microsoft Purview",
+                          en: "Migrate the catalog to Microsoft Purview",
+                          pt: "Migrar o catálogo para o Microsoft Purview" },
+  fn_migracion_collibra: { es: "Migrar el catálogo a Collibra",
+                           en: "Migrate the catalog to Collibra",
+                           pt: "Migrar o catálogo para o Collibra" },
+  fn_escaneo_tenant_bi: { es: "Escanear el tenant de Power BI / Tableau",
+                          en: "Scan the Power BI / Tableau tenant",
+                          pt: "Escanear o tenant do Power BI / Tableau" },
+
+  lic_nota_exe: {
+    es: "Tu licencia queda activada para todo el programa. Estas funciones se usan desde el panel completo de gobierno.",
+    en: "Your license is activated for the whole program. These features are used from the full governance panel.",
+    pt: "Sua licença fica ativada para todo o programa. Estas funções são usadas no painel completo de governança." },
 
   // --- KPIs del panorama ---
   kpi_datasets: { es: "Datasets gobernados", en: "Governed datasets", pt: "Datasets governados" },

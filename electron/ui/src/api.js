@@ -67,3 +67,43 @@ export async function todo(lang) {
   const partes = await Promise.all(nombres.map((n) => tabla(n, lang)));
   return Object.fromEntries(nombres.map((n, i) => [n, partes[i]]));
 }
+
+/* ------------------------------------------------------------- licencia
+ * El .exe no tenia forma de activar una compra: sus vistas son todas
+ * gratuitas y no habia donde pegar la clave, asi que demo, paga y owner se
+ * veian igual. Estas tres llamadas cierran eso contra /api/licencia.
+ */
+export async function licencia() {
+  return pedir("/api/licencia");
+}
+
+export async function activarLicencia(token) {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/licencia`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const cuerpo = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // El detalle lo escribe la API y ya viene explicado; se pasa tal cual
+    // para no inventar un mensaje distinto del que dice el motor.
+    throw new ApiError("clave_invalida", cuerpo.detail || `HTTP ${r.status}`);
+  }
+  return cuerpo;
+}
+
+export async function desactivarLicencia() {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/licencia`, { method: "DELETE" });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
+  return r.json();
+}
