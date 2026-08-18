@@ -250,19 +250,27 @@ jobs:
         env:
           TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
         run: |
-          # Sin el secreto no hay instalador de owner posible. Como esto ahora
-          # corre SOLO en cada merge a main, cortar con error dejaria el repo
-          # con un rojo permanente por algo que no es un bug — y un CI que
-          # siempre esta en rojo deja de mirarse. Se avisa y se saltea; a mano
-          # (workflow_dispatch) si corta, porque ahi alguien lo pidio explicito
-          # y necesita saber por que no salio.
+          # Sin el secreto no hay instalador de owner posible.
+          #
+          # Cuando cortar y cuando saltear se decide por lo que se PIDIO, no
+          # por el evento: el automerge dispara con workflow_dispatch igual
+          # que una persona, asi que mirar github.event_name no distingue
+          # nada. Se vio en la corrida #9 — el automerge pidio 'owner', falto
+          # el secreto, y el build quedo en rojo aunque nadie hubiera apretado
+          # nada.
+          #
+          #   version=owner  -> alguien quiere SOLO el del owner: si falta el
+          #                     secreto no hay nada que entregar, corta.
+          #   version=ambas  -> el del cliente ya se construyo; el del owner
+          #                     se suma si se puede. Se avisa y se sigue.
           if [ -z "$TOKEN" ]; then
             echo "hay=false" >> "$GITHUB_OUTPUT"
             echo "::warning title=Sin MVDG_OWNER_TOKEN::No se construye el instalador del owner. Generalo y pegalo en Settings > Secrets."
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "Pediste la version owner y falta el secreto: se corta."
+            if [ "${{ steps.modo.outputs.v }}" = "owner" ]; then
+              echo "Se pidio SOLO la version owner y falta el secreto: no hay nada que entregar."
               exit 1
             fi
+            echo "Se sigue: el instalador del cliente ya se construyo."
             exit 0
           fi
           echo "hay=true" >> "$GITHUB_OUTPUT"
