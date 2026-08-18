@@ -157,8 +157,19 @@ jobs:
             // los pida el GITHUB_TOKEN. Por eso se piden explicitamente.
             //
             // Que falle esto no invalida el merge, que ya ocurrio: se avisa.
+            // 'ambas' y no 'owner': el instalador del OWNER necesita el
+            // secreto MVDG_OWNER_TOKEN, y si no esta puesto ese build se
+            // saltea (a proposito, para no dejar el repo en rojo permanente).
+            // Pidiendo solo 'owner', una corrida sin secreto terminaria en
+            // VERDE sin haber producido ningun instalador — un verde que no
+            // significa nada, que es peor que un rojo.
+            //
+            // Con 'ambas', el del CLIENTE se construye siempre (no necesita
+            // ningun secreto) y el del owner se suma solo cuando el secreto
+            // existe. Cuesta un build mas, y a cambio cada merge deja algo
+            // descargable de verdad.
             const instaladores = [
-              {archivo: 'instalador_electron.yml', inputs: {version: 'owner'}},
+              {archivo: 'instalador_electron.yml', inputs: {version: 'ambas'}},
               {archivo: 'instalador.yml', inputs: {}},
             ];
             for (const {archivo, inputs} of instaladores) {
