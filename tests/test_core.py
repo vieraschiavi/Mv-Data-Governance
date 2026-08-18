@@ -7572,3 +7572,35 @@ def test_la_interfaz_del_exe_tiene_la_pantalla_de_licencia():
         textos = fh.read()
     for clave in ("lic_plan", "lic_activar", "lic_clave", "lic_demo_ayuda"):
         assert clave in textos, f"falta la clave {clave} en el i18n del .exe"
+
+def test_el_instalador_instala_deps_antes_de_usarlas():
+    """`npm run <lo que sea>` necesita node_modules; `npm ci` es quien lo crea.
+
+    Estaban al reves y el build moria con "Cannot find package 'esbuild'".
+    Ese bug estuvo SIEMPRE ahi: no se veia porque el workflow moria antes, en
+    el Python embebido. Cada falla tapaba a la siguiente, y asi el instalador
+    acumulo 8 corridas rojas sin que se viera el fondo del problema.
+
+    Se verifica el ORDEN de los pasos, que es lo unico que importa: el primer
+    `npm run` tiene que venir despues del `npm ci`.
+    """
+    import yaml as _yaml
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        datos = _yaml.safe_load(fh)
+
+    pasos = datos["jobs"]["build"]["steps"]
+    i_ci = i_run = None
+    for i, paso in enumerate(pasos):
+        cmd = str(paso.get("run") or "")
+        if i_ci is None and "npm ci" in cmd:
+            i_ci = i
+        if i_run is None and "npm run" in cmd:
+            i_run = i
+
+    assert i_ci is not None, "el workflow no instala las dependencias (npm ci)"
+    assert i_run is not None, "el workflow no usa npm run: .cambio el empaquetado?"
+    assert i_ci < i_run, (
+        f"`npm run` esta en el paso {i_run + 1} y `npm ci` en el {i_ci + 1}: "
+        f"se usan las dependencias antes de instalarlas")

@@ -172,6 +172,14 @@ jobs:
           Pop-Location
           if ($codigo -ne 0) { throw "El Python embebido no puede importar el motor" }
 
+      # npm ci ANTES de construir la interfaz: build-ui usa esbuild, que sale
+      # de node_modules. Estaba al reves y fallaba con "Cannot find package
+      # 'esbuild'". El bug estuvo siempre; no se veia porque el build moria
+      # antes, en el Python embebido — cada falla tapaba a la siguiente.
+      - name: Instalar dependencias de Electron
+        working-directory: electron
+        run: npm ci
+
       - name: Construir la interfaz React
         working-directory: electron
         run: npm run build-ui
@@ -181,9 +189,6 @@ jobs:
         shell: bash
         run: echo "v=$(python -c 'import mvdg; print(mvdg.__version__)')" >> "$GITHUB_OUTPUT"
 
-      - name: Instalar dependencias de Electron
-        working-directory: electron
-        run: npm ci
 
       # ---------------------------------------------------------------- CLIENTE
       - name: Construir instalador CLIENTE
