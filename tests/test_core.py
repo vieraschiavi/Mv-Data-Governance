@@ -7604,3 +7604,25 @@ def test_el_instalador_instala_deps_antes_de_usarlas():
     assert i_ci < i_run, (
         f"`npm run` esta en el paso {i_run + 1} y `npm ci` en el {i_ci + 1}: "
         f"se usan las dependencias antes de instalarlas")
+
+def test_cada_merge_produce_al_menos_el_instalador_del_cliente():
+    """Un build que termina en verde sin dejar nada es peor que uno en rojo.
+
+    El instalador del OWNER necesita el secreto MVDG_OWNER_TOKEN y, si falta,
+    ese build se saltea (a proposito: si no, el repo queda en rojo permanente
+    por algo que no es un bug). Pidiendo SOLO 'owner', una corrida sin secreto
+    terminaria verde y sin ningun instalador — un verde que no significa nada.
+
+    Con 'ambas', el del CLIENTE se construye siempre porque no necesita
+    secretos.
+    """
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "automerge.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        crudo = fh.read()
+    # Solo codigo: un // comentario que mencione 'owner' no cuenta.
+    codigo = "\n".join(linea for linea in crudo.splitlines()
+                       if not linea.strip().startswith("//"))
+    assert "instalador_electron.yml" in codigo
+    assert "version: 'ambas'" in codigo, (
+        "el automerge pide una version que puede no construir nada; con "
+        "'ambas' el instalador del cliente sale siempre")
