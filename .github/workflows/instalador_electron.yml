@@ -44,10 +44,16 @@ on:
         default: cliente
         type: choice
         options: [cliente, owner, ambas]
-  # Y automaticamente al mergear a main algo que cambia el PROGRAMA, para que
-  # el instalador del owner este SIEMPRE disponible sin tener que acordarse de
-  # pedirlo. Los paths son a proposito: rearmar 400 MB por un typo en un .md
-  # seria quemar minutos de Actions al pedo.
+  # Y al pushear a main algo que cambia el PROGRAMA. Los paths son a
+  # proposito: rearmar 400 MB por un typo en un .md seria quemar minutos de
+  # Actions al pedo.
+  #
+  # OJO: este trigger NO alcanza para el caso normal. Los merges los hace
+  # automerge.yml con el GITHUB_TOKEN, y GitHub no crea corridas para eventos
+  # originados con ese token (proteccion contra recursion). Por eso automerge
+  # ademas PIDE este workflow explicitamente por workflow_dispatch, que es una
+  # excepcion documentada. Este `push` cubre el otro caso: alguien empujando a
+  # main a mano.
   push:
     branches: ["main"]
     paths:

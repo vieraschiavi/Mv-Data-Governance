@@ -7415,3 +7415,42 @@ def test_la_interfaz_no_usa_emojis_decorativos():
     assert not intrusos, (
         "emojis decorativos en la interfaz (solo se permite el semaforo "
         "verde/amarillo/rojo): " + "; ".join(intrusos[:12]))
+
+def test_el_automerge_dispara_los_instaladores():
+    """Un merge hecho por el automerge NO dispara los workflows de `on: push`.
+
+    Es la proteccion de GitHub contra workflows recursivos: los eventos
+    originados con el GITHUB_TOKEN no crean corridas nuevas. Solo
+    workflow_dispatch y repository_dispatch son excepcion.
+
+    Costo caro y en silencio: instalador.yml tiene `on: push` a main desde el
+    principio y estuvo 26 merges sin correr — nadie lo noto, porque "no
+    corrio" no falla, simplemente no pasa nada.
+
+    Este test fija que el automerge siga pidiendolos a mano.
+    """
+    import yaml as _yaml
+    ruta = os.path.join(_repo_root(), ".github", "workflows", "automerge.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        crudo = fh.read()
+    datos = _yaml.safe_load(crudo)
+
+    permisos = datos.get("permissions", {})
+    assert permisos.get("actions") == "write", (
+        "sin permiso actions:write el automerge no puede disparar nada")
+
+    assert "createWorkflowDispatch" in crudo, (
+        "el automerge no dispara ningun workflow despues de mergear: los "
+        "instaladores no se van a construir solos")
+
+    for archivo in ("instalador_electron.yml", "instalador.yml"):
+        assert archivo in crudo, f"el automerge no dispara {archivo}"
+        # y ese workflow tiene que ACEPTAR ser disparado
+        wf = os.path.join(_repo_root(), ".github", "workflows", archivo)
+        with open(wf, encoding="utf-8") as fh:
+            d = _yaml.safe_load(fh)
+        # PyYAML lee la clave `on:` como el booleano True
+        triggers = d.get("on", d.get(True)) or {}
+        assert "workflow_dispatch" in triggers, (
+            f"{archivo} no acepta workflow_dispatch: el automerge lo pide y "
+            f"la llamada falla")
