@@ -70,3 +70,4 @@ jobs:
           node api/payments.test.js
           node landing/security.test.js
           node electron/lib/navegacion.test.js
+          node electron/lib/instalador.test.js

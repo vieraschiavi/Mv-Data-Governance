@@ -61,7 +61,7 @@
         "to": "ui"
       },
       {
-        "from": "../build/pyembed",
+        "from": "../pyembed",
         "to": "server/python",
         "filter": [
           "**/*"

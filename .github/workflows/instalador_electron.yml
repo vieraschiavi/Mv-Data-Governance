@@ -64,6 +64,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Antes de gastar 5 minutos bajando Python y compilando: verificar la
+      # configuracion. Las dos cosas que rompieron este instalador (el layout
+      # del ._pth y el oneClick que anula la pantalla de carpeta) son
+      # configuracion, y fallan aca en segundos en vez de a mitad del build
+      # — o peor, en la PC del cliente.
+      - name: Verificar la configuracion del instalador
+        run: node electron/lib/instalador.test.js
+
       # Python EMBEBIBLE, no un venv. Un venv guarda en pyvenv.cfg la ruta
       # del Python base de la maquina donde se creo: copiado a la PC de un
       # cliente que no tiene Python, no arranca. La distribucion embeddable
@@ -74,7 +82,7 @@ jobs:
         shell: pwsh
         run: |
           $ver = "3.12.7"
-          $dest = "build\pyembed"
+          $dest = "pyembed"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           $zip = "$env:RUNNER_TEMP\pyembed.zip"
           Invoke-WebRequest -UseBasicParsing `
@@ -96,14 +104,20 @@ jobs:
           # no se agrega el directorio actual ni se respeta PYTHONPATH.
           # Sin esta linea, "python -m bi_api.main" no encuentra ni bi_api ni
           # mvdg por mas que el cwd sea el correcto, que es justo como los
-          # lanza spawnApi(). Paso de verdad: el build fallo con
-          # "ModuleNotFoundError: No module named 'mvdg'" con TODAS las
-          # dependencias instaladas al lado.
+          # lanza spawnApi().
           #
-          # ".." es relativo a la carpeta del ._pth (la del python.exe), y da
-          # el mismo destino en los dos lados: en el build, python esta en
-          # build\pyembed y el motor en la raiz del repo; ya instalado, esta
-          # en resources\server\python y el motor en resources\server.
+          # ".." se resuelve contra la carpeta del ._pth (NO contra el
+          # directorio actual: verificado). Por eso el motor tiene que quedar
+          # EXACTAMENTE UN NIVEL arriba del python.exe en los dos lados:
+          #
+          #   build:      <repo>\pyembed\python.exe        -> ".." = <repo>
+          #   instalado:  resources\server\python\python.exe -> ".." = resources\server
+          #
+          # Antes esto se armaba en "build\pyembed", que son DOS niveles: ahi
+          # ".." daba <repo>\build, que no tiene el motor. El build fallo 7
+          # veces seguidas con "ModuleNotFoundError: No module named 'mvdg'"
+          # y no habia instalador de Electron. Si se cambia $dest, tiene que
+          # seguir siendo una carpeta al lado del motor.
           Add-Content $pth ".."
 
           Invoke-WebRequest -UseBasicParsing -Uri "https://bootstrap.pypa.io/get-pip.py" `

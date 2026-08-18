@@ -44,6 +44,9 @@ electron/ui/dist/
 electron/dist_electron/
 # Python embebible que se baja en el build del instalador (~30 MB con deps)
 build/pyembed/
+# Python embebible que arma el workflow del instalador (al lado del
+# motor a proposito: el ._pth apunta a "..", un solo nivel).
+/pyembed/
 
 # Video build outputs (regenerable; served copies live in landing/video/)
 assets/video/*.mp4
