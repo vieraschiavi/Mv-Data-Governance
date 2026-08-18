@@ -38,6 +38,7 @@ on:
 permissions:
   contents: write          # mergear y borrar la rama
   pull-requests: write     # comentar/cerrar el PR
+  actions: write           # disparar el build del instalador (ver el final)
 
 jobs:
   merge:
@@ -137,4 +138,36 @@ jobs:
               core.info(`Rama ${rama} borrada`);
             } catch (e) {
               core.warning(`No se pudo borrar ${rama}: ${e.message}`);
+            }
+
+            // ----------------------------------------------------------------
+            // Disparar los instaladores A MANO, y no con `on: push`
+            // ----------------------------------------------------------------
+            // GitHub NO crea corridas nuevas para eventos originados con el
+            // GITHUB_TOKEN: es su proteccion contra workflows recursivos. O
+            // sea que el push que produce ESTE merge no dispara nada.
+            //
+            // No es teoria: instalador.yml tiene `on: push` a main desde el
+            // principio y su ultima corrida fue el 2026-08-11 — 26 merges
+            // atras. Estuvo muerto todo ese tiempo sin que nada lo dijera,
+            // porque "no corrio" no falla, simplemente no pasa nada.
+            //
+            // workflow_dispatch es una de las dos excepciones documentadas
+            // (junto con repository_dispatch): esos SI crean corrida aunque
+            // los pida el GITHUB_TOKEN. Por eso se piden explicitamente.
+            //
+            // Que falle esto no invalida el merge, que ya ocurrio: se avisa.
+            const instaladores = [
+              {archivo: 'instalador_electron.yml', inputs: {version: 'owner'}},
+              {archivo: 'instalador.yml', inputs: {}},
+            ];
+            for (const {archivo, inputs} of instaladores) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner, repo, workflow_id: archivo, ref: 'main', inputs,
+                });
+                core.info(`Disparado ${archivo}`);
+              } catch (e) {
+                core.warning(`No se pudo disparar ${archivo}: ${e.message}`);
+              }
             }
