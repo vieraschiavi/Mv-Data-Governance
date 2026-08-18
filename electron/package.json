@@ -80,6 +80,7 @@
       "icon": "../assets/brand/mv.ico"
     },
     "nsis": {
+      "include": "nsis/instalador.nsh",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,

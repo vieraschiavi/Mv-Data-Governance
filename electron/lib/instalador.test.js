@@ -93,4 +93,93 @@ check("layout: en el BUILD el python queda al lado del motor, no mas abajo",
       `nivel bajo la raiz) para que el ".." del ._pth de con el motor`);
   });
 
+// -------------------------------------- el script NSIS que propone el disco
+//
+// Tres formas distintas de que esto no haga NADA sin que nadie se entere, y
+// las tres son silenciosas: que el archivo no exista, que no llegue al repo
+// (estaba en electron/build/, y "build/" esta en .gitignore — el .exe habria
+// fallado por octava vez), o que el macro se llame distinto de "preInit", que
+// es el unico nombre que electron-builder invoca.
+{
+  const fs = require("node:fs");
+  const { execFileSync } = require("node:child_process");
+  const incluido = nsis.include;
+
+  check("NSIS: hay script propio para proponer la carpeta", () => {
+    assert.ok(incluido, "falta nsis.include");
+  });
+
+  const ruta = path.join(__dirname, "..", incluido);
+
+  check("NSIS: el script incluido existe en disco", () => {
+    assert.ok(fs.existsSync(ruta), `no existe ${incluido}`);
+  });
+
+  check("NSIS: el script NO esta ignorado por git", () => {
+    // git check-ignore sale 0 si el archivo ESTA ignorado.
+    let ignorado = false;
+    try {
+      execFileSync("git", ["check-ignore", "-q", ruta], { stdio: "ignore" });
+      ignorado = true;
+    } catch { ignorado = false; }
+    assert.strictEqual(ignorado, false,
+      `${incluido} esta en .gitignore: no llega al runner y el build falla`);
+  });
+
+  const nsh = fs.readFileSync(ruta, "utf8");
+
+  check("NSIS: define el macro preInit (el unico que electron-builder llama)",
+    () => {
+      assert.match(nsh, /!macro\s+preInit\b/,
+        "sin un macro llamado exactamente preInit, el script se compila y no hace nada");
+    });
+
+  // Se miran solo las lineas de CODIGO. Buscar sobre el archivo crudo daba
+  // verde con las lecturas comentadas: el texto "ReadRegStr" seguia estando
+  // adentro del comentario. Verificado — el test pasaba sobre el bug.
+  const codigo = nsh
+    .split("\n")
+    .map((l) => l.replace(/^\s*[;#].*$/, ""))
+    .join("\n");
+
+  check("NSIS: no pisa la carpeta de una instalacion que ya existe", () => {
+    // En una actualizacion, reescribir InstallLocation mandaria la version
+    // nueva a otro disco y dejaria la vieja colgada. Tiene que LEER primero.
+    const iLee = codigo.indexOf("ReadRegStr");
+    const iEscribe = codigo.indexOf("WriteRegExpandStr");
+    assert.ok(iLee !== -1, "no lee InstallLocation antes de escribir");
+    assert.ok(iEscribe !== -1, "no escribe InstallLocation en ningun lado");
+    assert.ok(iLee < iEscribe,
+      "escribe InstallLocation antes de leer si ya habia una instalacion");
+  });
+
+  // Compilar de verdad, si hay makensis. Un error de sintaxis en el .nsh
+  // rompe el build del instalador entero, y eso solo se ve en el runner.
+  let makensis = true;
+  try { execFileSync("makensis", ["-VERSION"], { stdio: "ignore" }); }
+  catch { makensis = false; }
+
+  if (makensis) {
+    check("NSIS: el script COMPILA (makensis)", () => {
+      const os = require("node:os");
+      const tmp = path.join(os.tmpdir(), "mvdg_nsis_check.nsi");
+      // Arnes minimo con lo que el .nsh espera del entorno de electron-builder.
+      fs.writeFileSync(tmp, [
+        `!define INSTALL_REGISTRY_KEY "Software\\mvdg-check"`,
+        `OutFile "${path.join(os.tmpdir(), "mvdg_nsis_check.exe")}"`,
+        `InstallDir "$LOCALAPPDATA\\Programs\\MV Data Governance"`,
+        `!include "${ruta}"`,
+        `Function .onInit`,
+        `  !insertmacro preInit`,
+        `FunctionEnd`,
+        `Section "x"`,
+        `SectionEnd`,
+      ].join("\n"));
+      execFileSync("makensis", [tmp], { stdio: "pipe" });
+    });
+  } else {
+    console.log("· makensis no esta instalado: no se compila el .nsh (PARCIAL)");
+  }
+}
+
 console.log(`\nTodos los checks del instalador pasaron (${checks}).`);
