@@ -371,7 +371,7 @@ def _check_21():
                 os.environ.pop("MVDG_DATA_DIR", None)
             else:
                 os.environ["MVDG_DATA_DIR"] = prev
-    return "lo traído se guarda en disco y aparece en 🖊️ Curaduría con su origen visible"
+    return "lo traído se guarda en disco y aparece en Curaduría con su origen visible"
 
 @check("Contraseñas de conexión: keyring del SO con respaldo ofuscado")
 def _check_22():
@@ -442,7 +442,7 @@ def _check_25():
     return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
             "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
 
-@check("📦 Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
+@check("Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
 def _check_26():
     import os
     import tempfile
@@ -863,16 +863,16 @@ def main() -> int:
     results = run_checks()
     ok_all = True
     for name, ok, detail in results:
-        mark = "✓" if ok else "✗"
+        mark = "" if ok else ""
         print(f"  {mark} {name}")
         print(f"      {detail}")
         ok_all &= ok
     print("  " + "─" * 44)
     passed = sum(1 for _, ok, _ in results if ok)
     if ok_all:
-        print(f"  ✅ 100% operativo — {passed}/{len(results)} chequeos OK.\n")
+        print(f"  100% operativo — {passed}/{len(results)} chequeos OK.\n")
         return 0
-    print(f"  ⚠️  {passed}/{len(results)} OK — revisá los ítems con ✗ arriba.\n")
+    print(f"   {passed}/{len(results)} OK — revisá los ítems con arriba.\n")
     return 1
 
 

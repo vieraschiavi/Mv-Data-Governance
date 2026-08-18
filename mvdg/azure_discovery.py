@@ -22,7 +22,7 @@ Lo que esto NO resuelve (y por qué): esta consulta devuelve el
 **inventario** (nombre, tipo, resource group, ubicación) — no perfila
 columnas, no corre reglas de calidad, no trae datos. Para gobernar de
 verdad cada base descubierta, igual hay que cargarla como conexión en
-🔎 Mis datos (con sus credenciales, que el usuario administra) — este
+Mis datos (con sus credenciales, que el usuario administra) — este
 módulo le ahorra el paso de "¿qué bases tengo, en qué resource groups?".
 Tampoco cruza tenants ni management groups por defecto (una suscripción a
 la vez, explícito) ni corre en segundo plano — es una consulta bajo
@@ -52,7 +52,7 @@ _ARG_URL = "https://management.azure.com/providers/Microsoft.ResourceGraph/resou
 _MAX_PAGES = 20  # ~10.000 recursos con paginación de 500 — de sobra para inventariar
 
 # tipos de recurso de Azure relacionados con datos que tiene sentido
-# ofrecer como "conexión candidata" en 🔎 Mis datos.
+# ofrecer como "conexión candidata" en Mis datos.
 DATA_RESOURCE_TYPES = {
     "microsoft.sql/servers/databases": "Azure SQL Database",
     "microsoft.sql/servers": "Azure SQL Server (instancia)",
@@ -129,7 +129,7 @@ def discover_data_resources(token: str | None = None) -> pd.DataFrame:
 
 def suggest_connection_profile(row: dict) -> dict | None:
     """De una fila descubierta, arma el esqueleto de perfil de conexión
-    para 🔎 Mis datos (sin credenciales — esas las carga el usuario a
+    para Mis datos (sin credenciales — esas las carga el usuario a
     mano, nunca se derivan de Resource Graph). None si el tipo no mapea a
     un motor de los que el programa conecta hoy."""
     t = row.get("type", "").lower()

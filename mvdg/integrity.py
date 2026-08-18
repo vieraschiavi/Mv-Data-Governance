@@ -66,17 +66,17 @@ def check_install() -> list[str]:
 
 # Mensaje del cartel, trilingüe (no depende de i18n: justamente puede estar viejo).
 MESSAGE = {
-    "es": ("⚠️ **Tu copia del programa está incompleta o desactualizada.**\n\n"
+    "es": ("**Tu copia del programa está incompleta o desactualizada.**\n\n"
            "Actualizaste algunos archivos pero no todos, así que `app/app.py` "
            "y la carpeta `mvdg/` son de versiones distintas. **Reemplazá TODA "
            "la carpeta del programa con la versión nueva** (no copies archivos "
            "sueltos) y volvé a abrir la app.\n\nPiezas que no coinciden:"),
-    "en": ("⚠️ **Your copy of the program is incomplete or out of date.**\n\n"
+    "en": ("**Your copy of the program is incomplete or out of date.**\n\n"
            "You updated some files but not all, so `app/app.py` and the "
            "`mvdg/` folder are from different versions. **Replace the WHOLE "
            "program folder with the new version** (don't copy individual "
            "files) and reopen the app.\n\nMismatched pieces:"),
-    "pt": ("⚠️ **Sua cópia do programa está incompleta ou desatualizada.**\n\n"
+    "pt": ("**Sua cópia do programa está incompleta ou desatualizada.**\n\n"
            "Você atualizou alguns arquivos, mas não todos, então `app/app.py` "
            "e a pasta `mvdg/` são de versões diferentes. **Substitua a pasta "
            "INTEIRA do programa pela versão nova** (não copie arquivos "

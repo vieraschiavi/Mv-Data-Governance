@@ -44,15 +44,40 @@ on:
         default: cliente
         type: choice
         options: [cliente, owner, ambas]
+  # Y automaticamente al mergear a main algo que cambia el PROGRAMA, para que
+  # el instalador del owner este SIEMPRE disponible sin tener que acordarse de
+  # pedirlo. Los paths son a proposito: rearmar 400 MB por un typo en un .md
+  # seria quemar minutos de Actions al pedo.
+  push:
+    branches: ["main"]
+    paths:
+      - "mvdg/**"
+      - "app/**"
+      - "bi_api/**"
+      - "electron/**"
+      - "requirements.txt"
+      - ".github/workflows/instalador_electron.yml"
 
 permissions:
-  contents: read
+  contents: write          # publicar la Release del owner
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Que se construye en esta corrida. A mano, lo que se haya elegido; al
+      # mergear a main, solo el del owner — que es el que tiene que estar
+      # siempre listo. El del cliente se arma a pedido cuando se publica.
+      - name: Decidir que versiones construir
+        id: modo
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -z "$v" ] && v="owner"
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+          echo "Construyendo: $v"
 
       - uses: actions/setup-node@v4
         with:
@@ -156,12 +181,12 @@ jobs:
 
       # ---------------------------------------------------------------- CLIENTE
       - name: Construir instalador CLIENTE
-        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
         working-directory: electron
         run: npm run dist-win
 
       - name: Empaquetar INSTALADOR/ (cliente)
-        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.v }}"
@@ -198,7 +223,7 @@ jobs:
           Compress-Archive -Path "salida\INSTALADOR" -DestinationPath "MVDataGovernance_v$v.zip" -Force
 
       - uses: actions/upload-artifact@v4
-        if: inputs.version == 'cliente' || inputs.version == 'ambas'
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
         with:
           name: MVDataGovernance_CLIENTE_v${{ steps.ver.outputs.v }}
           path: MVDataGovernance_v${{ steps.ver.outputs.v }}.zip
@@ -208,16 +233,28 @@ jobs:
       # La licencia se agrega DESPUÉS del build del cliente y se reconstruye:
       # así el programa es idéntico y lo único distinto es el .txt.
       - name: Validar la licencia del owner
-        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        id: owner
+        if: steps.modo.outputs.v == 'owner' || steps.modo.outputs.v == 'ambas'
         shell: bash
         env:
           TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
         run: |
+          # Sin el secreto no hay instalador de owner posible. Como esto ahora
+          # corre SOLO en cada merge a main, cortar con error dejaria el repo
+          # con un rojo permanente por algo que no es un bug — y un CI que
+          # siempre esta en rojo deja de mirarse. Se avisa y se saltea; a mano
+          # (workflow_dispatch) si corta, porque ahi alguien lo pidio explicito
+          # y necesita saber por que no salio.
           if [ -z "$TOKEN" ]; then
-            echo "Falta el secreto MVDG_OWNER_TOKEN. Generalo con un doble clic"
-            echo "en MV_Owner_Activar.bat y pegalo en Settings > Secrets."
-            exit 1
+            echo "hay=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Sin MVDG_OWNER_TOKEN::No se construye el instalador del owner. Generalo y pegalo en Settings > Secrets."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "Pediste la version owner y falta el secreto: se corta."
+              exit 1
+            fi
+            exit 0
           fi
+          echo "hay=true" >> "$GITHUB_OUTPUT"
           python - <<'PY'
           import os, sys
           from mvdg import licensing
@@ -242,7 +279,7 @@ jobs:
           PY
 
       - name: Construir instalador OWNER
-        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        if: steps.owner.outputs.hay == 'true'
         shell: pwsh
         env:
           TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
@@ -253,7 +290,7 @@ jobs:
           npm run dist-win
 
       - name: Empaquetar INSTALADOR/ (owner)
-        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        if: steps.owner.outputs.hay == 'true'
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.v }}"
@@ -272,8 +309,65 @@ jobs:
           Compress-Archive -Path "salida_owner\INSTALADOR" -DestinationPath "MVDataGovernance_OWNER_v$v.zip" -Force
 
       - uses: actions/upload-artifact@v4
-        if: inputs.version == 'owner' || inputs.version == 'ambas'
+        if: steps.owner.outputs.hay == 'true'
         with:
           name: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}
           path: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}.zip
           retention-days: 7
+
+      # --------------------------------------------------- Release del owner
+      #
+      # Pedido explicito: que SIEMPRE haya un instalador owner en GitHub para
+      # probar el programa completo, con un link fijo que no caduque. Los
+      # artefactos de Actions vencen y hay que entrar a la corrida a buscarlos;
+      # una Release tiene URL estable.
+      #
+      # AVISO, dicho una sola vez y sin vueltas: este repositorio es PUBLICO.
+      # Cualquiera puede bajar este .exe, y como el token NO esta atado a una
+      # maquina, abre el programa completo en cualquier PC. Es una decision
+      # tomada a conciencia, no un descuido.
+      #
+      # Para cerrarlo el dia que se quiera, sin tocar este workflow:
+      #   1. En tu PC:  python packaging/licencias.py maquina    -> da tu id
+      #   2. Reemitis el token con --maquina <id>
+      #   3. Lo pegas en Settings > Secrets > MVDG_OWNER_TOKEN
+      # A partir de ahi, ese mismo .exe abre en plan demo en cualquier otra PC.
+      # El paso de validacion de arriba ya distingue los dos casos y avisa.
+      #
+      # La etiqueta es fija (owner-latest) y se reemplaza en cada corrida: asi
+      # el link es siempre el mismo y no se acumulan releases viejas.
+      - name: Publicar la Release del owner
+        if: steps.owner.outputs.hay == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.ver.outputs.v }}"
+          exe="salida_owner/INSTALADOR/MVDataGovernance_OWNER_Setup_$v.exe"
+          [ -f "$exe" ] || { echo "No se genero $exe"; exit 1; }
+
+          notas="$RUNNER_TEMP/notas.md"
+          {
+            echo "Instalador de escritorio (Electron + React) de MV Data"
+            echo "Governance $v, version OWNER: abre con TODAS las funciones"
+            echo "habilitadas, sin pegar ninguna clave."
+            echo
+            echo "Se reemplaza automaticamente en cada cambio del programa,"
+            echo "asi que este link siempre apunta a la ultima version."
+            echo
+            echo "Al instalar: elegis carpeta y disco (propone una unidad"
+            echo "distinta de C: si tenes una con espacio), deja acceso"
+            echo "directo en el escritorio y en el menu Inicio, y se"
+            echo "desinstala desde Agregar o quitar programas."
+          } > "$notas"
+
+          # --clobber reemplaza el asset si ya existia con ese nombre.
+          if gh release view owner-latest >/dev/null 2>&1; then
+            gh release edit owner-latest --title "MV Data Governance $v · OWNER" \
+              --notes-file "$notas"
+            gh release upload owner-latest "$exe" --clobber
+          else
+            gh release create owner-latest "$exe" \
+              --title "MV Data Governance $v · OWNER" --notes-file "$notas"
+          fi
+          echo "Release lista: https://github.com/${{ github.repository }}/releases/tag/owner-latest"

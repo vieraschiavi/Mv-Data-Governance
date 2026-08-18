@@ -7,7 +7,7 @@ Por qué existe este módulo
 --------------------------
 El recorrido comercial clave era: el consultor sube SU archivo, ve el
 catálogo de calidad en pantalla… y ahí terminaba. Todo lo que veía quedaba
-atrapado en el navegador — la pestaña 📦 Entregable solo arma informes para
+atrapado en el navegador — la pestaña Entregable solo arma informes para
 los 4 casos de ejemplo del repo, no para el archivo del usuario. Este módulo
 cierra ese circuito: un Excel profesional, trilingüe, que el consultor puede
 mandarle a SU cliente el mismo día de la demo.

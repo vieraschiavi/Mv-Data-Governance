@@ -1312,7 +1312,7 @@ def test_orgchart_photo_ai_parses_mocked_response(monkeypatch):
 
 def test_insights_governance_coverage(tmp_path, monkeypatch):
     """El índice de gobierno cubre los 8 datasets y sube cuando se asignan
-    responsables con nombre (👥) y se curan definiciones (🖊️)."""
+    responsables con nombre y se curan definiciones."""
     monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
     from mvdg import curation, insights, orgchart
     base = insights.governance_summary("es")
@@ -6212,7 +6212,7 @@ def test_glossary_auto_terms_have_stable_upsert_ids():
 def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
     """Flujo completo contra una base REAL (SQLite): esquema con nombres
     abreviados -> borrador con palabras completas -> guardado local ->
-    aparece en 🖊️ Curaduría con su origen, editable/validable a mano."""
+    aparece en Curaduría con su origen, editable/validable a mano."""
     import sqlite3
     monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
     db = tmp_path / "ventas.db"
@@ -6238,7 +6238,7 @@ def test_glossary_auto_end_to_end_with_real_sqlite(tmp_path, monkeypatch):
     row = df[df["item_id"] == "glossary:imported:database:sqlt1:cli_fac.tel_cli"]
     assert len(row) == 1
     assert row.iloc[0]["label"] == "teléfono del cliente"
-    assert row.iloc[0]["dataset"] == "🗄️ base de datos"
+    assert row.iloc[0]["dataset"] == "base de datos"
     assert row.iloc[0]["status"] == "sugerido_ia"
     # y se valida/modifica como cualquier otra definición del programa
     curation.save_validation("glossary:imported:database:sqlt1:cli_fac.tel_cli",
@@ -6642,7 +6642,7 @@ def test_installer_iss_deja_elegir_carpeta_y_disco():
     assert "usepreviousappdir=no" not in iss.lower()
 
 
-# ---------------------------- 📥 informe de auditoría del archivo propio
+# ------------------------------- informe de auditoría del archivo propio
 def _df_con_defectos():
     """Archivo 'de cliente' con defectos reales: nulos en email/monto y una
     clave aparente (id) — dispara reglas de completitud y unicidad."""
@@ -6734,7 +6734,7 @@ def test_informe_descargable_desde_la_pantalla_de_perfilado():
     assert "if dataset_name:" in src
 
 
-# --------------------------------------------- 📦 entregable final por caso
+# ------------------------------------------------ entregable final por caso
 def test_deliverable_builds_for_every_case(tmp_path, monkeypatch):
     """El entregable se arma para los 4 casos con KPIs reales (calidad
     calculada sobre el archivo, no números fijos) y migración en dry-run."""
@@ -7371,3 +7371,47 @@ def test_toda_dependencia_tiene_tope_de_version_mayor():
     assert not sin_tope, (
         "estas dependencias no tienen tope de version mayor, asi que una "
         "release ajena puede poner el CI en rojo sola: " + "; ".join(sin_tope))
+
+def test_la_interfaz_no_usa_emojis_decorativos():
+    """La interfaz muestra ESTADO, no decoracion.
+
+    El semaforo de calidad (verde/amarillo/rojo) es informacion: dice de un
+    vistazo si una regla pasa, alerta o falla. Un cohete al lado de un titulo
+    no dice nada — y 666 de esos hacian que el producto pareciera un chat en
+    vez de una herramienta de gobierno de datos.
+
+    Se permite tambien la flecha tipografica (->) del linaje, que no es un
+    emoji sino un signo.
+
+    Sin este test, el proximo texto nuevo vuelve a traer uno y nadie lo nota
+    hasta que ya esta en la pantalla del cliente.
+    """
+    import re as _re
+    permitidos = {"\U0001F7E2", "\U0001F7E1", "\U0001F534", "\u2192"}
+    clase = _re.compile("[\U0001F300-\U0001FAFF\U00002600-\U000027BF"
+                        "\U0001F000-\U0001F0FF]")
+    raiz = _repo_root()
+    # Lo que ve el usuario: el motor, el dashboard, la API y las dos interfaces
+    # de escritorio. packaging/ y los tests son herramientas de desarrollo.
+    carpetas = ["mvdg", "app", "bi_api",
+                os.path.join("electron", "ui", "src"),
+                os.path.join("electron", "launcher")]
+    intrusos = []
+    for carpeta in carpetas:
+        base = os.path.join(raiz, carpeta)
+        for actual, _dirs, archivos in os.walk(base):
+            if "node_modules" in actual or os.sep + "dist" in actual:
+                continue
+            for nombre in archivos:
+                if not nombre.endswith((".py", ".js", ".jsx", ".mjs", ".html")):
+                    continue
+                ruta = os.path.join(actual, nombre)
+                with open(ruta, encoding="utf-8") as fh:
+                    for n, linea in enumerate(fh, 1):
+                        for ch in linea:
+                            if clase.match(ch) and ch not in permitidos:
+                                rel = os.path.relpath(ruta, raiz)
+                                intrusos.append(f"{rel}:{n} {ch!r}")
+    assert not intrusos, (
+        "emojis decorativos en la interfaz (solo se permite el semaforo "
+        "verde/amarillo/rojo): " + "; ".join(intrusos[:12]))

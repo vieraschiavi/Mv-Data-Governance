@@ -66,6 +66,17 @@ Tableau, Purview y Collibra (en las dos direcciones).
 2. **Cambio** — editá el mínimo necesario. Respetá la separación motor (`mvdg/`) vs. UI (`app/app.py`) vs. API (`bi_api/`).
 3. **Test** — `pytest tests/ -v` (`/test`). No declares éxito sin correrlos.
 4. **Ship** — `/ship`: test → commit descriptivo → push → PR draft.
+5. **Después de que el PR se mergea** — la rama de trabajo queda MUERTA. Antes
+   de seguir con lo siguiente: `git fetch origin main && git checkout -B <rama> origin/main`.
+
+> **Por qué el paso 5 no es opcional.** El merge es con *squash*: los commits
+> de la rama se aplastan en uno solo con otro SHA. Si se siguen agregando
+> commits encima de los viejos, la rama arrastra historia que en `main` ya
+> existe con otra identidad, y el próximo PR sale **con conflictos**. El
+> automerge no lo fuerza — dice `No se mergea: el PR #N tiene conflictos` y se
+> queda ahí. Pasó en el PR #81: el CI estaba verde en las dos versiones de
+> Python y aun así no entraba, y el rojo no estaba en ningún lado porque no
+> era un problema de tests.
 
 ## Convenciones
 

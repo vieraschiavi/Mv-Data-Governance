@@ -22,7 +22,7 @@ Qué empuja, y de dónde sale cada dato:
     - Diccionario → una entidad ``rdbms_column`` por columna.
     - Glosario → un Glossary "MV Data Governance" + un término por
       definición. El estado en Purview (Draft/Approved) sale de la
-      pestaña 🖊️ Curaduría: si un Data Owner/Steward ya validó o modificó
+      pestaña Curaduría: si un Data Owner/Steward ya validó o modificó
       la definición, se manda **Approved**; si sigue siendo la sugerencia
       de IA sin revisar, se manda **Draft** — Purview refleja fielmente
       qué está realmente gobernado y qué no.

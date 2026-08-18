@@ -8,7 +8,7 @@ datos; si aparece abreviado, se pone la palabra completa — y también se puede
 modificar a mano". Eso es exactamente lo que hace este módulo:
 
 1. **Automático**: lee SOLO el esquema (nombres de tablas y columnas, cero
-   filas de datos) de una conexión guardada en 🔎 Mis datos, y arma un
+   filas de datos) de una conexión guardada en Mis datos, y arma un
    borrador de término de glosario por cada columna.
 2. **Abreviaturas → palabra completa**: los nombres de columna reales vienen
    abreviados (``fec_pag``, ``imp_tot``, ``cli_id``). Un diccionario local de
@@ -17,9 +17,9 @@ modificar a mano". Eso es exactamente lo que hace este módulo:
    Es una heurística local y determinística (sin red, sin API externa): lo
    que no reconoce, lo deja tal cual — nunca inventa una expansión.
 3. **Editable a mano**: el borrador se muestra en una tabla editable en la
-   pestaña 📖 Glosario (podés corregir nombre y definición celda por celda
+   pestaña Glosario (podés corregir nombre y definición celda por celda
    antes de guardar), y una vez guardado entra al mismo circuito de
-   🖊️ Curaduría que todo lo demás — un Data Owner/Steward lo valida o lo
+   Curaduría que todo lo demás — un Data Owner/Steward lo valida o lo
    reescribe, con nombre, cargo y fecha.
 
 La persistencia reusa ``mvdg.imported`` (fuente "database"), igual que lo
@@ -100,13 +100,13 @@ ABBREVIATIONS: dict[str, dict[str, str]] = {
 _DEFINITION_TEMPLATE = {
     "es": "Columna «{original}» de la tabla «{table}» de tu base de datos. "
           "Borrador generado automáticamente desde el esquema — corregilo acá "
-          "o validalo/reescribilo en 🖊️ Curaduría.",
+          "o validalo/reescribilo en Curaduría.",
     "en": "Column “{original}” of table “{table}” in your database. Draft "
           "generated automatically from the schema — fix it here or "
-          "validate/rewrite it in 🖊️ Curation.",
+          "validate/rewrite it in Curation.",
     "pt": "Coluna «{original}» da tabela «{table}» do seu banco de dados. "
           "Rascunho gerado automaticamente do esquema — corrija aqui ou "
-          "valide/reescreva em 🖊️ Curadoria.",
+          "valide/reescreva em Curadoria.",
 }
 
 

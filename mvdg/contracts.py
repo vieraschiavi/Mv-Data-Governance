@@ -293,9 +293,9 @@ THEORY: list[dict] = [
             "Treat a dataset the way you treat a product: with an owner, users, measured quality, documentation and a lifecycle — not as a file that «ended up there».",
             "Tratar um dataset como se trata um produto: com dono, usuários, qualidade medida, documentação e ciclo de vida — não como um arquivo que «ficou lá»."),
         "practice": _tr(
-            "La pestaña 🤝 Contratos lista cada dataset gobernado como producto: dominio, roles, SLA, estado del contrato y consumidores reales del linaje.",
-            "The 🤝 Contracts tab lists every governed dataset as a product: domain, roles, SLA, contract status and real consumers from lineage.",
-            "A aba 🤝 Contratos lista cada dataset governado como produto: domínio, papéis, SLA, status do contrato e consumidores reais da linhagem."),
+            "La pestaña Contratos lista cada dataset gobernado como producto: dominio, roles, SLA, estado del contrato y consumidores reales del linaje.",
+            "The Contracts tab lists every governed dataset as a product: domain, roles, SLA, contract status and real consumers from lineage.",
+            "A aba Contratos lista cada dataset governado como produto: domínio, papéis, SLA, status do contrato e consumidores reais da linhagem."),
     },
     {
         "key": "contract",
