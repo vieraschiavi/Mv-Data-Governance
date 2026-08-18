@@ -8,15 +8,15 @@
 
 -r requirements.txt
 
-pytest>=8.0
+pytest>=8.0,<11
 # httpx lo exige fastapi.testclient.TestClient: sin él los tests de la API BI
 # fallan con error de import, no con un skip.
-httpx>=0.27
+httpx>=0.27,<1
 # starlette ya deprecó httpx a favor de httpx2 para su TestClient. Sin esto la
 # suite pasa igual, pero con un DeprecationWarning en cada corrida.
-httpx2>=0.1
+httpx2>=0.1,<3
 # Linter (configurado en pyproject.toml). Sin formateo automático: solo revisa.
-ruff>=0.6
+ruff>=0.6,<1
 # Para validar los workflows de .github/workflows/ como YAML de verdad y no
 # con grep de texto. Importa desde que el merge automático depende de que esos
 # archivos estén bien formados: un `paths:` mal escrito no rompe nada visible,
@@ -24,9 +24,9 @@ ruff>=0.6
 # NO estaba declarado y la suite igual pasaba en local — porque acá venía como
 # paquete del sistema. En el venv limpio del CI no existe: ese es exactamente
 # el agujero que "todas las dependencias declaradas" tiene que cerrar.
-PyYAML>=6.0
+PyYAML>=6.0,<7
 # La suite abre la imagen og_cover.jpg para verificar que mide 1200x630. Hoy
 # Pillow llega igual porque streamlit lo arrastra, pero depender de eso es
 # frágil: el día que streamlit lo saque, la suite se cae sin que nadie haya
 # tocado nada. Lo que se importa directo se declara.
-Pillow>=10.0
+Pillow>=10.0,<14
