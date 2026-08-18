@@ -11,7 +11,7 @@ responsable de verdad? Acá se calcula igual, 100% local, cruzando lo que ya
 existe en el programa:
 
     catálogo (demo + 4 ejemplos) · reglas de calidad · detección de PII ·
-    curaduría (pestaña 🖊️) · responsables por organigrama (pestaña 👥)
+    curaduría (pestaña ) · responsables por organigrama (pestaña )
 
 El resultado es una tabla por dataset + un resumen con el "índice de
 gobierno" (0-100): el promedio de cinco coberturas — responsable nombrado,

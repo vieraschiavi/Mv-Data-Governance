@@ -7,7 +7,7 @@ El problema que resuelve: asignar Data Owner y Data Steward a cada dataset
 suele arrancar de una planilla de RRHH o de un organigrama. Este módulo:
 
 1. **Lee el organigrama** desde Excel/CSV (o desde cualquier tabla traída
-   por conexión SQL en 🔎 Mis datos), detectando las columnas por sus
+   por conexión SQL en Mis datos), detectando las columnas por sus
    encabezados en ES/EN/PT (nombre, cargo, área, jefe, email) aunque vengan
    con otros nombres o en otro orden. Para organigramas en **foto/imagen**,
    la extracción usa la IA externa opcional (tu propia API key, opt-in) —

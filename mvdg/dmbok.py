@@ -146,13 +146,13 @@ AREAS: list[dict] = [
             "clusters de duplicados com golden record proposto (aba MDM)."),
         "coverage": "covered", "score": 70,
         "note": _tr(
-            "Glosario + motor de deduplicación por reglas ponderadas (pestaña 🔗 MDM): "
+            "Glosario + motor de deduplicación por reglas ponderadas (pestaña MDM): "
             "encuentra clusters de filas que probablemente son la misma entidad y arma el "
             "golden record. No es matching probabilístico/ML ni gestiona versionado histórico.",
-            "Glossary + weighted-rule deduplication engine (🔗 MDM tab): finds row clusters "
+            "Glossary + weighted-rule deduplication engine (MDM tab): finds row clusters "
             "likely representing the same entity and builds the golden record. Not "
             "probabilistic/ML matching, and doesn't manage historical versioning.",
-            "Glossário + motor de deduplicação por regras ponderadas (aba 🔗 MDM): encontra "
+            "Glossário + motor de deduplicação por regras ponderadas (aba MDM): encontra "
             "clusters de linhas provavelmente da mesma entidade e monta o golden record. Não "
             "é matching probabilístico/ML nem gerencia versionamento histórico."),
     },

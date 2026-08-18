@@ -183,7 +183,7 @@ function Catalogo({ d, lang }) {
             { clave: "pii", etiqueta: t("col_pii", lang),
               render: (f) => {
                 const es = f.pii === true || String(f.pii).toLowerCase() === "true";
-                return <span className={es ? "si" : "no"}>{es ? "🔐" : "—"}</span>;
+                return <span className={es ? "si" : "no"}>{es ? "" : "—"}</span>;
               } },
             { clave: "business_term", etiqueta: t("col_term", lang) },
             { clave: "description", etiqueta: t("col_description", lang) },
@@ -298,7 +298,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="marca">
-          <span className="escudo" aria-hidden="true">🛡️</span>
+          <span className="escudo" aria-hidden="true"></span>
           <span>
             <b>MV Data Governance</b>
             <small>Catálogo · Calidad · Linaje · Glosario · Políticas</small>

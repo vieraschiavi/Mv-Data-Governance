@@ -1,13 +1,13 @@
 # © 2026 Martín Viera. Todos los derechos reservados.
 # Software propietario. Ver LICENSE — prohibida su redistribución.
 """
-MV Data Governance · Alcance combinado: demo + casos de ejemplo de 🔎 Mis datos.
+MV Data Governance · Alcance combinado: demo + casos de ejemplo de Mis datos.
 
-El pedido que origina esto: los 4 casos reales/externos de 🔎 Mis datos
+El pedido que origina esto: los 4 casos reales/externos de Mis datos
 (Rotulado de alimentos, Dirty Cafe Sales, Bank Marketing, openFDA) estaban
 gobernados de punta a punta *dentro de su pestaña* — pero el resto del
-programa (📊 Panorama, 📚 Catálogo, ✅ Calidad, 🧬 Linaje, 📖 Glosario,
-🛡️ Políticas, 📤 BI & API) seguía mostrando SOLO los 4 datasets sintéticos
+programa (Panorama, Catálogo, Calidad, Linaje, Glosario,
+Políticas, BI & API) seguía mostrando SOLO los 4 datasets sintéticos
 de demo. Este módulo arma el universo combinado para que esos casos fluyan
 por todas las pestañas y el recorrido end-to-end sea completo.
 
@@ -21,7 +21,7 @@ Qué se simula y qué no (honestidad del alcance):
     - ``last_updated`` de los casos usa la fecha de hoy (igual criterio que
       la demo).
 
-Todo es opt-in del dashboard vía el toggle "🧩 Incluir casos de Mis datos"
+Todo es opt-in del dashboard vía el toggle "Incluir casos de Mis datos"
 del sidebar — las funciones de demo originales quedan intactas (los tests
 y la API por dataset no cambian de significado).
 """

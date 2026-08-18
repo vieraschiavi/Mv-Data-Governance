@@ -78,7 +78,7 @@ from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
                           run_rules)
 
 # ----------------------------------------------------------------- página
-st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
+st.set_page_config(page_title=APP_NAME, page_icon="", layout="wide")
 
 # Guardián de integridad: si la carpeta se actualizó a medias (app.py nuevo con
 # mvdg/ viejo o al revés), mostramos un cartel claro en vez de un traceback.
@@ -142,9 +142,9 @@ def _lab(lang: str):
 
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
-    st.markdown(f"## 🛡️ {APP_NAME}")
+    st.markdown(f"## {APP_NAME}")
     lang = st.radio(
-        f"🌐 {t('language', 'es')} / Language / Idioma",
+        f"{t('language', 'es')} / Language / Idioma",
         LANGS, format_func=lambda code: LANG_NAMES[code], horizontal=True,
         key="lang",
     )
@@ -165,7 +165,7 @@ if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
     _tables()
     _results(lang)
     st.markdown("<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
-    st.title(f"🔒 {t('auth_title', lang)}")
+    st.title(f"{t('auth_title', lang)}")
     st.caption(t("auth_intro", lang))
     _auth_pwd = st.text_input(t("auth_prompt", lang), type="password", key="auth_pwd_input")
     if st.button(t("auth_button", lang), type="primary"):
@@ -210,13 +210,13 @@ def _error(exc: Exception, lang: str, contexto: str = "generico",
            prefijo: str = "") -> None:
     """Muestra un error que se entiende y dice qué hacer.
 
-    Antes esto era ``st.error(f"⚠️ {exc}")`` repartido por toda la pantalla:
+    Antes esto era ``st.error(f"{exc}")`` repartido por toda la pantalla:
     al usuario le llegaba el texto crudo de pandas o de sqlalchemy ("Error
     tokenizing data. C error: Expected 1 fields in line 3, saw 2"), sin
     traducir y sin decirle qué corregir. El detalle técnico sigue disponible,
     plegado, para poder reportarlo."""
     mensaje, detalle = friendly_error(exc, lang, contexto)
-    st.error(f"{prefijo}{mensaje}" if prefijo else mensaje, icon="⚠️")
+    st.error(f"{prefijo}{mensaje}" if prefijo else mensaje)
     with st.expander(t("err_detalle", lang)):
         st.code(detalle, language=None)
 
@@ -229,7 +229,7 @@ def _licencia_ok(funcion: str, lang: str) -> bool:
     (mvdg/licensing.py, FUNCIONES_PAGAS) — acá solo se consulta."""
     if licensing.has_feature(funcion):
         return True
-    st.info(t("lic_locked", lang).format(tab=t("tab_help", lang)), icon="🔒")
+    st.info(t("lic_locked", lang).format(tab=t("tab_help", lang)))
     return False
 
 
@@ -246,7 +246,7 @@ def _render_fixes(results_df, lang, ns=""):
         st.caption(t("fix_note", lang))
     broken = results_df[results_df["status"] != "pass"]
     if broken.empty:
-        st.success(t("fix_none", lang), icon="✅")
+        st.success(t("fix_none", lang))
         return
     # Las keys de los widgets tienen que ser únicas en TODA la corrida, no solo
     # dentro de este bloque: Streamlit ejecuta el script entero en cada rerun y
@@ -260,11 +260,11 @@ def _render_fixes(results_df, lang, ns=""):
     # distingue la fila.
     vistas = {}
     for _, row in broken.iterrows():
-        icon = "🟠" if row["status"] == "warn" else "🔴"
+        icon = "🟡" if row["status"] == "warn" else "🔴"
         with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
             fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
                               int(row["affected_rows"]), lang)
-            st.markdown(f"🖥️ **{t('fix_local_title', lang)}**")
+            st.markdown(f"**{t('fix_local_title', lang)}**")
             st.markdown(f"**{t('fix_root', lang)}:** {fix['root_cause']}")
             st.markdown(f"**{t('fix_short', lang)}:** {fix['short_term']}")
             st.markdown(f"**{t('fix_long', lang)}:** {fix['long_term']}")
@@ -287,10 +287,10 @@ def _render_fixes(results_df, lang, ns=""):
                             lang, provider) or "error"
                 cached = st.session_state.get(cache_key)
                 if cached == "error":
-                    st.warning(t("fix_ai_error", lang), icon="⚠️")
+                    st.warning(t("fix_ai_error", lang))
                 elif cached:
                     st.divider()
-                    st.markdown(f"✨ **{t('fix_ai_title', lang).format(provider=provider_label(provider))}**")
+                    st.markdown(f"**{t('fix_ai_title', lang).format(provider=provider_label(provider))}**")
                     st.markdown(f"**{t('fix_root', lang)}:** {cached['root_cause']}")
                     st.markdown(f"**{t('fix_short', lang)}:** {cached['short_term']}")
                     st.markdown(f"**{t('fix_long', lang)}:** {cached['long_term']}")
@@ -372,7 +372,7 @@ with tab_ov:
     g6.metric(t("gi_curation", lang), f"{_gi['curation_pct']}%")
     with st.expander(t("gi_detail", lang), expanded=False):
         _gi_df = insights.governance_coverage(lang)
-        _B = {True: "✅", False: "—"}
+        _B = {True: "", False: "—"}
         st.dataframe(
             _gi_df.assign(owner_named=_gi_df["owner_named"].map(_B),
                           steward_named=_gi_df["steward_named"].map(_B),
@@ -390,7 +390,7 @@ with tab_ov:
 
 # ------------------------------------------------------------ Laboratorio
 with tab_lab:
-    st.info(t("lab_intro", lang), icon="🧪")
+    st.info(t("lab_intro", lang))
     steps = {s["step_id"]: s for s in lab_steps(lang)}
     lab = _lab(lang)
 
@@ -401,7 +401,7 @@ with tab_lab:
         tc1.markdown(f"**{t('lab_plain', lang)}**  \n{s['plain']}")
         tc2.markdown(f"**{t('lab_tech', lang)}**  \n{s['tech']}")
         if s["dmbok_area"]:
-            st.caption(f"🔗 {t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
+            st.caption(f"{t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
 
     # 0. Contexto
     _theory("contexto")
@@ -515,7 +515,7 @@ with tab_dk:
         t("dk_subtab_dmbok", lang), t("dk_subtab_cobit", lang), t("dk_subtab_iso", lang)])
 
     with dk_sub1:
-        st.info(t("dk_intro", lang), icon="📘")
+        st.info(t("dk_intro", lang))
 
         # --- Teoría: qué es el DMBOK ---
         st.subheader(t("dk_what", lang))
@@ -614,7 +614,7 @@ with tab_dk:
         st.plotly_chart(fig, width="stretch", key="dk_quality_dims")
 
     with dk_sub2:
-        st.info(t("co_intro", lang), icon="🎯")
+        st.info(t("co_intro", lang))
 
         st.subheader(t("co_radar", lang))
         ccov = cobit_iso.cobit_coverage_summary()
@@ -645,7 +645,7 @@ with tab_dk:
                 st.caption(ob["note"])
 
     with dk_sub3:
-        st.info(t("iso_intro", lang), icon="🌐")
+        st.info(t("iso_intro", lang))
 
         st.subheader(t("iso_radar", lang))
         icov = cobit_iso.iso_coverage_summary()
@@ -681,7 +681,7 @@ with tab_dk:
 
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
-    st.info(t("cat_intro", lang), icon="📚")
+    st.info(t("cat_intro", lang))
     cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
     f1, f2 = st.columns([2, 1])
     query = f1.text_input(t("cat_search", lang), "")
@@ -715,7 +715,7 @@ with tab_cat:
 
 # --------------------------------------------------------------------- MDM
 with tab_mdm:
-    st.info(t("mdm_intro", lang), icon="🔗")
+    st.info(t("mdm_intro", lang))
     st.caption(t("mdm_warning", lang))
 
     _mdm_demo_options = {"dim_customers": tables["dim_customers"]}
@@ -724,9 +724,9 @@ with tab_mdm:
 
     def _mdm_label(key):
         if key in _mdm_demo_options:
-            return f"🏠 dim_customers ({t('mdm_src_demo', lang)})"
+            return f"dim_customers ({t('mdm_src_demo', lang)})"
         meta = ext_samples.sample_meta(key, lang)
-        return f"🧪 {meta['name']}"
+        return f"{meta['name']}"
 
     mdm_pick = st.selectbox(t("mdm_pick_dataset", lang), mdm_source_names,
                             format_func=_mdm_label, key="mdm_pick_dataset")
@@ -764,7 +764,7 @@ with tab_mdm:
     mdm_clusters = st.session_state.get("mdm_clusters")
     if mdm_report is not None and st.session_state.get("mdm_df_key") == mdm_pick:
         if mdm_report.empty:
-            st.success(t("mdm_none_found", lang), icon="✅")
+            st.success(t("mdm_none_found", lang))
         else:
             st.subheader(t("mdm_results", lang).format(n=len(mdm_report)))
             st.dataframe(mdm_report.drop(columns="row_indices").rename(columns={
@@ -773,7 +773,7 @@ with tab_mdm:
             }), width="stretch", hide_index=True)
 
             for _mc in mdm_clusters:
-                _title = (f"🔗 {len(_mc.row_indices)} {t('mdm_rows_label', lang)} · "
+                _title = (f"{len(_mc.row_indices)} {t('mdm_rows_label', lang)} · "
                          f"{round(_mc.confidence * 100, 1)}% · {', '.join(_mc.matched_on) or '—'}")
                 with st.expander(_title):
                     st.dataframe(mdm_df.loc[_mc.row_indices], width="stretch")
@@ -783,7 +783,7 @@ with tab_mdm:
 
 # ---------------------------------------------------------------- Calidad
 with tab_q:
-    st.info(t("q_intro", lang), icon="✅")
+    st.info(t("q_intro", lang))
     if st.button(t("q_run", lang)):
         _results.clear()
         results = _results(lang)
@@ -811,7 +811,7 @@ with tab_q:
 
 # ----------------------------------------------------------------- Linaje
 with tab_lin:
-    st.info(t("lin_intro", lang), icon="🧬")
+    st.info(t("lin_intro", lang))
     if incl_samples:
         _lin_nodes, _lin_edges = gov_scope.combined_lineage(lang)
     else:
@@ -835,7 +835,7 @@ with tab_lin:
 
 # --------------------------------------------------------------- Glosario
 with tab_g:
-    st.info(t("g_intro", lang), icon="📖")
+    st.info(t("g_intro", lang))
     gdf = gov_scope.combined_glossary(lang) if incl_samples else glossary_df(lang)
     gq = st.text_input(t("g_search", lang), "")
     if gq:
@@ -848,7 +848,7 @@ with tab_g:
 
     st.divider()
     st.subheader(t("ga_title", lang))
-    st.info(t("ga_intro", lang), icon="🗄️")
+    st.info(t("ga_intro", lang))
     _ga_conns = load_connections()
     if not _ga_conns:
         st.caption(t("ga_no_conn", lang))
@@ -895,7 +895,7 @@ with tab_g:
 
 # --------------------------------------------------------------- Curaduría
 with tab_cu:
-    st.info(t("cu_intro", lang), icon="🖊️")
+    st.info(t("cu_intro", lang))
     _cu_sum = curation.summary(lang)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("cu_total", lang), _cu_sum["total"])
@@ -1014,7 +1014,7 @@ with tab_cu:
 
 # ------------------------------------------------------------- Responsables
 with tab_resp:
-    st.info(t("rs_intro", lang), icon="👥")
+    st.info(t("rs_intro", lang))
 
     _RS_SRC = {"file": t("rs_src_file", lang), "photo": t("rs_src_photo", lang),
                "saved": t("rs_src_saved", lang)}
@@ -1114,7 +1114,7 @@ with tab_resp:
 
 # --------------------------------------------------------------- Políticas
 with tab_p:
-    st.info(t("p_intro", lang), icon="🛡️")
+    st.info(t("p_intro", lang))
     if incl_samples:
         pdf = policies_df(lang, results,
                           catalog=gov_scope.combined_catalog(lang, tables),
@@ -1135,7 +1135,7 @@ with tab_p:
 def _render_profile(user_df, dataset_name: str | None = None):
     """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
     Además lo deja disponible en session_state para guardarlo en el proyecto
-    del cliente (pestaña 📁 Proyecto), así el trabajo no se pierde."""
+    del cliente (pestaña Proyecto), así el trabajo no se pierde."""
     if user_df is None or not len(user_df):
         return
     if dataset_name:
@@ -1154,7 +1154,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
         "possible_pii": t("col_pii", lang),
     }), width="stretch", hide_index=True)
     if info["pii_columns"]:
-        st.warning(t("pr_pii_hint", lang), icon="🔐")
+        st.warning(t("pr_pii_hint", lang))
 
     # Catálogo de calidad de verdad, no solo perfilado: las reglas se generan
     # a partir del propio archivo y se CORREN contra los datos (score, umbral,
@@ -1162,7 +1162,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
     # via mvdg.auto_rules (completitud + unicidad; el resto de las 6
     # dimensiones DAMA depende de reglas de negocio que no se pueden adivinar
     # de un archivo cualquiera, así que no se fingen).
-    st.subheader(f"✅ {t('pr_auto_quality', lang)}")
+    st.subheader(f"{t('pr_auto_quality', lang)}")
     ares = auto_quality_results(user_df, dataset_name or t("pr_upload", lang), lang)
     if ares.empty:
         st.caption(t("pr_auto_quality_none", lang))
@@ -1213,7 +1213,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
 
 
 with tab_pr:
-    st.info(t("pr_intro", lang), icon="🔎")
+    st.info(t("pr_intro", lang))
     _SRC_LABEL = {"example": t("pr_src_example", lang),
                   "file": t("pr_src_file", lang), "db": t("pr_src_db", lang)}
     source = st.radio(t("pr_source", lang),
@@ -1228,7 +1228,7 @@ with tab_pr:
         meta = ext_samples.sample_meta(skey, lang)
 
         # --- 1. Ficha del dataset (catálogo: dueño, steward, clasificación) ---
-        st.subheader(f"📇 {t('pr_example_card', lang)}")
+        st.subheader(f"{t('pr_example_card', lang)}")
         st.markdown(f"**{meta['name']}** — {meta['description']}")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(t("cat_domain", lang), meta["domain"])
@@ -1241,12 +1241,12 @@ with tab_pr:
         c6.markdown(f"**{t('pr_example_license_lbl', lang)}:** {meta['license']} · "
                    f"**{t('col_freshness', lang)}:** {meta['refresh']}")
         if meta.get("classification_note"):
-            st.caption(f"ℹ️ {meta['classification_note']}")
-        with st.expander("👁️ " + t("pr_example_data", lang), expanded=False):
+            st.caption(f"ℹ {meta['classification_note']}")
+        with st.expander("" + t("pr_example_data", lang), expanded=False):
             st.dataframe(ext_samples.load_sample_table(skey).head(20), width="stretch", hide_index=True)
 
         # --- 2. Métricas: reglas de calidad con umbral/estado (no perfilado genérico) ---
-        st.subheader(f"✅ {t('pr_example_metrics', lang)}")
+        st.subheader(f"{t('pr_example_metrics', lang)}")
         sres = ext_samples.sample_quality_results(skey, lang)
         s_show = sres.copy()
         s_show["dimension"] = s_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
@@ -1273,7 +1273,7 @@ with tab_pr:
         _render_fixes(sres, lang, ns="misdatos")
 
         # --- 3. Definiciones (glosario) ---
-        st.subheader(f"📖 {t('pr_example_glossary_title', lang)}")
+        st.subheader(f"{t('pr_example_glossary_title', lang)}")
         sgloss = ext_samples.sample_glossary_df(skey, lang)
         st.dataframe(sgloss.drop(columns=["term_id"]).rename(columns={
             "term": t("g_term", lang), "definition": t("g_definition", lang),
@@ -1281,7 +1281,7 @@ with tab_pr:
         }), width="stretch", hide_index=True)
 
         # --- 4. Exportar / conectar a BI (Power BI, Tableau, API) ---
-        st.subheader(f"📤 {t('pr_example_bi_title', lang)}")
+        st.subheader(f"{t('pr_example_bi_title', lang)}")
         st.caption(t("pr_example_bi_note", lang))
         gov_s = ext_samples.sample_governance_tables(skey, lang)
         bt_labels = {"data": t("pr_example_data", lang), "dictionary": t("tbl_dictionary", lang),
@@ -1432,7 +1432,7 @@ with tab_pr:
 
 # ---------------------------------------------------------------- BI & API
 with tab_bi:
-    st.info(t("bi_intro", lang), icon="📤")
+    st.info(t("bi_intro", lang))
     gov = governance_tables(lang, include_samples=incl_samples)
 
     st.subheader(t("bi_files", lang))
@@ -1478,7 +1478,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("mig_title", lang))
-    st.info(t("mig_intro", lang), icon="🔀")
+    st.info(t("mig_intro", lang))
 
     def _curation_lookup_factory(prefix):
         def lookup(term_id):
@@ -1536,12 +1536,12 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("enf_title", lang))
-    st.warning(t("enf_intro", lang), icon="🔒")
+    st.warning(t("enf_intro", lang))
     e1, e2 = st.columns(2)
     enf_engine = e1.selectbox(t("enf_engine", lang), enforcement.SUPPORTED_MASKING_ENGINES,
                               format_func=lambda k: "PostgreSQL" if k == "postgresql" else "SQL Server")
     _CLASS_OPTS = sorted(_mig_cat["classification"].unique().tolist())
-    with st.expander(f"❓ {t('enf_roles', lang)}", expanded=False):
+    with st.expander(f"{t('enf_roles', lang)}", expanded=False):
         st.markdown(t("enf_roles_explain", lang))
     enf_roles_raw = st.text_area(
         t("enf_roles", lang),
@@ -1567,7 +1567,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("mip_title", lang))
-    st.info(t("mip_intro", lang), icon="🏷️")
+    st.info(t("mip_intro", lang))
     _mip_ready = mip_labels.configured()
     st.caption(t("mip_env", lang) if not _mip_ready else t("mig_configured", lang))
     st.caption(t("mip_scope_note", lang))
@@ -1631,7 +1631,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("azd_title", lang))
-    st.info(t("azd_intro", lang), icon="☁️")
+    st.info(t("azd_intro", lang))
     _azd_ready = azure_discovery.configured()
     st.caption(t("azd_env", lang) if not _azd_ready else t("mig_configured", lang))
     if _azd_ready and st.button(t("azd_run", lang), type="primary"):
@@ -1651,7 +1651,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("cbp_title", lang))
-    st.info(t("cbp_intro", lang), icon="⬇️")
+    st.info(t("cbp_intro", lang))
     _cbp_ready = collibra_export.configured()
     st.caption(t("cbp_env", lang) if not _cbp_ready else t("mig_configured", lang))
     if _cbp_ready and st.button(t("cbp_run", lang), type="primary"):
@@ -1671,7 +1671,7 @@ with tab_bi:
             st.download_button(t("cbp_download_terms", lang), to_csv_bytes(_cbp_terms_df),
                                "collibra_terminos.csv", "text/csv")
         if _cbp_res["catalog"].get("skipped_reason"):
-            st.caption(f"📚 {t('cbp_catalog_skipped', lang)}: {_cbp_res['catalog']['skipped_reason']}")
+            st.caption(f"{t('cbp_catalog_skipped', lang)}: {_cbp_res['catalog']['skipped_reason']}")
         elif _cbp_res["catalog"]["tables"]:
             _cbp_tables_df = pd.DataFrame(_cbp_res["catalog"]["tables"])
             st.dataframe(_cbp_tables_df, width="stretch", hide_index=True)
@@ -1685,7 +1685,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("pvp_title", lang))
-    st.info(t("pvp_intro", lang), icon="⬇️")
+    st.info(t("pvp_intro", lang))
     _pvp_ready = purview_pull.configured()
     st.caption(t("pvp_env", lang) if not _pvp_ready else t("mig_configured", lang))
     if _pvp_ready and st.button(t("pvp_run", lang), type="primary"):
@@ -1728,7 +1728,7 @@ with tab_bi:
 
 # ---------------------------------------------------------------- Empresas
 with tab_cl:
-    st.info(t("cl_intro", lang), icon="🏢")
+    st.info(t("cl_intro", lang))
 
     _R_LABEL = {"exe_ok": t("cl_r_exe", lang),
                 "no_exe_python_ok": t("cl_r_noexe", lang),
@@ -1839,10 +1839,10 @@ with tab_cl:
 
 # ---------------------------------------------------------------- Proyecto
 with tab_ws:
-    st.info(t("ws_intro", lang), icon="📁")
+    st.info(t("ws_intro", lang))
     ws_clients = load_clients()
     if not ws_clients:
-        st.warning(t("ws_no_clients", lang), icon="🏢")
+        st.warning(t("ws_no_clients", lang))
     else:
         ws_opts = {f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})": c
                    for c in ws_clients}
@@ -1926,7 +1926,7 @@ with tab_ws:
             st.caption(t("ws_no_stages", lang))
         for _sm in _stages:
             _sid = _sm["stage_id"]
-            _hdr = (f"📌 {_sm['name']} · {_sm.get('kind', '')} · "
+            _hdr = (f"{_sm['name']} · {_sm.get('kind', '')} · "
                     f"{_sm.get('created_at', '')[:16].replace('T', ' ')}")
             with st.expander(_hdr):
                 if _sm.get("notes"):
@@ -1976,7 +1976,7 @@ with tab_ws:
 
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
-    st.info(t("h_intro", lang), icon="❓")
+    st.info(t("h_intro", lang))
 
     # --- Configuración de IA ------------------------------------------------
     # Antes esto solo se podía hacer con variables de entorno, que para alguien
@@ -1999,9 +1999,9 @@ with tab_h:
         if _ia_key:
             _donde = ai_settings.guardar_key(_ia_prov, _ia_key)
             if _donde == "ofuscada":
-                st.warning(t("ia_saved_obf", lang), icon="⚠️")
+                st.warning(t("ia_saved_obf", lang))
             else:
-                st.success(t("ia_saved", lang), icon="✅")
+                st.success(t("ia_saved", lang))
 
         # Solo "compatible" necesita que le digan a dónde apuntar; para los
         # demás la URL es fija y preguntarla sería ruido.
@@ -2017,17 +2017,16 @@ with tab_h:
         if st.button(t("ia_refresh", lang), help=t("ia_refresh_help", lang),
                      key="ia_refresh_btn", use_container_width=True):
             if not ai_settings.leer_key(_ia_prov):
-                st.warning(t("ia_need_key", lang), icon="🔑")
+                st.warning(t("ia_need_key", lang))
             else:
                 _antes = ai_settings.modelos_conocidos(_ia_prov)
                 _lista = ai_settings.refrescar_modelos(_ia_prov)
                 # refrescar_modelos conserva la lista anterior si falla, así que
                 # "no cambió nada" es la señal de que no se pudo traer.
                 if _lista == _antes and not ai_settings.actualizado_en(_ia_prov):
-                    st.warning(t("ia_refresh_fail", lang), icon="📡")
+                    st.warning(t("ia_refresh_fail", lang))
                 else:
-                    st.success(t("ia_refresh_ok", lang).format(n=len(_lista)),
-                               icon="✅")
+                    st.success(t("ia_refresh_ok", lang).format(n=len(_lista)))
 
     _ia_modelos = ai_settings.modelos_conocidos(_ia_prov)
     if _ia_modelos:
@@ -2053,7 +2052,7 @@ with tab_h:
     _lic = licensing.status()
     st.caption(t("lic_intro", lang))
     if not _lic["emisor_configurado"]:
-        st.warning(t("lic_no_issuer", lang), icon="⚠️")
+        st.warning(t("lic_no_issuer", lang))
     _lc1, _lc2 = st.columns([1, 2])
     _lc1.metric(t("lic_plan", lang),
                 _lic["plan"] if _lic["licenciado"] else t("lic_demo", lang))
@@ -2079,7 +2078,7 @@ with tab_h:
                 st.success(t("lic_ok", lang).format(plan=_payload.get("plan")))
                 st.rerun()
             else:
-                st.error(t("lic_bad", lang), icon="⚠️")
+                st.error(t("lic_bad", lang))
     st.caption(f"**{t('lic_paid_features', lang)}:** "
                + ", ".join(_lic["funciones_pagas"]))
     st.divider()
@@ -2098,7 +2097,7 @@ with tab_h:
     st.subheader(t("h_speeches", lang))
     st.markdown(t("h_speeches_note", lang))
     for sp in speeches(lang):
-        with st.expander(f"🎙️ {sp['title']}"):
+        with st.expander(f"{sp['title']}"):
             st.caption(f"{t('h_audience', lang)}: {sp['audience']}")
             st.markdown(sp["text"].replace("\n", "  \n"))
 
@@ -2108,12 +2107,12 @@ with tab_h:
     st.subheader(t("h_pvfaq", lang))
     st.markdown(t("h_pvfaq_note", lang))
     for item in purview_collibra_faq(lang):
-        with st.expander(f"❓ {item['q']}"):
+        with st.expander(f"{item['q']}"):
             st.markdown(item["a"])
 
 # ---------------------------------------------------------- Entregable final
 with tab_del:
-    st.info(t("del_intro", lang), icon="📦")
+    st.info(t("del_intro", lang))
     _del_keys = case_deliverable.case_keys()
     _del_key = st.selectbox(
         t("del_pick", lang), _del_keys,
@@ -2121,7 +2120,7 @@ with tab_del:
     _del = case_deliverable.build_deliverable(_del_key, lang)
     _dm, _dk, _dmig = _del["meta"], _del["kpis"], _del["migration"]
 
-    st.subheader(f"📦 {_dm['name']}")
+    st.subheader(f"{_dm['name']}")
     st.caption(f"{_dm['domain']} · {_dm['classification']} · "
                f"{t('del_owner', lang)}: {_dm['owner']} · "
                f"{t('col_steward', lang)}: {_dm['steward']}")
@@ -2178,13 +2177,13 @@ with tab_del:
 
 # --------------------------------------------------------------- Power BI
 with tab_con:
-    st.info(t("con_intro", lang), icon="🤝")
+    st.info(t("con_intro", lang))
 
     with st.expander(t("con_theory", lang)):
         st.caption(t("con_theory_note", lang))
         for _th in data_contracts.theory(lang):
             st.markdown(f"**{_th['concept']}** — {_th['plain']}")
-            st.caption(f"🛠️ {_th['practice']}")
+            st.caption(f"{_th['practice']}")
 
     # Siempre sobre el alcance combinado completo (demo + casos): un contrato
     # por cada producto gobernado, evaluado con la última corrida real.
@@ -2262,8 +2261,8 @@ with tab_con:
                        key="con_dl_xlsx")
 
 with tab_pbi:
-    st.info(t("pbi_intro", lang), icon="🔷")
-    st.caption("🔐 " + t("pbi_secure_note", lang))
+    st.info(t("pbi_intro", lang))
+    st.caption("" + t("pbi_secure_note", lang))
 
     _PBI_MODE = {"offline": t("pbi_mode_offline", lang), "tenant": t("pbi_mode_tenant", lang),
                 "example": t("pbi_mode_example", lang)}
@@ -2315,12 +2314,12 @@ with tab_pbi:
             model_out = pbi.ingest_example(lang)
             pbi_single_model = model_out["_model"]
         else:
-            st.warning(t("pbi_example_tenant_note", lang), icon="⚠️")
+            st.warning(t("pbi_example_tenant_note", lang))
             model_out = pbi.ingest_example_tenant(lang)
             pbi_models = model_out["_models"]
     else:
         if not pbi.tenant_configured():
-            st.warning(t("pbi_tenant_off", lang), icon="🔒")
+            st.warning(t("pbi_tenant_off", lang))
         else:
             st.caption(t("pbi_tenant_hint", lang))
             pbi_max_ws = st.number_input(t("pbi_tenant_max_ws", lang), min_value=1, max_value=1000,
@@ -2341,7 +2340,7 @@ with tab_pbi:
             pbi_models = model_out["_models"]
 
     if pbi_err:
-        st.error(f"{t('pbi_err', lang)}: {pbi_err}", icon="⚠️")
+        st.error(f"{t('pbi_err', lang)}: {pbi_err}")
     elif model_out is None:
         st.caption(t("pbi_no_model", lang))
     else:
@@ -2402,7 +2401,7 @@ with tab_pbi:
             _pbi_picked_model = next(m for m in pbi_models if m.name == _pbi_picked)
             _pbi_measures_show = [(_pbi_picked_model.name, m) for m in _pbi_picked_model.measures]
         for _i, (_mname, _m) in enumerate(_pbi_measures_show):
-            with st.expander(f"📐 {_m.name}" + (f" · {_m.table}" if _m.table else "")):
+            with st.expander(f"{_m.name}" + (f" · {_m.table}" if _m.table else "")):
                 st.code(_m.dax or "—", language="text")
                 if _m.description:
                     st.caption(_m.description)
@@ -2444,8 +2443,8 @@ with tab_pbi:
                 st.markdown(f"**{_cfg['etiqueta']}**")
                 st.caption(_cfg["para_que"])
                 _c1, _c2 = st.columns(2)
-                _c1.caption(f"🔑 {_cfg['auth']}")
-                _c2.caption(f"📋 {_cfg['requisitos']}")
+                _c1.caption(f"{_cfg['auth']}")
+                _c2.caption(f"{_cfg['requisitos']}")
                 if mcp_presets.lanzable_localmente(_pid):
                     st.caption(t("mcp_bi_stdio", lang))
                 else:
@@ -2459,9 +2458,9 @@ with tab_pbi:
     import importlib.util as _ilu
     _mcp_ok = _ilu.find_spec("mcp") is not None
     if _mcp_ok:
-        st.success(t("mcp_expose_status_ok", lang), icon="🔌")
+        st.success(t("mcp_expose_status_ok", lang))
     else:
-        st.warning(t("mcp_expose_status_missing", lang), icon="⚠️")
+        st.warning(t("mcp_expose_status_missing", lang))
     st.caption(t("mcp_cfg_claude", lang))
     st.code("claude mcp add mvdg -- python -m mvdg.mcp_server", language="bash")
     st.caption(t("mcp_cfg_vscode", lang))
@@ -2478,10 +2477,10 @@ with tab_pbi:
         st.success(t("mcp_try_ok", lang).format(n=len(_mcp_tools)))
         st.json({tl["name"]: tl["description"].split("\n")[0] for tl in _mcp_tools})
 
-    st.info(t("mcp_honest_note", lang), icon="🧭")
+    st.info(t("mcp_honest_note", lang))
 
 with tab_tab:
-    st.info(t("tab_intro", lang), icon="📊")
+    st.info(t("tab_intro", lang))
 
     _TAB_MODE = {"offline": t("tab_mode_offline", lang), "site": t("tab_mode_site", lang),
                 "example": t("tab_mode_example", lang)}
@@ -2516,7 +2515,7 @@ with tab_tab:
         st.session_state["tab_scan_result"] = tabl.ingest_example(lang)
     else:
         if not tabl.configured():
-            st.warning(t("tab_off", lang), icon="🔒")
+            st.warning(t("tab_off", lang))
         else:
             if st.button(t("tab_scan", lang), key="tab_scan_btn"):
                 try:
@@ -2574,7 +2573,7 @@ with tab_tab:
             st.caption(t("tab_refactor_hint", lang))
         _tab_calc_fields = [f for f in tab_model.fields if f.is_calculated]
         for _i, _f in enumerate(_tab_calc_fields):
-            with st.expander(f"📐 {_f.name}" + (f" · {_f.datasource}" if _f.datasource else "")):
+            with st.expander(f"{_f.name}" + (f" · {_f.datasource}" if _f.datasource else "")):
                 st.code(_f.formula or "—", language="text")
                 if _f.description:
                     st.caption(_f.description)
@@ -2598,6 +2597,6 @@ with tab_tab:
     st.markdown(t("mcp_tab_body", lang))
     st.caption(t("mcp_tab_cfg", lang))
     st.code('{\n  "mcpServers": {\n    "tableau": {\n      "command": "npx",\n      "args": ["-y", "@tableau/mcp-server@3.0.0"],\n      "env": {\n        "SERVER": "https://mi-servidor-tableau",\n        "SITE_NAME": "mi_sitio",\n        "PAT_NAME": "mi_pat",\n        "PAT_VALUE": "<valor-del-PAT>",\n        "PRODUCT_TELEMETRY_ENABLED": "false"\n      }\n    }\n  }\n}', language="json")
-    st.warning(t("mcp_tab_caveats", lang), icon="⚠️")
-    st.info(t("mcp_tab_verified", lang), icon="🧪")
+    st.warning(t("mcp_tab_caveats", lang))
+    st.info(t("mcp_tab_verified", lang))
     st.caption(t("mcp_tab_gov", lang))

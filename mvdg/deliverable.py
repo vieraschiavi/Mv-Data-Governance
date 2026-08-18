@@ -1,7 +1,7 @@
 # © 2026 Martín Viera. Todos los derechos reservados.
 # Software propietario. Ver LICENSE — prohibida su redistribución.
 """
-MV Data Governance · 📦 Entregable final por caso de ejemplo.
+MV Data Governance · Entregable final por caso de ejemplo.
 
 El pedido que origina esto: "mostrame una pestaña de entregable final de
 cada uno de los demos luego de terminar el trabajo de gobernanza de datos"
@@ -114,7 +114,7 @@ def findings_df(key: str, lang: str = "es",
     """Hallazgos del caso con su plan de remediación: cada regla que no
     pasó (warn/fail) + causa raíz, corrección de corto y largo plazo y a
     quién le toca — el mismo motor de sugerencias (mvdg.remediation) que
-    usa la pestaña ✅ Calidad. Esto es lo que convierte una "regla en
+    usa la pestaña Calidad. Esto es lo que convierte una "regla en
     falla" en un entregable profesional: el problema, diagnosticado y con
     plan de acción, no escondido."""
     if results is None:
@@ -197,7 +197,7 @@ def executive_summary_md(key: str, lang: str = "es") -> str:
     m, k, mig = d["meta"], d["kpis"], d["migration"]
     tpl = {
         "es": (
-            "# 📦 Entregable de gobernanza — {name}\n\n"
+            "# Entregable de gobernanza — {name}\n\n"
             "**Dataset:** `{key}` · **Dominio:** {domain} · **Clasificación:** {cls}\n\n"
             "**Dueño:** {owner} · **Steward:** {steward}\n\n"
             "**Fuente:** {source} ({license})\n\n"
@@ -214,7 +214,7 @@ def executive_summary_md(key: str, lang: str = "es") -> str:
             "reglas reales sobre el archivo del caso y de la curaduría guardada.*\n"
         ),
         "en": (
-            "# 📦 Governance deliverable — {name}\n\n"
+            "# Governance deliverable — {name}\n\n"
             "**Dataset:** `{key}` · **Domain:** {domain} · **Classification:** {cls}\n\n"
             "**Owner:** {owner} · **Steward:** {steward}\n\n"
             "**Source:** {source} ({license})\n\n"
@@ -231,7 +231,7 @@ def executive_summary_md(key: str, lang: str = "es") -> str:
             "the real rules on the case file and from the saved curation.*\n"
         ),
         "pt": (
-            "# 📦 Entregável de governança — {name}\n\n"
+            "# Entregável de governança — {name}\n\n"
             "**Dataset:** `{key}` · **Domínio:** {domain} · **Classificação:** {cls}\n\n"
             "**Dono:** {owner} · **Steward:** {steward}\n\n"
             "**Fonte:** {source} ({license})\n\n"

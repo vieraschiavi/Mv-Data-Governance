@@ -13,7 +13,7 @@ veredictos de un responsable:
     ~/.mv_data_governance/importado.json
 
 Y — más importante que guardar el archivo — lo importado entra al MISMO
-circuito de gobierno que todo lo demás: aparece en 🖊️ Curaduría como
+circuito de gobierno que todo lo demás: aparece en Curaduría como
 cualquier otra definición, con su origen visible ("importado de Purview" /
 "importado de Collibra") y su texto pre-establecido (el que trajo la
 plataforma externa) esperando que un Data Owner/Steward lo valide o lo
@@ -34,9 +34,9 @@ import pandas as pd
 from .clients import data_dir
 
 SOURCES = ("purview", "collibra", "database")
-# cómo se muestra el origen en 🖊️ Curaduría y en los listados
-SOURCE_LABELS = {"purview": "⬇️ purview", "collibra": "⬇️ collibra",
-                 "database": "🗄️ base de datos"}
+# cómo se muestra el origen en Curaduría y en los listados
+SOURCE_LABELS = {"purview": "⬇ purview", "collibra": "⬇ collibra",
+                 "database": "base de datos"}
 
 
 def _file() -> str:
@@ -154,7 +154,7 @@ def delete_table(source: str, external_id: str) -> bool:
 # ----------------------------------------------------- items para curaduría
 def curation_items(lang: str = "es") -> list[dict]:
     """Items importados en el mismo formato que ``curation._demo_items``/
-    ``_sample_items`` — así entran al inventario de 🖊️ Curaduría con su
+    ``_sample_items`` — así entran al inventario de Curaduría con su
     origen (Purview/Collibra) visible en vez de quedar aislados en su
     propia pantalla."""
     data = _load()
@@ -163,7 +163,7 @@ def curation_items(lang: str = "es") -> list[dict]:
         items.append({
             "item_id": f"glossary:imported:{key}",
             "kind": "glossary",
-            "dataset": SOURCE_LABELS.get(term["source"], f"⬇️ {term['source']}"),
+            "dataset": SOURCE_LABELS.get(term["source"], f"⬇ {term['source']}"),
             "label": term["name"],
             "proposed": term.get("definition", ""),
             "default_owner": "",
@@ -172,7 +172,7 @@ def curation_items(lang: str = "es") -> list[dict]:
         items.append({
             "item_id": f"catalog:imported:{key}",
             "kind": "catalog",
-            "dataset": SOURCE_LABELS.get(tbl["source"], f"⬇️ {tbl['source']}"),
+            "dataset": SOURCE_LABELS.get(tbl["source"], f"⬇ {tbl['source']}"),
             "label": tbl["name"],
             "proposed": tbl.get("description", ""),
             "default_owner": "",

@@ -69,7 +69,7 @@ export default function App() {
     <div className="wrap">
       <div className="card">
         <div className="brand">
-          <span className="shield">🛡️</span>
+          <span className="shield"></span>
           <h1>MV <b>Data Governance</b></h1>
         </div>
         <p className="tagline">{t.tagline}</p>

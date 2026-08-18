@@ -26,7 +26,7 @@ def governance_tables(lang: str = "es",
     """Todas las tablas de gobierno, listas para exportar o servir por API.
 
     Con ``include_samples=True`` el universo es el combinado demo + casos de
-    ejemplo de 🔎 Mis datos (ver ``mvdg.scope``) — mismo esquema de tablas,
+    ejemplo de Mis datos (ver ``mvdg.scope``) — mismo esquema de tablas,
     más filas. El default sigue siendo solo la demo (compatibilidad con la
     API y los tests existentes)."""
     if include_samples:

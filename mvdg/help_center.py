@@ -279,14 +279,14 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
                "Is the useful part my program, then mirroring it to Purview so it's registered there?",
                "O útil é meu programa, e depois espelhá-lo no Purview para ficar registrado lá?"),
         "a": _d(
-            "Exactamente ese es el patrón que implementa el conector de migración (pestaña 🔀). "
+            "Exactamente ese es el patrón que implementa el conector de migración (pestaña ). "
             "Tu programa hace el trabajo pesado — perfilar, correr reglas de calidad, generar y "
             "curar el glosario con un responsable real, detectar PII — y al final **empuja el "
             "resultado a Purview por API**, que queda como el catálogo que audita y busca **toda "
             "la empresa**, no solo vos. Ninguno reemplaza al otro: Purview sin ese trabajo previo "
             "es un inventario vacío de insights; tu programa sin Purview es insight sin un lugar "
             "central donde el resto de la empresa lo vea después de que el consultor se va.",
-            "That's exactly the pattern the migration connector implements (🔀 tab). Your "
+            "That's exactly the pattern the migration connector implements (tab). Your "
             "program does the heavy lifting — profiling, running quality rules, generating and "
             "curating the glossary with a real responsible person, detecting PII — and at the "
             "end **pushes the result to Purview via API**, which becomes the catalog **the whole "
@@ -294,7 +294,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "without that prior work is an empty inventory of insights; your program without "
             "Purview is insight with no central place for the rest of the company to see it "
             "after the consultant leaves.",
-            "É exatamente esse o padrão que o conector de migração implementa (aba 🔀). Seu "
+            "É exatamente esse o padrão que o conector de migração implementa (aba ). Seu "
             "programa faz o trabalho pesado — perfilamento, execução de regras de qualidade, "
             "geração e curadoria do glossário com um responsável real, detecção de PII — e no "
             "final **empurra o resultado para o Purview via API**, que fica como o catálogo que "
@@ -342,7 +342,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
                "Meu programa também migra para o Collibra via API?"),
         "a": _d(
             "Sí, en las dos direcciones. **Empuja** (tu programa → Collibra): catálogo, "
-            "diccionario y glosario, mismo patrón acelerador que Purview — pestaña 🔀 Migración. "
+            "diccionario y glosario, mismo patrón acelerador que Purview — pestaña Migración. "
             "**Trae** (Collibra → tu programa): assets de tipo Tabla y Business Terms ya "
             "aprobados, con su definición — para no volver a tipear a mano lo que la empresa ya "
             "documentó ahí. Lo que el conector de traída NO trae, a propósito: las asignaciones "
@@ -350,7 +350,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "documentada con suficiente detalle como para implementarla sin adivinar, y adivinar "
             "un endpoint es justo lo que este programa se propuso no hacer nunca.",
             "Yes, in both directions. **Push** (your program → Collibra): catalog, dictionary "
-            "and glossary, same accelerator pattern as Purview — 🔀 Migration tab. **Pull** "
+            "and glossary, same accelerator pattern as Purview — Migration tab. **Pull** "
             "(Collibra → your program): Table-type assets and already-approved Business Terms, "
             "with their definition — so you don't retype by hand what the company already "
             "documented there. What the pull connector deliberately does NOT bring in: "
@@ -358,7 +358,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "exact shape documented in enough detail to implement it without guessing, and "
             "guessing an endpoint is exactly what this program set out to never do.",
             "Sim, nas duas direções. **Empurra** (seu programa → Collibra): catálogo, "
-            "dicionário e glossário, mesmo padrão acelerador do Purview — aba 🔀 Migração. "
+            "dicionário e glossário, mesmo padrão acelerador do Purview — aba Migração. "
             "**Traz** (Collibra → seu programa): assets do tipo Tabela e Business Terms já "
             "aprovados, com sua definição — para não digitar de novo o que a empresa já "
             "documentou lá. O que o conector de trazer NÃO traz, de propósito: as atribuições de "
@@ -378,7 +378,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "a menos que algo como este programa haga ese trabajo, ya sea de forma independiente "
             "o como acelerador que alimenta a Purview/Collibra (que es exactamente lo que hace "
             "el conector de migración). El techo de cada capacidad de este programa vs. Purview/"
-            "Collibra está documentado sin vueltas en docs/PURVIEW_COLLIBRA.md — pestaña 📘 "
+            "Collibra está documentado sin vueltas en docs/PURVIEW_COLLIBRA.md — pestaña "
             "Estándares y este mismo menú.",
             "Neither is \"better\" in the abstract — they solve different problems. For a large "
             "company already on Azure with hundreds of sources, Purview's discovery at scale is "
@@ -387,7 +387,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "definitions) unless something like this program does that work, either "
             "independently or as an accelerator feeding Purview/Collibra (exactly what the "
             "migration connector does). Every capability's ceiling vs. Purview/Collibra is "
-            "documented plainly in docs/PURVIEW_COLLIBRA.md — 📘 Standards tab and this same menu.",
+            "documented plainly in docs/PURVIEW_COLLIBRA.md — Standards tab and this same menu.",
             "Nenhum é \"melhor\" em abstrato — resolvem problemas diferentes. Para uma empresa "
             "grande já no Azure com centenas de fontes, a descoberta em escala do Purview vale a "
             "pena de qualquer forma. Mas essa varredura só diz o que existe — não diz se seus "
@@ -395,7 +395,7 @@ PURVIEW_COLLIBRA_FAQ: list[dict] = [
             "menos que algo como este programa faça esse trabalho, seja de forma independente ou "
             "como acelerador que alimenta o Purview/Collibra (exatamente o que o conector de "
             "migração faz). O teto de cada capacidade deste programa vs. Purview/Collibra está "
-            "documentado sem rodeios em docs/PURVIEW_COLLIBRA.md — aba 📘 Padrões e este mesmo "
+            "documentado sem rodeios em docs/PURVIEW_COLLIBRA.md — aba Padrões e este mesmo "
             "menu."),
     },
 ]
