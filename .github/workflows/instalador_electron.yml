@@ -240,6 +240,70 @@ jobs:
           path: MVDataGovernance_v${{ steps.ver.outputs.v }}.zip
           retention-days: 90
 
+      # ------------------------------------------------- Release del cliente
+      #
+      # El boton de descarga de la landing va a /api/descargar, que redirige a
+      # MVDG_INSTALLER_URL. Esa variable apuntaba a un instalador que nunca
+      # existio, asi que el boton respondia 503 "sin_configurar": la web
+      # ofrecia un programa que no se podia bajar.
+      #
+      # Con una Release de etiqueta fija el link es estable y no caduca (los
+      # artefactos de Actions vencen y hay que entrar a la corrida a buscarlos,
+      # que no sirve para un boton publico).
+      #
+      # Este .exe NO trae licencia: arranca en plan demo y se desbloquea
+      # pegando la clave. Es el mismo binario que baja todo el mundo — un
+      # unico binario es el que se audita, se testea y se firma.
+      - name: Publicar la Release del cliente
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.ver.outputs.v }}"
+          exe="salida/INSTALADOR/MVDataGovernance_Setup_$v.exe"
+          [ -f "$exe" ] || { echo "No se genero $exe"; exit 1; }
+
+          notas="$RUNNER_TEMP/notas_cliente.md"
+          {
+            echo "Instalador de escritorio (Electron + React) de MV Data"
+            echo "Governance $v."
+            echo
+            echo "Al instalar: elegis carpeta y disco (propone una unidad"
+            echo "distinta de C: si tenes una con espacio), deja acceso directo"
+            echo "en el escritorio y en el menu Inicio, y se desinstala desde"
+            echo "Agregar o quitar programas."
+            echo
+            echo "Arranca en plan demo. Si compraste, pega tu clave en la"
+            echo "pestana Licencia: es el MISMO programa, no hay una segunda"
+            echo "descarga."
+            echo
+            echo "Se reemplaza en cada cambio del programa, asi que este link"
+            echo "siempre apunta a la ultima version."
+          } > "$notas"
+
+          if gh release view cliente-latest >/dev/null 2>&1; then
+            gh release edit cliente-latest --title "MV Data Governance $v" \
+              --notes-file "$notas"
+            gh release upload cliente-latest "$exe" --clobber
+          else
+            gh release create cliente-latest "$exe" \
+              --title "MV Data Governance $v" --notes-file "$notas"
+          fi
+
+          url="https://github.com/${{ github.repository }}/releases/download/cliente-latest/MVDataGovernance_Setup_$v.exe"
+          echo "Release lista: $url"
+          # Se deja a la vista en el resumen de la corrida: es el valor exacto
+          # que hay que poner en MVDG_INSTALLER_URL para que el boton de la
+          # landing deje de responder 503.
+          {
+            echo "### Instalador del cliente publicado"
+            echo ""
+            echo "Pone esto en Vercel como \`MVDG_INSTALLER_URL\`:"
+            echo ""
+            echo "    $url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # ------------------------------------------------------------------ OWNER
       # La licencia se agrega DESPUÉS del build del cliente y se reconstruye:
       # así el programa es idéntico y lo único distinto es el .txt.
