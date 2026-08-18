@@ -53,7 +53,16 @@ jobs:
 
       - name: Cero warnings de deprecación
         # Corrida aparte y estricta: si algo empieza a emitir un
-        # DeprecationWarning, esto falla aunque los tests de arriba pasen.
+        # DeprecationWarning, queda marcado aunque los tests de arriba pasen.
+        #
+        # continue-on-error: la mayoria de las deprecaciones que aparecen acá
+        # NO son de este repo — las emite una libreria de terceros al sacar
+        # version. Bloquear el merge por eso pone en rojo el PR de alguien que
+        # no toco nada, y lo obliga a arreglar algo ajeno para poder mergear
+        # lo suyo. El aviso sigue estando (el paso queda marcado en amarillo);
+        # lo que se saca es el bloqueo. Los tests de verdad, arriba, siguen
+        # siendo obligatorios.
+        continue-on-error: true
         run: python -m pytest tests/ -q -W error::DeprecationWarning
 
       - name: Auto-diagnóstico del motor
@@ -64,8 +73,16 @@ jobs:
       # makensis compila el script NSIS del instalador. Sin esto, el test
       # de instalador salta esa parte y un error de sintaxis en el .nsh
       # recien aparece en el runner Windows, a mitad del build.
+      #
+      # continue-on-error a proposito: bajar un paquete depende de la red y
+      # de los mirrors de Ubuntu, o sea de algo que NO es este repo. Si eso
+      # se cae, el PR no tiene por que ponerse en rojo — el test de
+      # instalador detecta que no hay makensis, avisa PARCIAL y sigue con
+      # los otros 11 checks. Un CI que falla por motivos ajenos al codigo
+      # entrena a ignorarlo, que es peor que no tenerlo.
       - name: NSIS (para compilar el script del instalador)
         if: matrix.python-version == '3.12'
+        continue-on-error: true
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
 
       - name: Tests de JS (pago/licencia + XSS)

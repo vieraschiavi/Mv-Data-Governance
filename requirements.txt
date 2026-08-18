@@ -1,15 +1,29 @@
 # MV Data Governance · Dependencias / Dependencies / Dependências
-streamlit>=1.37
-pandas>=2.0
-numpy>=1.24
-plotly>=5.18
-fastapi>=0.110
-uvicorn>=0.27
-openpyxl>=3.1
-xlsxwriter>=3.1
-pyarrow>=14.0
-sqlalchemy>=2.0
-keyring>=24.0
+#
+# POR QUE HAY TOPE DE VERSION MAYOR EN CADA UNA
+# ---------------------------------------------
+# Con `>=` a secas, el dia que cualquiera de estas saca una version mayor, el
+# CI se pone en rojo sin que nadie haya tocado una linea — y el rojo aparece
+# en el PR de otra persona, que pierde el tiempo buscando que rompio.
+#
+# No es hipotetico: `mcp` 2.0.0 saco `mcp.server.fastmcp` y dejo el servidor
+# MCP con ModuleNotFoundError. Ese tope se puso DESPUES de que pasara. Los
+# demas son el mismo tope, puesto antes.
+#
+# El tope es un cable de alarma, no una condena: subir de mayor es cambiar un
+# numero acá y ver si la suite pasa. Lo que se evita es que ese cambio entre
+# solo, en el PR de otro y sin que nadie lo haya decidido.
+streamlit>=1.37,<2
+pandas>=2.0,<4
+numpy>=1.24,<3
+plotly>=5.18,<7
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
+openpyxl>=3.1,<4
+xlsxwriter>=3.1,<4
+pyarrow>=14.0,<26
+sqlalchemy>=2.0,<3
+keyring>=24.0,<27
 # Tope en <2 a propósito: mcp 2.0.0 sacó `mcp.server.fastmcp`, que es lo que
 # importa mvdg/mcp_server.py. Sin el tope, una instalación nueva agarraba 2.0.0
 # y el servidor MCP moría con ModuleNotFoundError. Para subir a 2.x hay que
@@ -19,7 +33,7 @@ mcp>=1.28,<2
 # venía instalada de arriba como dependencia de keyring en Linux/macOS, pero
 # acá es de uso DIRECTO y en Windows keyring no la arrastra: sin declararla, el
 # programa no podría validar ninguna licencia en el SO donde más se instala.
-cryptography>=42.0
+cryptography>=42.0,<52
 
 # --- Drivers de base de datos (opcionales, instalá el que uses) ---
 # Database drivers (optional — install the one you use):

@@ -7340,3 +7340,34 @@ def test_lab_case_full_migration_circuit_real_http(tmp_path, monkeypatch):
         assert cdf["item_id"].str.startswith("glossary:imported:purview:").sum() == len(glo)
     finally:
         server.shutdown()
+
+def test_toda_dependencia_tiene_tope_de_version_mayor():
+    """Un `>=` sin tope deja entrar la proxima version MAYOR sola.
+
+    Cuando eso pasa, el CI se pone en rojo sin que nadie haya tocado codigo, y
+    el rojo aparece en el PR de otra persona. Ya paso una vez: `mcp` 2.0.0 saco
+    `mcp.server.fastmcp` y dejo el servidor MCP con ModuleNotFoundError.
+
+    El tope se puede subir cuando se quiera — es cambiar un numero y ver si la
+    suite pasa. Lo que este test impide es que ese cambio entre SOLO.
+    """
+    import re as _re
+    raiz = _repo_root()
+    sin_tope = []
+    for archivo in ("requirements.txt", "requirements-dev.txt"):
+        ruta = os.path.join(raiz, archivo)
+        with open(ruta, encoding="utf-8") as fh:
+            for n, linea in enumerate(fh, 1):
+                linea = linea.strip()
+                if not linea or linea.startswith("#") or linea.startswith("-r"):
+                    continue
+                # nombre + especificadores, ej "pandas>=2.0,<4"
+                m = _re.match(r"^([A-Za-z0-9_.\-]+)\s*(.*)$", linea)
+                if not m:
+                    continue
+                nombre, spec = m.group(1), m.group(2)
+                if "<" not in spec:
+                    sin_tope.append(f"{archivo}:{n} {nombre}{spec}")
+    assert not sin_tope, (
+        "estas dependencias no tienen tope de version mayor, asi que una "
+        "release ajena puede poner el CI en rojo sola: " + "; ".join(sin_tope))
