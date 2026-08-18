@@ -7454,3 +7454,121 @@ def test_el_automerge_dispara_los_instaladores():
         assert "workflow_dispatch" in triggers, (
             f"{archivo} no acepta workflow_dispatch: el automerge lo pide y "
             f"la llamada falla")
+
+def _firmar_licencia_de_prueba(payload):
+    """Firma un token MVDG2 con un par nuevo y deja esa publica configurada.
+
+    Devuelve el token. El llamador es responsable de restaurar
+    licensing.PUBLIC_KEY_B64 (los tests de abajo usan monkeypatch)."""
+    import base64
+    import json as _json
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey)
+
+    def b64u(b):
+        return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+    priv = Ed25519PrivateKey.generate()
+    pub = b64u(priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw))
+    cuerpo = b64u(_json.dumps(payload, separators=(",", ":")).encode())
+    return f"MVDG2.{cuerpo}.{b64u(priv.sign(cuerpo.encode('ascii')))}", pub
+
+
+def test_la_api_deja_activar_la_licencia_del_exe(tmp_path, monkeypatch):
+    """El .exe (Electron + React) no tenia NINGUNA nocion de licencia.
+
+    Sus seis vistas son funciones gratuitas, no habia donde pegar la clave, y
+    demo, paga y owner se veian exactamente igual. O sea que un cliente podia
+    pagar US$390 y, usando el .exe, recibir la demo — sin siquiera un campo
+    donde poner lo que compro.
+
+    Esto cubre el circuito por el que ahora pasa: consultar el plan, activarlo
+    con una clave firmada, y volver a demo.
+    """
+    import time as _time
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+    from mvdg import licensing
+
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    token, pub = _firmar_licencia_de_prueba(
+        {"plan": "professional", "email": "c@empresa.com",
+         "iat": int(_time.time())})
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    c = TestClient(app)
+    assert c.get("/api/licencia").json()["plan"] == "demo"
+
+    r = c.post("/api/licencia", json={"token": token})
+    assert r.status_code == 200, r.text
+    assert r.json()["plan"] == "professional"
+    assert r.json()["email"] == "c@empresa.com"
+
+    # persiste: es lo que ve el cliente al reabrir el programa
+    assert c.get("/api/licencia").json()["plan"] == "professional"
+
+    assert c.delete("/api/licencia").json()["plan"] == "demo"
+
+
+def test_la_api_rechaza_una_licencia_falsa(tmp_path, monkeypatch):
+    """Una clave que no verifica NO se guarda y el plan no se mueve.
+
+    Y tiene que fallar RUIDOSO (400): el sintoma de no hacerlo es un cliente
+    que pego su clave, no vio ningun error, y sigue en demo sin entender por
+    que."""
+    import time as _time
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+    from mvdg import licensing
+
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    # una publica que NO es la del firmante
+    _, pub_ajena = _firmar_licencia_de_prueba({"plan": "demo"})
+    token, _ = _firmar_licencia_de_prueba(
+        {"plan": "owner", "iat": int(_time.time())})
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub_ajena)
+
+    c = TestClient(app)
+    for cuerpo in ({}, {"token": ""}, {"token": "cualquier-cosa"},
+                   {"token": token}):
+        assert c.post("/api/licencia", json=cuerpo).status_code == 400
+    assert c.get("/api/licencia").json()["plan"] == "demo"
+
+
+def test_la_interfaz_del_exe_tiene_la_pantalla_de_licencia():
+    """Que los endpoints existan no alcanza: el cliente los usa desde la UI.
+
+    Si la vista se cae del bundle, la API sigue respondiendo perfecto y el
+    cliente igual no tiene donde pegar su clave — que era exactamente el
+    estado anterior."""
+    import re as _re
+    raiz = _repo_root()
+    app_jsx = os.path.join(raiz, "electron", "ui", "src", "App.jsx")
+    with open(app_jsx, encoding="utf-8") as fh:
+        crudo = fh.read()
+    # Solo CODIGO: buscar sobre el archivo crudo daba verde con la vista
+    # comentada, porque "/* licencia: Licencia */" sigue conteniendo el texto.
+    # Verificado — el test pasaba sobre el bug.
+    fuente = _re.sub(r"/\*.*?\*/", "", crudo, flags=_re.S)
+    fuente = _re.sub(r"^\s*//.*$", "", fuente, flags=_re.M)
+    assert '"licencia"' in fuente, "la vista licencia no esta en VISTAS"
+    assert "function Licencia" in fuente, "falta el componente Licencia"
+    assert "licencia: Licencia" in fuente, "la vista no esta enganchada a RENDER"
+
+    api_js = os.path.join(raiz, "electron", "ui", "src", "api.js")
+    with open(api_js, encoding="utf-8") as fh:
+        cliente = fh.read()
+    for fn in ("licencia", "activarLicencia", "desactivarLicencia"):
+        assert f"export async function {fn}" in cliente, f"falta {fn}() en api.js"
+
+    # y los textos, en los tres idiomas (la UI del .exe tiene su propio i18n)
+    i18n_js = os.path.join(raiz, "electron", "ui", "src", "i18n.js")
+    with open(i18n_js, encoding="utf-8") as fh:
+        textos = fh.read()
+    for clave in ("lic_plan", "lic_activar", "lic_clave", "lic_demo_ayuda"):
+        assert clave in textos, f"falta la clave {clave} en el i18n del .exe"

@@ -14,10 +14,11 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { todo } from "./api";
+import { activarLicencia, desactivarLicencia, licencia, todo } from "./api";
 import { t } from "./i18n";
 
-const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario", "politicas"];
+const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
+                "politicas", "licencia"];
 
 /* ------------------------------------------------------------- helpers */
 
@@ -268,8 +269,110 @@ function Politicas({ d, lang }) {
   );
 }
 
+
+/* ---------------------------------------------------------------- licencia
+ *
+ * Esta vista existe porque el .exe no tenia NINGUNA: sus seis vistas son
+ * funciones gratuitas y no habia donde pegar la clave, asi que un cliente que
+ * pagaba veia exactamente lo mismo que uno que no. Podia comprar y no tener
+ * como usar lo comprado.
+ *
+ * No decide nada por su cuenta: todo lo resuelve el motor (mvdg/licensing.py)
+ * detras de /api/licencia, que revalida la firma Ed25519 en cada lectura. Si
+ * alguien edita el archivo de licencia a mano, deja de validar y vuelve a demo.
+ */
+function Licencia({ lang }) {
+  const [estado, setEstado] = useState(null);
+  const [clave, setClave] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  const refrescar = useCallback(() => {
+    licencia().then(setEstado).catch((e) => setMsg({ mal: true, txt: e.detalle }));
+  }, []);
+  useEffect(refrescar, [refrescar]);
+
+  const activar = async () => {
+    setOcupado(true);
+    setMsg(null);
+    try {
+      setEstado(await activarLicencia(clave.trim()));
+      setClave("");
+      setMsg({ mal: false, txt: t("lic_ok", lang) });
+    } catch (e) {
+      // El motor ya dice por que no vale; repetirlo con otras palabras solo
+      // agrega ruido cuando el cliente escribe a soporte.
+      setMsg({ mal: true, txt: e.detalle || e.message });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const quitar = async () => {
+    setOcupado(true);
+    try {
+      setEstado(await desactivarLicencia());
+      setMsg(null);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  if (!estado) return <div className="centro"><div className="spinner" /></div>;
+  const pago = estado.plan !== "demo";
+  const vence = estado.vence
+    ? new Date(estado.vence * 1000).toLocaleDateString()
+    : null;
+
+  return (
+    <section>
+      <h2>{t("licencia", lang)}</h2>
+      <p className="sub">
+        {t("lic_plan", lang)}: <b>{estado.plan}</b>
+        {estado.email ? ` · ${t("lic_email", lang)} ${estado.email}` : ""}
+        {vence ? ` · ${t("lic_vence", lang)} ${vence}` : ""}
+      </p>
+      <p>{pago ? t("lic_activa_ayuda", lang) : t("lic_demo_ayuda", lang)}</p>
+
+      {pago ? (
+        <button className="btn" onClick={quitar} disabled={ocupado}>
+          {t("lic_quitar", lang)}
+        </button>
+      ) : (
+        <div className="fila">
+          <label htmlFor="lic-clave">{t("lic_clave", lang)}</label>
+          <input id="lic-clave" value={clave} spellCheck="false"
+                 placeholder="MVDG2..."
+                 onChange={(e) => setClave(e.target.value)} />
+          <button className="btn" onClick={activar}
+                  disabled={ocupado || !clave.trim()}>
+            {t("lic_activar", lang)}
+          </button>
+        </div>
+      )}
+
+      {msg ? (
+        <p className={msg.mal ? "malo" : "bueno"} role="status">{msg.txt}</p>
+      ) : null}
+
+      <h3>{t("lic_funciones", lang)}</h3>
+      <ul>
+        {(estado.funciones_pagas || []).map((f) => {
+          // Si el motor agrega una funcion nueva y todavia no tiene nombre
+          // traducido, se muestra la clave: es feo, pero es preferible a una
+          // lista que se queda muda justo cuando aparece algo nuevo.
+          const nombre = t(`fn_${f}`, lang);
+          return <li key={f}>{nombre === `fn_${f}` ? <code>{f}</code> : nombre}</li>;
+        })}
+      </ul>
+      <p className="sub">{t("lic_nota_exe", lang)}</p>
+    </section>
+  );
+}
+
 const RENDER = { panorama: Panorama, catalogo: Catalogo, calidad: Calidad,
-                 linaje: Linaje, glosario: Glosario, politicas: Politicas };
+                 linaje: Linaje, glosario: Glosario, politicas: Politicas,
+                 licencia: Licencia };
 
 /* ----------------------------------------------------------------- app */
 

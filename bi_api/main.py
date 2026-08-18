@@ -22,7 +22,7 @@ import time
 from collections import deque
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -197,6 +197,61 @@ def root():
 @app.get("/health", tags=["meta"])
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Licencia
+#
+# La version .exe (Electron + React) no tenia NINGUNA nocion de licencia: sus
+# seis vistas son funciones gratuitas, no habia donde pegar la clave, y demo,
+# paga y owner se veian exactamente igual. O sea que quien pagaba y usaba el
+# .exe recibia la demo — el mismo bug que ya se cerro en la capa de licencias,
+# un nivel mas arriba.
+#
+# Estos dos endpoints son lo minimo para que la compra sirva en el .exe:
+# consultar que plan hay, y activar una clave.
+#
+# Que esto sea escritura sobre una API no la abre a nadie: escucha en
+# 127.0.0.1 por defecto (fuera de loopback exige MVDG_API_TOKEN, ver main()),
+# y sobre todo licensing.save() REVALIDA la firma Ed25519 antes de guardar
+# nada. Mandar un token inventado no habilita nada: se rechaza igual que si se
+# pegara en la otra interfaz.
+# ---------------------------------------------------------------------------
+@app.get("/api/licencia", tags=["meta"])
+def licencia_estado():
+    """Plan vigente y que funciones habilita."""
+    from mvdg import licensing
+    return licensing.status()
+
+
+# Body(...) en el default lo marca ruff (B008): se saca a una constante.
+_CUERPO = Body(...)
+
+
+@app.post("/api/licencia", tags=["meta"])
+def licencia_activar(cuerpo: dict = _CUERPO):
+    """Activa una clave MVDG2. Devuelve el estado nuevo, o 400 si no valida.
+
+    No se guarda nada que no verifique: `save()` devuelve None y ahi se
+    responde 400. Una clave rota tiene que fallar RUIDOSO — el sintoma de no
+    hacerlo es un cliente que pego su clave, no vio ningun error, y sigue en
+    demo sin entender por que.
+    """
+    from mvdg import licensing
+    token = str((cuerpo or {}).get("token") or "").strip()
+    if not token:
+        raise HTTPException(400, "Falta la clave de licencia.")
+    if licensing.save(token) is None:
+        raise HTTPException(400, "La clave no es valida para este programa.")
+    return licensing.status()
+
+
+@app.delete("/api/licencia", tags=["meta"])
+def licencia_borrar():
+    """Saca la licencia guardada y vuelve a plan demo."""
+    from mvdg import licensing
+    licensing.clear()
+    return licensing.status()
 
 
 def _serve(df, table: str, lang: str, format: str):
