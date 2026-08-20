@@ -2643,12 +2643,35 @@ def test_todo_lo_que_importa_la_suite_esta_declarado():
     with open(ruta, encoding="utf-8") as fh:
         arbol = ast.parse(fh.read())
 
-    raices = set()
+    def _raices(nodos):
+        fuera = set()
+        for n in nodos:
+            for x in ast.walk(n):
+                if isinstance(x, ast.Import):
+                    fuera.update(a.name.split(".")[0] for a in x.names)
+                elif isinstance(x, ast.ImportFrom) and x.level == 0 and x.module:
+                    fuera.add(x.module.split(".")[0])
+        return fuera
+
+    raices = _raices([arbol])
+
+    # Imports OPCIONALES: los que estan dentro de un try que captura
+    # ImportError. Esos no se exigen en requirements a proposito — el test
+    # que los usa degrada solo cuando no estan.
+    #
+    # El caso concreto: cairosvg rasteriza el logo para comparar los iconos
+    # contra el vector. Sirve para REGENERARLOS, no para correr la suite, y
+    # declararlo obligaria a instalar libcairo en el CI para un chequeo que
+    # ya se hace igual sin el. Se declara acá, explicito, en vez de esquivar
+    # el escaneo escribiendo el import de otra forma.
+    opcionales = set()
     for n in ast.walk(arbol):
-        if isinstance(n, ast.Import):
-            raices.update(a.name.split(".")[0] for a in n.names)
-        elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
-            raices.add(n.module.split(".")[0])
+        if isinstance(n, ast.Try) and any(
+                (h.type is None) or
+                (isinstance(h.type, ast.Name) and h.type.id == "ImportError")
+                for h in n.handlers):
+            opcionales |= _raices(n.body)
+    raices -= opcionales
 
     propios = {"mvdg", "app", "bi_api", "tests", "conftest"}
     externos = {r for r in raices
@@ -7712,3 +7735,61 @@ def test_el_logo_de_la_marca_esta_en_la_web_y_en_el_programa():
     assert "img-src 'self' data:" in fuente, (
         "la CSP del launcher no permite imagenes data:, asi que el logo "
         "queda bloqueado sin ningun error visible")
+
+def test_los_iconos_salen_del_logo_vectorial():
+    """El logo es UN vector y todo lo demas sale de ahi.
+
+    Antes habia media docena de .png sueltos y un .ico, cada uno generado a
+    mano en algun momento. Cambiar el logo era una caceria de archivos, y el
+    resultado tipico es el favicon nuevo con el icono del escritorio viejo —
+    nadie se entera hasta que un cliente lo ve.
+
+    Ahora manda assets/brand/mv_logo.svg y packaging/generar_iconos.py los
+    produce. Este test verifica lo que se puede sin rasterizar; si cairosvg
+    esta disponible, ademas compara los pixeles contra el SVG actual.
+    """
+    from PIL import Image
+    raiz = _repo_root()
+    marca = os.path.join(raiz, "assets", "brand")
+
+    svg = os.path.join(marca, "mv_logo.svg")
+    assert os.path.exists(svg), "falta el logo vectorial mv_logo.svg"
+    with open(svg, encoding="utf-8") as fh:
+        contenido = fh.read()
+    assert "<svg" in contenido and "viewBox" in contenido
+
+    # Cada PNG mide lo que dice su nombre.
+    for nombre, tam in (("mv_icon.png", 1024), ("mv_icon_256.png", 256),
+                        ("mv_icon_128.png", 128), ("mv_icon_64.png", 64),
+                        ("mv_icon_32.png", 32)):
+        ruta = os.path.join(marca, nombre)
+        with Image.open(ruta) as im:
+            assert im.size == (tam, tam), f"{nombre} mide {im.size}, no {tam}"
+
+    # El .ico con los tamanios que Windows usa. Si falta uno, Windows escala
+    # otro y se ve borroso justo en el escritorio o la barra de tareas.
+    with Image.open(os.path.join(marca, "mv.ico")) as ico:
+        tiene = sorted({t[0] for t in ico.ico.sizes()})
+    assert tiene == [16, 32, 48, 64, 128, 256], f"mv.ico trae {tiene}"
+
+    # Y el generador declara esos mismos tamanios (si alguien agrega un uso
+    # nuevo sin sumarlo al script, el icono nuevo nace desincronizado).
+    gen = os.path.join(raiz, "packaging", "generar_iconos.py")
+    assert os.path.exists(gen), "falta packaging/generar_iconos.py"
+    with open(gen, encoding="utf-8") as fh:
+        script = fh.read()
+    for nombre in ("mv_icon_256.png", "mv_icon_128.png", "mv_icon_64.png"):
+        assert nombre in script, f"{nombre} no lo genera el script"
+
+    # Comparacion real contra el vector, solo si se puede rasterizar aca.
+    # cairosvg NO esta en requirements: solo hace falta para REGENERAR, y
+    # sumarlo obligaria a instalar libcairo en el CI para nada.
+    try:
+        import cairosvg  # noqa: F401
+    except ImportError:
+        return
+    import subprocess
+    r = subprocess.run([sys.executable, gen, "--revisar"],
+                       cwd=raiz, capture_output=True, text=True)
+    assert r.returncode == 0, (
+        "los iconos del repo no salen del logo actual:\n" + r.stderr)
