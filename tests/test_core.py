@@ -7650,3 +7650,65 @@ def test_la_falta_del_secreto_del_owner_no_frena_al_instalador_del_cliente():
     assert "github.event_name" not in codigo, (
         "github.event_name no sirve para esto: el automerge tambien dispara "
         "con workflow_dispatch")
+
+def test_el_logo_de_la_marca_esta_en_la_web_y_en_el_programa():
+    """El mismo logo en los tres lados, y ninguno vacio.
+
+    Dos cosas que este test fija, las dos vividas:
+
+    1. El encabezado del .exe tenia un EMOJI adentro de un span. Al sacar los
+       emojis decorativos ese span quedo vacio y el programa se quedo sin
+       marca — un hueco donde iba el logo, y nada que fallara.
+    2. El favicon de la interfaz era un escudo ambar dibujado en SVG, no el
+       logo. La landing mostraba uno y el programa otro.
+
+    El .png de assets/brand es la unica fuente de verdad: los dos builds lo
+    leen en tiempo de compilacion, asi que cambiar el logo lo cambia en todos
+    lados sin tocar codigo.
+    """
+    import hashlib
+    raiz = _repo_root()
+
+    # 1. La landing usa EXACTAMENTE el mismo archivo que el producto.
+    def sha(ruta):
+        with open(ruta, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+
+    marca = os.path.join(raiz, "assets", "brand", "mv_icon.png")
+    landing = os.path.join(raiz, "landing", "mv_icon.png")
+    assert sha(marca) == sha(landing), (
+        "el logo de la landing y el del producto son archivos distintos: uno "
+        "de los dos quedo viejo")
+
+    # 2. Los dos builds leen el png de verdad (no un base64 pegado a mano,
+    #    que se desactualiza en silencio).
+    for script, tam in (("build-ui.mjs", "mv_icon_64.png"),
+                        ("build-launcher.mjs", "mv_icon_128.png")):
+        ruta = os.path.join(raiz, "electron", "scripts", script)
+        with open(ruta, encoding="utf-8") as fh:
+            fuente = fh.read()
+        assert tam in fuente, f"{script} no lee el logo de assets/brand"
+        assert 'rel="icon"' in fuente and "${LOGO}" in fuente, (
+            f"{script} no usa el logo como favicon")
+
+    # 3. La marca NO puede ser un hueco: tiene que pintar la imagen.
+    for css_rel, sel in ((("electron", "ui", "src", "styles.css"), ".escudo"),
+                         (("electron", "launcher", "src", "styles.css"), ".shield")):
+        ruta = os.path.join(raiz, *css_rel)
+        with open(ruta, encoding="utf-8") as fh:
+            css = fh.read()
+        i = css.index(sel)
+        bloque = css[i:css.index("}", i)]
+        assert "--mv-logo" in bloque, (
+            f"{sel} no pinta el logo: si adentro solo hay texto o un emoji, "
+            f"el dia que se saque queda un hueco")
+
+    # 4. La CSP del launcher tiene que PERMITIR data: en imagenes. Sin
+    #    img-src, default-src 'self' bloquea el logo y no se ve nada — falla
+    #    silenciosa, la peor clase.
+    ruta = os.path.join(raiz, "electron", "scripts", "build-launcher.mjs")
+    with open(ruta, encoding="utf-8") as fh:
+        fuente = fh.read()
+    assert "img-src 'self' data:" in fuente, (
+        "la CSP del launcher no permite imagenes data:, asi que el logo "
+        "queda bloqueado sin ningun error visible")
