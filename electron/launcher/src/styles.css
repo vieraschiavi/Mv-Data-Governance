@@ -9,7 +9,9 @@ body {
 .wrap { height: 100%; display: flex; align-items: center; justify-content: center; }
 .card { text-align: center; max-width: 560px; padding: 48px; }
 .brand { display: flex; gap: 14px; align-items: center; justify-content: center; }
-.shield { font-size: 44px; }
+/* El logo real. Era un span con emoji; al sacarlo quedo vacio. */
+.shield { width: 56px; height: 56px; display: block; margin: 0 auto 10px;
+  border-radius: 13px; background: var(--mv-logo) center/cover no-repeat; }
 h1 { font-size: 34px; font-weight: 300; letter-spacing: .5px; }
 h1 b { font-weight: 700; color: #f2b441; }
 .tagline { margin-top: 6px; color: #93a5bd; font-size: 15px; }

@@ -28,20 +28,22 @@ await build({
 
 const css = readFileSync(join(aqui, "..", "ui", "src", "styles.css"), "utf8");
 
-// Favicon embebido como data URI y no como archivo: el navegador pide
-// /favicon.ico SIEMPRE, y sin esto quedaba un 404 en la consola en cada
-// arranque. En un programa que se vende, un error en la consola es una
-// pregunta incómoda esperando a que alguien abra las herramientas de
-// desarrollo. Escudo en ámbar sobre el navy de la marca.
-const FAVICON =
-  "data:image/svg+xml," +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-    '<rect width="32" height="32" rx="7" fill="#081527"/>' +
-    '<path d="M16 5l9 3.4v6.9c0 5.6-3.8 10.3-9 11.7-5.2-1.4-9-6.1-9-11.7V8.4L16 5z" ' +
-    'fill="none" stroke="#f2b441" stroke-width="2.2" stroke-linejoin="round"/>' +
-    '<path d="M11.5 16.2l3.2 3.2 6-6.4" fill="none" stroke="#f2b441" ' +
-    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+// La MARCA, embebida como data URI desde el PNG de assets/brand.
+//
+// Se lee el archivo en tiempo de build a proposito: asi el .png sigue siendo
+// la unica fuente de verdad. Si se cambia el logo, cambia en la web y en el
+// programa sin tocar codigo — que es lo contrario a pegar un base64 a mano y
+// que quede desactualizado sin que nadie lo note.
+//
+// Y va embebido y no como archivo suelto porque el navegador pide
+// /favicon.ico SIEMPRE: sin esto quedaba un 404 en la consola en cada
+// arranque, y en un programa que se vende un error en consola es una
+// pregunta incomoda esperando a que alguien abra las herramientas.
+//
+// Antes habia acá un escudo ambar dibujado en SVG: no era el logo de la
+// marca. El de la landing y el del .exe tienen que ser el MISMO.
+const LOGO = "data:image/png;base64," + readFileSync(
+  join(aqui, "..", "..", "assets", "brand", "mv_icon_64.png")).toString("base64");
 
 // CSP estricta: sin 'unsafe-eval' y sin orígenes externos. connect-src queda
 // en 'self' porque la UI la sirve el MISMO servidor que la API — si algún día
@@ -53,9 +55,9 @@ writeFileSync(join(salida, "index.html"), `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
-<link rel="icon" href="${FAVICON}">
+<link rel="icon" href="${LOGO}">
 <title>MV Data Governance</title>
-<style>${css}</style>
+<style>:root{--mv-logo:url("${LOGO}")}\n${css}</style>
 </head>
 <body><div id="root"></div><script src="ui.js"></script></body>
 </html>
