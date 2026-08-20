@@ -10,8 +10,12 @@ body {
 .card { text-align: center; max-width: 560px; padding: 48px; }
 .brand { display: flex; gap: 14px; align-items: center; justify-content: center; }
 /* El logo real. Era un span con emoji; al sacarlo quedo vacio. */
-.shield { width: 56px; height: 56px; display: block; margin: 0 auto 10px;
-  border-radius: 13px; background: var(--mv-logo) center/cover no-repeat; }
+/* El logo real. Era un span con un emoji adentro; al sacar los emojis
+   quedo vacio y el launcher se quedo sin marca.
+   Sin border-radius: el .png ya viene con las esquinas redondeadas y el
+   fondo transparente — redondearlo otra vez le comeria el borde. */
+.shield { width: 56px; height: 56px; flex: 0 0 56px;
+  background: var(--mv-logo) center/contain no-repeat; }
 h1 { font-size: 34px; font-weight: 300; letter-spacing: .5px; }
 h1 b { font-weight: 700; color: #f2b441; }
 .tagline { margin-top: 6px; color: #93a5bd; font-size: 15px; }
