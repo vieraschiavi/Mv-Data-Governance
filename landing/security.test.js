@@ -145,9 +145,33 @@ function main() {
       assert.ok(new RegExp(`esc\\(${campo.replace(".", "\\.")}\\)`).test(html), `${campo} sin esc()`);
     }
   });
-  check("index.html: la licencia de trial (respuesta de /api/trial) pasa por rvEsc()", () => {
+  // El trial autoservicio (/api/trial) se elimino: emitia una licencia a
+  // cualquiera que dejara un email, y con esa licencia se bajaba el programa.
+  // Su chequeo de XSS se reemplaza por el del formulario que lo sustituye.
+  check("index.html: ya no queda ningun uso de /api/trial", () => {
     const html = fs.readFileSync(path.join(DIR, "index.html"), "utf8");
-    assert.ok(/rvEsc\(res\.d\.license_key\)/.test(html), "res.d.license_key sin rvEsc()");
+    const sinComentarios = html.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->/g, "");
+    assert.ok(!/fetch\(['"]\/api\/trial/.test(sinComentarios),
+              "index.html sigue llamando a /api/trial, que ya no existe");
+  });
+  check("descargas.html: la respuesta del pedido de acceso NO va por innerHTML", () => {
+    // Este formulario muestra mensajes de estado, no datos de nadie — pero la
+    // regla de la casa es que nada que venga de una respuesta se inserte como
+    // marcado. Con textContent no hay nada que escapar ni que se pueda olvidar.
+    const html = fs.readFileSync(path.join(DIR, "descargas.html"), "utf8");
+    assert.ok(/msg\.textContent\s*=/.test(html),
+              "el mensaje del formulario no usa textContent");
+    const js = html.slice(html.indexOf("accesoForm"));
+    assert.ok(!/msg\.innerHTML/.test(js),
+              "el formulario de acceso escribe innerHTML: usa textContent");
+  });
+  check("descargas.html: la pagina ya no ofrece ninguna descarga directa", () => {
+    // El punto del cambio: la demo se pide, no se baja. Un <a> al .zip o al
+    // endpoint de descarga en esta pagina anula todo lo demas.
+    const html = fs.readFileSync(path.join(DIR, "descargas.html"), "utf8");
+    assert.ok(!/href=["'][^"']*\.zip/.test(html), "sigue habiendo un link a un .zip");
+    assert.ok(!/href=["'][^"']*\/api\/descargar/.test(html),
+              "sigue habiendo un link directo al endpoint de descarga");
   });
 
   console.log(`\nTodos los checks de seguridad (XSS) pasaron (${checks}).`);

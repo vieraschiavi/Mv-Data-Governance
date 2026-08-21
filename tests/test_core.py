@@ -524,9 +524,10 @@ def test_licencia_plan_owner_desbloquea_todo(tmp_path, monkeypatch):
 
 
 def test_licencia_trial_14_dias_da_lo_mismo_que_professional(tmp_path, monkeypatch):
-    """api/trial.js emite un token 'trial' — este test verifica el lado que
-    lo interpreta: mientras no venza, desbloquea exactamente lo mismo que
-    'professional' (el plan de USD 390/mes que el trial demuestra)."""
+    """La licencia de prueba que se entrega despues de la demo 1 a 1 lleva
+    plan 'trial'. Este test verifica el lado que lo interpreta: mientras no
+    venza, desbloquea exactamente lo mismo que 'professional' (el plan de
+    USD 390/mes que la prueba demuestra)."""
     import time as _t
     from mvdg import licensing
     monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
@@ -3188,18 +3189,46 @@ def test_bi_api_cors_no_trae_comodin_por_defecto():
                for o in bm.CORS_ORIGINS)
 
 
-def test_landing_ofrece_el_instalador_y_no_manda_a_compilarlo():
-    """El circuito comercial: la landing ofrece el .exe listo. Antes la
-    tarjeta del instalador bajaba el ZIP portable y decía "el .exe se genera
-    en tu PC" — pedirle a un prospecto que compile el producto antes de
-    probarlo es perder la venta ahí mismo."""
+def test_la_demo_no_se_baja_de_ninguna_pagina_publica():
+    """La demo dejo de ser de descarga libre: se pide, se muestra en una
+    sesion 1 a 1, y la licencia se entrega despues.
+
+    Lo que se estaba regalando no era "una demo": el ZIP publico de la pagina
+    traia los 105 archivos del programa, `app/app.py` y el motor `mvdg/`
+    enteros. Cualquiera se llevaba el codigo fuente sin dar un nombre.
+
+    Este test cubre las paginas. El gate de verdad esta en api/descargar.js
+    (exige licencia) y lo cubre api/payments.test.js — sacar el boton y dejar
+    el endpoint abierto seria decoracion, porque la URL ya esta publicada."""
+    for pagina in ("index.html", "descargas.html", "reviews.html"):
+        ruta = os.path.join(_repo_root(), "landing", pagina)
+        if not os.path.exists(ruta):
+            continue
+        with open(ruta, encoding="utf-8") as fh:
+            html = fh.read()
+        # Sin comentarios: los que explican POR QUE se saco la descarga
+        # mencionan el zip y el endpoint, y no son links.
+        limpio = re.sub(r"<!--.*?-->|/\*.*?\*/", "", html, flags=re.S)
+        assert not re.search(r'href=["\']\s*[^"\']*\.zip', limpio), (
+            f"{pagina} ofrece un .zip: ahi adentro va el codigo fuente entero")
+        assert "/api/descargar" not in limpio, (
+            f"{pagina} linkea la descarga directa; la demo se pide, no se baja")
+
+
+def test_la_pagina_de_acceso_pide_los_datos_que_filtran_al_curioso():
+    """El formulario tiene que pedir nombre, empresa, pais y email — que es
+    lo que separa a un prospecto de la competencia mirando, y lo que deja
+    rastro de quien pidio acceso. Si alcanzara con un email descartable,
+    volveria a ser una descarga abierta con un paso de mas."""
     ruta = os.path.join(_repo_root(), "landing", "descargas.html")
     with open(ruta, encoding="utf-8") as fh:
         html = fh.read()
-    assert "/api/descargar" in html, "la landing no ofrece el instalador"
-    for frase in ("El .exe se genera en tu PC", "The .exe is built on your",
-                  "O .exe é gerado no seu"):
-        assert frase not in html, f"sigue mandando a compilar: {frase!r}"
+    assert "/api/acceso" in html, "la pagina no manda el pedido a ningun lado"
+    for campo in ("nombre", "empresa", "pais", "email"):
+        assert re.search(r'name="%s"' % campo, html), f"no pide {campo}"
+    # y el email tiene que ser un campo de email, no un texto libre
+    assert re.search(r'name="email"[^>]*type="email"|type="email"[^>]*name="email"',
+                     html), "el email no esta declarado como type=email"
 
 
 def test_pago_entrega_el_mismo_instalador_mas_la_licencia():
@@ -3210,6 +3239,21 @@ def test_pago_entrega_el_mismo_instalador_mas_la_licencia():
     with open(ruta, encoding="utf-8") as fh:
         html = fh.read()
     assert "/api/descargar" in html
+    # Y con la licencia ADENTRO del link: la descarga dejo de ser publica, asi
+    # que sin `k=<licencia>` el que acaba de pagar se comeria un 403.
+    #
+    # Se exige que la URL se CONSTRUYA con STATE.license, no que las dos cosas
+    # aparezcan sueltas en el archivo. La primera version de este test decia
+    # `"k=" in html and "STATE.license" in html` y quedaba VERDE con la
+    # licencia sacada del link: las dos cadenas seguian existiendo en otras
+    # partes de la pagina. Verificado mutando el arreglo.
+    enlace = re.search(
+        r"'/api/descargar\?[^']*'\s*\+\s*encodeURIComponent\(STATE\.license\)", html)
+    assert enlace, (
+        "el link de descarga no se arma con STATE.license: el comprador "
+        "recibiria 403 despues de haber pagado")
+    assert "k=" in enlace.group(0), (
+        f"el link no manda la licencia como `k`: {enlace.group(0)}")
     assert "MVDataGovernance_Demo_v1.0.0.zip" not in html, (
         "despues de pagar seguia bajando el ZIP de demo")
     assert "lic_label" in html, "no muestra la clave de licencia"
@@ -3649,49 +3693,82 @@ def test_landing_estados_de_error_visibles():
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
 
 
-def test_landing_ofrece_trial_de_14_dias_sin_tarjeta():
-    """El trial del tier USD 390 (Professional) tiene que existir como flujo
-    real — email -> licencia — no un boton que dice 'pedir demo'. Y no puede
-    pedir NUNCA una tarjeta para arrancar."""
+def test_la_clave_publica_es_LA_MISMA_en_el_servidor_y_en_el_programa():
+    """El servidor decide quien baja el instalador verificando la firma de la
+    licencia (api/_license.js), y el programa decide que habilita verificando
+    la misma firma (mvdg/licensing.py). Son dos copias de la clave publica en
+    dos lenguajes distintos.
+
+    Si se separan, el sintoma es de los peores: el cliente paga, el programa
+    acepta su licencia — y al querer bajar el instalador recibe 403. O al
+    reves. Nada falla al deployar; falla el dia que alguien compra.
+
+    Rotar el par es cambiar LAS DOS. Este test lo vuelve imposible de
+    olvidar."""
+    import subprocess
+    from mvdg import licensing
+    del_servidor = subprocess.run(
+        ["node", "-e",
+         "process.stdout.write(require('./api/_license').PUBLIC_KEY_B64)"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout.strip()
+    assert del_servidor == licensing.PUBLIC_KEY_B64, (
+        f"api/_license.js verifica con {del_servidor!r} y mvdg/licensing.py "
+        f"con {licensing.PUBLIC_KEY_B64!r}: el que compre va a poder hacer una "
+        f"de las dos cosas, no las dos")
+
+
+def test_el_trial_que_se_emitia_solo_ya_no_existe():
+    """Habia un trial autoservicio: dejabas un email y /api/trial te firmaba
+    una licencia Professional de 14 dias, sin hablar con nadie.
+
+    Se elimino junto con la descarga abierta, y no por prolijidad: la descarga
+    ahora exige una licencia valida, y ESA licencia servia para bajar el
+    programa. O sea que el trial autoservicio era la misma puerta que se
+    acababa de cerrar, un paso mas adentro — cualquiera se auto-emitia la
+    llave. Hoy la prueba se entrega despues de la demo 1 a 1.
+
+    Este test es lo que impide que vuelva por descuido."""
+    assert not os.path.exists(os.path.join(_repo_root(), "api", "trial.js")), (
+        "volvio api/trial.js: emite licencias sin que intervenga una persona, "
+        "y con esa licencia se baja el programa")
     html = _landing("index.html")
-    assert 'id="trialForm"' in html and 'id="trialToggle"' in html
-    assert "fetch('/api/trial'" in html or 'fetch("/api/trial"' in html
-    assert 'type="email"' in html.split('id="trialForm"')[1][:400]
-    # El FORMULARIO del trial (no el boton que lo abre) no puede pedir
-    # tarjeta. El boton en si dice "sin tarjeta" a proposito -- esa negacion
-    # es la promesa, no una violacion -- por eso se mira desde <form> en
-    # adelante, no desde el boton.
-    inicio = html.index('<form id="trialForm"')
-    fin = html.index("</form>", inicio) + len("</form>")
-    bloque_form = html[inicio:fin]
-    assert "trialEmail" in bloque_form and "trialMsg" in bloque_form  # ventana correcta
-    for prohibido in ("card", "tarjeta", "cartão", "cvv", "cvc"):
-        assert prohibido not in bloque_form.lower(), f"'{prohibido}' dentro del form de trial"
+    limpio = re.sub(r"<!--.*?-->|/\*.*?\*/", "", html, flags=re.S)
+    assert "/api/trial" not in limpio, "la landing sigue llamando a /api/trial"
 
 
-def test_endpoint_trial_no_tiene_ningun_campo_de_pago():
-    """api/trial.js: ni un import de MercadoPago, ni un campo de tarjeta, en
-    todo el CODIGO (fuera de comentarios) — el trial no pasa por el circuito
-    de pago en absoluto. Los comentarios SI pueden nombrar MercadoPago (para
-    explicar justamente que no se usa), por eso se limpian antes de mirar."""
-    import re
-    ruta = os.path.join(_repo_root(), "api", "trial.js")
+def test_el_endpoint_de_acceso_avisa_pero_NO_entrega_nada():
+    """api/acceso.js reemplaza al trial. La linea que no se puede cruzar es
+    que emita algo: si devolviera una licencia, volveria a ser una descarga
+    automatica con un formulario adelante — que es justo lo que se saco.
+
+    Se mira el CODIGO sin comentarios: los comentarios explican por que no
+    firma nada, y nombran las cosas que no hace."""
+    ruta = os.path.join(_repo_root(), "api", "acceso.js")
+    assert os.path.exists(ruta), "falta api/acceso.js"
     with open(ruta, encoding="utf-8") as fh:
         codigo = fh.read()
     sin_comentarios = re.sub(r"//.*", "", codigo)
     sin_comentarios = re.sub(r"/\*.*?\*/", "", sin_comentarios, flags=re.S)
-    for prohibido in ("mercadopago", "MP_ACCESS_TOKEN", "card_number", "cvv", "cvc"):
-        assert prohibido.lower() not in sin_comentarios.lower(), \
-            f"'{prohibido}' en el codigo (no comentario) de api/trial.js"
-    assert "rateLimited" in codigo, "sin rate limiting"
-    assert "signEd25519" in codigo, "no emite el formato de licencia que valida el programa"
+    for prohibido in ("signEd25519", "LICENSE_PRIVATE_KEY", "license_key",
+                      "MP_ACCESS_TOKEN", "cvv", "card_number"):
+        assert prohibido.lower() not in sin_comentarios.lower(), (
+            f"'{prohibido}' en el codigo de acceso.js: este endpoint avisa, "
+            f"no entrega")
+    assert "rateLimited" in sin_comentarios, "sin rate limiting"
+    # y el aviso tiene que llegar a algun lado: sin mail configurado no puede
+    # contestar 200, o el pedido se pierde y el visitante cree que llego
+    assert "RESEND_API_KEY" in sin_comentarios
+    assert "503" in sin_comentarios
 
 
 @pytest.mark.parametrize("lang", ["en", "pt"])
-def test_landing_trial_traducido(lang):
-    html = _landing("index.html")
-    for clave in ("pl3trial", "pl3trial_ph", "pl3trial_go"):
-        assert f"{clave}:" in html, f"falta {clave} en {lang}"
+def test_pagina_de_acceso_traducida(lang):
+    """La pagina de pedido de acceso es la unica puerta a la demo: si no esta
+    en los 3 idiomas, se pierde al que entra en ingles o portugues."""
+    html = _landing("descargas.html")
+    bloque = html[html.index("%s:{" % lang):]
+    for clave in ("l_nombre", "l_empresa", "l_pais", "l_email", "c1btn", "h1"):
+        assert f"{clave}:" in bloque, f"falta {clave} en {lang}"
 
 
 def test_landing_publica_la_comparativa_honesta():

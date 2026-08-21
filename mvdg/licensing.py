@@ -83,12 +83,14 @@ _ARCHIVO_EMPAQUETADO = "licencia_owner.txt"
 # se olvide sumar "owner" a mano.
 PLAN_DEMO = "demo"
 PLAN_OWNER = "owner"
-# "trial" es el plan Professional (USD 390/mes) por 14 días, auto-emitido sin
-# pago: api/trial.js firma el mismo token MVDG2 que emitiría una compra real,
-# pero con `exp` a 14 días y sin pasar por MercadoPago. verify() YA rechaza
-# tokens vencidos (ver más abajo) — el vencimiento del trial no necesita
-# ningún código nuevo acá, solo que "trial" habilite lo mismo que
-# "professional" en FUNCIONES_PAGAS.
+# "trial" es el plan Professional (USD 390/mes) por 14 días, sin pago: el
+# mismo token MVDG2 que emitiría una compra real, pero con `exp` a 14 días.
+# Lo emite una persona después de la demo 1 a 1 (Actions -> "Emitir
+# licencia"); antes lo firmaba solo un endpoint público, y esa licencia
+# alcanzaba para bajar el programa, así que la descarga era abierta con un
+# formulario adelante. verify() YA rechaza tokens vencidos (ver más abajo) —
+# el vencimiento no necesita ningún código nuevo acá, solo que "trial"
+# habilite lo mismo que "professional" en FUNCIONES_PAGAS.
 PLAN_TRIAL = "trial"
 PLANES = (PLAN_DEMO, "licencia", PLAN_TRIAL, "professional", "enterprise", PLAN_OWNER)
 

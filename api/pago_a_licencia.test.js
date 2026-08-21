@@ -249,6 +249,57 @@ async function main() {
     }
   }
 
+  console.log("\n== La descarga: la misma licencia abre las dos puertas ==\n");
+  {
+    // La demo dejo de ser de descarga libre: /api/descargar exige una
+    // licencia. Si el servidor y el programa no coincidieran en QUE licencia
+    // es valida, el cliente que paga podria quedar de un lado y no del otro —
+    // con la clave puesta en el programa y un 403 al querer bajarlo, o al
+    // reves. Esto verifica que el MISMO token pase los dos chequeos.
+    delete require.cache[require.resolve(path.join(RAIZ, "api/descargar.js"))];
+    const antesPub = process.env.LICENSE_PUBLIC_KEY;
+    process.env.LICENSE_PUBLIC_KEY = PUBLICA;
+    process.env.MVDG_INSTALLER_URL = "https://ejemplo.com/setup.exe";
+    const descargar = require(path.join(RAIZ, "api/descargar.js"));
+
+    async function bajar(k) {
+      rl.resetForTests();
+      const res = mockRes();
+      await descargar({ method: "GET", query: k === null ? {} : { k }, headers: {} }, res);
+      return res;
+    }
+
+    const compra = await comprar("licencia");
+    const conLicencia = await bajar(compra.license_key);
+    check("el que compro puede bajar el instalador con su licencia", () => {
+      assert.strictEqual(conLicencia._status, 302,
+        `no lo dejo bajar (motivo: ${JSON.stringify(conLicencia._body)})`);
+    });
+    check("y el programa acepta esa MISMA licencia", () => {
+      assert.strictEqual(verificarEnElPrograma(compra.license_key).valida, true);
+    });
+
+    const sinNada = await bajar(null);
+    check("sin licencia NO se baja el instalador", () => {
+      assert.strictEqual(sinNada._status, 403);
+    });
+
+    // Una licencia vencida: rechazada por los dos lados, no por uno solo.
+    const iat = Math.floor(Date.now() / 1000) - 100 * 86400;
+    const vencida = require(path.join(RAIZ, "api/_license.js"))
+      .signEd25519({ plan: "trial", iat: iat, exp: iat + 86400 }, PRIVADA);
+    const conVencida = await bajar(vencida);
+    check("una licencia vencida no baja el instalador NI abre el programa", () => {
+      assert.strictEqual(conVencida._status, 403, "el servidor la dejo pasar");
+      assert.strictEqual(verificarEnElPrograma(vencida).valida, false,
+                         "el programa la dejo pasar");
+    });
+
+    delete process.env.MVDG_INSTALLER_URL;
+    if (antesPub !== undefined) process.env.LICENSE_PUBLIC_KEY = antesPub;
+    else delete process.env.LICENSE_PUBLIC_KEY;
+  }
+
   console.log("\n== La demo ==\n");
   const demo = verificarEnElPrograma("no-hay-licencia");
   check("sin licencia: el programa queda en demo y no habilita nada pagado",

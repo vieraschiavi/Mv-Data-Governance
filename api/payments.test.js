@@ -695,134 +695,156 @@ async function main() {
     });
   }
 
-  // ------------------------------------------------------------ api/trial.js
-  // Trial de 14 días del plan Professional (USD 390/mes), SIN tarjeta: nunca
-  // pasa por MercadoPago ni pide datos de pago — solo email. Antes de esto no
-  // existía ningún flujo de trial real, solo un botón "pedir demo".
+  // ----------------------------------------------------------- api/acceso.js
+  // Reemplaza al trial que se emitia solo. Aquel firmaba una licencia
+  // Professional de 14 dias a cualquiera que escribiera un email — y con esa
+  // licencia se bajaba el programa, asi que era la descarga abierta con un
+  // formulario adelante. Este NO emite nada: avisa por mail y ya.
   {
-    delete require.cache[require.resolve("./trial")];
+    delete require.cache[require.resolve("./acceso")];
     rateLimit.resetForTests();
-    const trial = require("./trial");
+    const acceso = require("./acceso");
 
-    const b64u = (buf) => Buffer.from(buf).toString("base64")
-      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    const b64uDecode = (s) => Buffer.from(
-      s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - s.length % 4) % 4), "base64");
+    const COMPLETO = { nombre: "Ana Perez", empresa: "Datos SA",
+                       pais: "Uruguay", email: "ana@datos.com" };
 
-    function conClavePrivada(fn) {
-      const antes = process.env.LICENSE_PRIVATE_KEY;
-      const raw = crypto.randomBytes(32);
-      process.env.LICENSE_PRIVATE_KEY = b64u(raw);
-      return Promise.resolve().then(fn).finally(() => {
-        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes;
-        else delete process.env.LICENSE_PRIVATE_KEY;
-      });
+    async function conResend(impl, fn) {
+      const antes = process.env.RESEND_API_KEY;
+      process.env.RESEND_API_KEY = "re_de_prueba";
+      try { await withMockFetch(impl, fn); } finally {
+        if (antes !== undefined) process.env.RESEND_API_KEY = antes;
+        else delete process.env.RESEND_API_KEY;
+      }
     }
 
-    await check("trial: sin email -> 400, no emite nada", async () => {
-      await conClavePrivada(async () => {
-        const res = mockRes();
-        await trial({ method: "POST", body: {} }, res);
-        assert.strictEqual(res._status, 400);
-      });
+    await check("acceso: metodo distinto de POST -> 405", async () => {
+      const res = mockRes();
+      await acceso({ method: "GET", headers: {}, body: {} }, res);
+      assert.strictEqual(res._status, 405);
     });
 
-    await check("trial: email inválido -> 400", async () => {
-      await conClavePrivada(async () => {
-        for (const malo of ["no-es-email", "a@b", "@sin-usuario.com", "  "]) {
+    await check("acceso: faltan datos -> 400 y dice cuales", async () => {
+      await conResend(async () => { throw new Error("no tenia que llamar"); },
+        async () => {
           const res = mockRes();
-          await trial({ method: "POST", body: { email: malo } }, res);
-          assert.strictEqual(res._status, 400, `debería rechazar: ${malo}`);
-        }
-      });
+          await acceso({ method: "POST", headers: {},
+                         body: { email: "a@b.com" } }, res);
+          assert.strictEqual(res._status, 400);
+          assert.strictEqual(res._body.error, "faltan_datos");
+          assert.deepStrictEqual(res._body.campos.sort(),
+                                 ["empresa", "nombre", "pais"]);
+        });
     });
 
-    await check("trial: método distinto de POST -> 405", async () => {
-      await conClavePrivada(async () => {
+    await check("acceso: email invalido -> 400", async () => {
+      for (const malo of ["no-es-email", "a@b", "@sin-usuario.com", " "]) {
+        rateLimit.resetForTests();
         const res = mockRes();
-        await trial({ method: "GET", body: {} }, res);
-        assert.strictEqual(res._status, 405);
-      });
-    });
-
-    await check("trial: sin LICENSE_PRIVATE_KEY configurada -> 503, nunca una licencia rota", async () => {
-      const antes = process.env.LICENSE_PRIVATE_KEY;
-      delete process.env.LICENSE_PRIVATE_KEY;
-      try {
-        const res = mockRes();
-        await trial({ method: "POST", body: { email: "consultor@empresa.com" } }, res);
-        assert.strictEqual(res._status, 503);
-        assert.strictEqual(res._body.license_key, undefined);
-      } finally {
-        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes;
+        await acceso({ method: "POST", headers: {},
+                       body: { ...COMPLETO, email: malo } }, res);
+        assert.strictEqual(res._status, 400, `deberia rechazar: ${malo}`);
       }
     });
 
-    await check("trial: email válido -> 200, emite MVDG2 sin pedir NINGÚN dato de pago", async () => {
-      await conClavePrivada(async () => {
+    await check("acceso: NUNCA emite una licencia, ni con todo correcto", async () => {
+      // Es el punto entero del cambio. Si algun dia esto devuelve una clave,
+      // volvimos a la descarga automatica con un formulario adelante.
+      await conResend(async () => ({ ok: true, json: async () => ({ id: "x" }) }),
+        async () => {
+          rateLimit.resetForTests();
+          const res = mockRes();
+          await acceso({ method: "POST", headers: {}, body: COMPLETO }, res);
+          assert.strictEqual(res._status, 200);
+          assert.strictEqual(res._body.ok, true);
+          const cuerpo = JSON.stringify(res._body);
+          assert.ok(!/MVDG[12]\./.test(cuerpo), "devolvio una licencia");
+          assert.strictEqual(res._body.license_key, undefined);
+        });
+    });
+
+    await check("acceso: el mail va al dueno, en texto plano y con reply_to del que pidio", async () => {
+      let enviado = null;
+      await conResend(async (url, opts) => {
+        enviado = { url, cuerpo: JSON.parse(opts.body),
+                    auth: opts.headers.Authorization };
+        return { ok: true, json: async () => ({ id: "x" }) };
+      }, async () => {
+        rateLimit.resetForTests();
         const res = mockRes();
-        const antes = Date.now();
-        await trial({ method: "POST", body: { email: "Consultor@Empresa.com" } }, res);
+        await acceso({ method: "POST", headers: {},
+                       body: { ...COMPLETO, mensaje: "martes a las 10" } }, res);
         assert.strictEqual(res._status, 200);
-        assert.strictEqual(res._body.plan, "trial");
-        assert.strictEqual(res._body.email, "consultor@empresa.com"); // normalizado a minúsculas
-        assert.ok(res._body.license_key.startsWith("MVDG2."));
-
-        // El payload firmado es el único lugar donde viaja informacion: no
-        // tiene payment_id, tarjeta, ni ningun campo de pago — es literalmente
-        // imposible que el flujo pida una tarjeta si el payload nunca la tiene.
-        const partes = res._body.license_key.split(".");
-        const payload = JSON.parse(b64uDecode(partes[1]).toString("utf8"));
-        assert.deepStrictEqual(Object.keys(payload).sort(), ["email", "exp", "iat", "plan"]);
-        assert.strictEqual(payload.plan, "trial");
-
-        // 14 dias exactos entre emision y vencimiento.
-        assert.strictEqual(payload.exp - payload.iat, 14 * 86400);
-        assert.ok(payload.iat * 1000 >= antes - 2000);
       });
+      assert.strictEqual(enviado.url, "https://api.resend.com/emails");
+      assert.strictEqual(enviado.auth, "Bearer re_de_prueba");
+      assert.deepStrictEqual(enviado.cuerpo.to, [acceso.DESTINO]);
+      // reply_to y no replyTo: la API REST de Resend usa snake_case. Con el
+      // nombre equivocado el campo se ignora y responder el aviso le contesta
+      // a Resend, no al que pidio la demo.
+      assert.strictEqual(enviado.cuerpo.reply_to, COMPLETO.email);
+      // texto plano, nunca html: es contenido que escribio un desconocido
+      assert.strictEqual(enviado.cuerpo.html, undefined);
+      for (const dato of [COMPLETO.nombre, COMPLETO.empresa, COMPLETO.pais,
+                          COMPLETO.email, "martes a las 10"]) {
+        assert.ok(enviado.cuerpo.text.includes(dato), `falta en el mail: ${dato}`);
+      }
+      // el asunto ordena la bandeja sin abrir el mail
+      assert.ok(enviado.cuerpo.subject.includes(COMPLETO.empresa));
     });
 
-    await check("trial: la firma verifica de forma independiente con la clave pública (crypto.verify puro)", async () => {
-      const rawPriv = crypto.randomBytes(32);
-      const der = Buffer.concat([
-        Buffer.from("302e020100300506032b657004220420", "hex"), rawPriv,
-      ]);
-      const privKeyObj = crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8" });
-      const pubKeyObj = crypto.createPublicKey(privKeyObj);
-      const pubRaw = pubKeyObj.export({ type: "spki", format: "der" }).subarray(-32);
-
-      const antes = process.env.LICENSE_PRIVATE_KEY;
-      process.env.LICENSE_PRIVATE_KEY = b64u(rawPriv);
+    await check("acceso: sin RESEND_API_KEY -> 503, no dice 'gracias' y pierde el pedido", async () => {
+      const antes = process.env.RESEND_API_KEY;
+      delete process.env.RESEND_API_KEY;
       try {
-        delete require.cache[require.resolve("./trial")];
-        const trial2 = require("./trial");
+        rateLimit.resetForTests();
         const res = mockRes();
-        await trial2({ method: "POST", body: { email: "otra@empresa.com" } }, res);
-        const [, body, sig] = res._body.license_key.split(".");
-        const ok = crypto.verify(null, Buffer.from(body, "ascii"), pubKeyObj, b64uDecode(sig));
-        assert.strictEqual(ok, true);
-        // con la clave publica INCORRECTA, no verifica
-        const otraPub = crypto.generateKeyPairSync("ed25519").publicKey;
-        const falso = crypto.verify(null, Buffer.from(body, "ascii"), otraPub, b64uDecode(sig));
-        assert.strictEqual(falso, false);
+        await acceso({ method: "POST", headers: {}, body: COMPLETO }, res);
+        assert.strictEqual(res._status, 503);
+        assert.strictEqual(res._body.ok, false);
+        assert.strictEqual(res._body.error, "mail_no_configurado");
       } finally {
-        if (antes !== undefined) process.env.LICENSE_PRIVATE_KEY = antes; else delete process.env.LICENSE_PRIVATE_KEY;
+        if (antes !== undefined) process.env.RESEND_API_KEY = antes;
       }
     });
 
-    await check("trial: rate limit corta después de 10 requests de la misma IP", async () => {
-      await conClavePrivada(async () => {
-        rateLimit.resetForTests();
-        const req = { method: "POST", body: { email: "loop@empresa.com" } };
-        let ultimo;
-        for (let i = 0; i < 11; i++) {
+    await check("acceso: si Resend falla -> 502, tampoco dice que llego", async () => {
+      await conResend(async () => ({ ok: false, json: async () => ({}) }),
+        async () => {
+          rateLimit.resetForTests();
           const res = mockRes();
-          await trial(req, res);
-          ultimo = res;
-        }
-        assert.strictEqual(ultimo._status, 429);
+          await acceso({ method: "POST", headers: {}, body: COMPLETO }, res);
+          assert.strictEqual(res._status, 502);
+          assert.strictEqual(res._body.ok, false);
+        });
+    });
+
+    await check("acceso: recorta campos larguisimos en vez de mandar un mail de 2 MB", async () => {
+      let enviado = null;
+      await conResend(async (url, opts) => {
+        enviado = JSON.parse(opts.body); return { ok: true, json: async () => ({}) };
+      }, async () => {
         rateLimit.resetForTests();
+        const res = mockRes();
+        await acceso({ method: "POST", headers: {},
+                       body: { ...COMPLETO, empresa: "x".repeat(500_000) } }, res);
+        assert.strictEqual(res._status, 200);
       });
+      assert.ok(enviado.text.length < 5000, `mail de ${enviado.text.length} bytes`);
+    });
+
+    await check("acceso: rate limit corta a los 5 de la misma IP", async () => {
+      await conResend(async () => ({ ok: true, json: async () => ({}) }),
+        async () => {
+          rateLimit.resetForTests();
+          let ultimo;
+          for (let i = 0; i < 6; i++) {
+            ultimo = mockRes();
+            await acceso({ method: "POST", headers: { "x-forwarded-for": "7.7.7.7" },
+                           body: COMPLETO }, ultimo);
+          }
+          assert.strictEqual(ultimo._status, 429);
+          rateLimit.resetForTests();
+        });
     });
   }
 
@@ -832,6 +854,22 @@ async function main() {
     // landing pega a /api/descargar y este redirige a donde este alojado.
     const descargar = require("./descargar");
     const ANTES = process.env.MVDG_INSTALLER_URL;
+
+    // La descarga ya NO es publica: exige una licencia MVDG2 valida. Como
+    // este test no tiene la clave privada de produccion, se genera un par
+    // efimero y se le dice a _license.js que verifique con esa publica.
+    const parRaw = crypto.randomBytes(32);
+    const aB64u = (b) => Buffer.from(b).toString("base64")
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const privDemo = aB64u(parRaw);
+    const pubDemo = aB64u(crypto.createPublicKey(crypto.createPrivateKey({
+      key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), parRaw]),
+      format: "der", type: "pkcs8",
+    })).export({ format: "der", type: "spki" }).subarray(-32));
+    process.env.LICENSE_PUBLIC_KEY = pubDemo;
+    const ahora = Math.floor(Date.now() / 1000);
+    // `k` valida para todos los casos que prueban OTRA cosa que no es el gate.
+    const K = license.signEd25519({ plan: "licencia", iat: ahora }, privDemo);
     const conUrl = async (valor, fn) => {
       if (valor === null) delete process.env.MVDG_INSTALLER_URL;
       else process.env.MVDG_INSTALLER_URL = valor;
@@ -845,7 +883,7 @@ async function main() {
       await conUrl("https://ejemplo.com/MVDataGovernance_Setup.exe", async () => {
         rateLimit.resetForTests();
         const res = mockRes();
-        await descargar({ method: "GET", url: "/api/descargar" }, res);
+        await descargar({ method: "GET", url: "/api/descargar", query: { k: K } }, res);
         assert.strictEqual(res._status, 302);
         assert.strictEqual(res._headers.location,
           "https://ejemplo.com/MVDataGovernance_Setup.exe");
@@ -859,7 +897,7 @@ async function main() {
       await conUrl(null, async () => {
         rateLimit.resetForTests();
         const res = mockRes();
-        await descargar({ method: "GET" }, res);
+        await descargar({ method: "GET", query: { k: K } }, res);
         assert.strictEqual(res._status, 503);
         assert.strictEqual(res._body.error, "sin_configurar");
         // el mensaje dice QUE falta, en los 3 idiomas
@@ -874,7 +912,7 @@ async function main() {
       await conUrl("http://ejemplo.com/setup.exe", async () => {
         rateLimit.resetForTests();
         const res = mockRes();
-        await descargar({ method: "GET" }, res);
+        await descargar({ method: "GET", query: { k: K } }, res);
         assert.strictEqual(res._status, 500);
         assert.strictEqual(res._body.error, "url_insegura");
         assert.ok(!res._headers.location);
@@ -885,7 +923,7 @@ async function main() {
       await conUrl("no-es-una-url", async () => {
         rateLimit.resetForTests();
         const res = mockRes();
-        await descargar({ method: "GET" }, res);
+        await descargar({ method: "GET", query: { k: K } }, res);
         assert.strictEqual(res._status, 500);
         assert.strictEqual(res._body.error, "url_invalida");
       });
@@ -897,7 +935,7 @@ async function main() {
         for (const plan of ["demo", "full", undefined, "inventado"]) {
           rateLimit.resetForTests();
           const res = mockRes();
-          await descargar({ method: "GET", query: { plan } }, res);
+          await descargar({ method: "GET", query: { plan, k: K } }, res);
           destinos.push(res._headers.location);
         }
         assert.strictEqual(new Set(destinos).size, 1,
@@ -909,8 +947,80 @@ async function main() {
       await conUrl("https://ejemplo.com/setup.exe", async () => {
         rateLimit.resetForTests();
         const res = mockRes();
-        await descargar({ method: "POST" }, res);
+        await descargar({ method: "POST", query: { k: K } }, res);
         assert.strictEqual(res._status, 405);
+      });
+    });
+
+    // ---- el gate: la demo se pide, no se baja ---------------------------
+    await check("descargar: SIN licencia no baja nada (403), aunque este todo configurado", async () => {
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET", query: {} }, res);
+        assert.strictEqual(res._status, 403);
+        assert.strictEqual(res._body.error, "licencia_requerida");
+        assert.ok(!res._headers.location, "redirigio igual: el gate no sirve");
+        // el mensaje dice como conseguirla, en los 3 idiomas
+        for (const k of ["es", "en", "pt"]) {
+          assert.ok(res._body[k] && res._body[k].includes("descargas.html"));
+        }
+      });
+    });
+
+    await check("descargar: una licencia inventada o manipulada no sirve", async () => {
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        const partes = K.split(".");
+        const manipulada = partes[0] + "." + partes[1] + "." +
+                           partes[2].slice(0, -2) + "xx";
+        const otroPar = license.signEd25519({ plan: "owner", iat: ahora },
+                                            aB64u(crypto.randomBytes(32)));
+        for (const malo of ["MVDG2.x.y", "cualquier-cosa", manipulada,
+                            otroPar, "MVDG1." + partes[1] + "." + partes[2]]) {
+          rateLimit.resetForTests();
+          const res = mockRes();
+          await descargar({ method: "GET", query: { k: malo } }, res);
+          assert.strictEqual(res._status, 403,
+            `dejo pasar una licencia que no vale: ${malo.slice(0, 24)}`);
+          assert.ok(!res._headers.location);
+        }
+      });
+    });
+
+    await check("descargar: una licencia VENCIDA no sirve", async () => {
+      // El caso del que probo la demo hace tres meses. Sin esto, la licencia
+      // de prueba seria una llave permanente a la descarga.
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        const vencida = license.signEd25519(
+          { plan: "trial", iat: ahora - 100 * 86400, exp: ahora - 86400 }, privDemo);
+        const res = mockRes();
+        await descargar({ method: "GET", query: { k: vencida } }, res);
+        assert.strictEqual(res._status, 403);
+        assert.strictEqual(res._body.error, "licencia_invalida");
+      });
+    });
+
+    await check("descargar: una licencia de prueba VIGENTE si sirve", async () => {
+      // El que hizo la demo 1 a 1 tiene que poder instalarlo.
+      await conUrl("https://ejemplo.com/setup.exe", async () => {
+        rateLimit.resetForTests();
+        const trial = license.signEd25519(
+          { plan: "trial", iat: ahora, exp: ahora + 14 * 86400 }, privDemo);
+        const res = mockRes();
+        await descargar({ method: "GET", query: { k: trial } }, res);
+        assert.strictEqual(res._status, 302);
+      });
+    });
+
+    await check("descargar: sin licencia NO revela si el instalador esta configurado", async () => {
+      // Responder 503 "falta MVDG_INSTALLER_URL" a un desconocido le cuenta
+      // como esta armado el backend. El 403 va primero, siempre.
+      await conUrl(null, async () => {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET", query: {} }, res);
+        assert.strictEqual(res._status, 403);
       });
     });
 
@@ -920,12 +1030,13 @@ async function main() {
         let ultimo;
         for (let i = 0; i < 31; i++) {
           ultimo = mockRes();
-          await descargar({ method: "GET" }, ultimo);
+          await descargar({ method: "GET", query: { k: K } }, ultimo);
         }
         assert.strictEqual(ultimo._status, 429);
         rateLimit.resetForTests();
       });
     });
+    delete process.env.LICENSE_PUBLIC_KEY;
   }
 
   // ------------------------------------- coherencia de la cadena comercial

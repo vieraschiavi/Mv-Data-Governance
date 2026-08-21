@@ -167,9 +167,18 @@ function render(){
     } else {
       licBlock='<div class="code">'+T('lic_generating')+'</div>';
     }
+    // La descarga dejo de ser publica: /api/descargar exige una licencia
+    // valida. El que acaba de pagar YA tiene la suya, asi que va en el link —
+    // no tiene que copiar ni pegar nada para bajar el programa.
+    // encodeURIComponent porque el token viaja en la query; sin eso un token
+    // con caracteres reservados llegaria cortado y el comprador veria un 403
+    // despues de haber pagado.
+    var linkDescarga=STATE.license
+      ? '/api/descargar?plan=full&k='+encodeURIComponent(STATE.license)
+      : null;
     card.innerHTML=langBar+'<div class="ic ok">✓</div><h1>'+T('ok_h1')+'</h1>'
       +'<p>'+T('ok_p').replace('{PLAN}',planTxt)+'</p>'
-      +'<a class="btn" href="/api/descargar?plan=full">'+T('btn')+'</a>'
+      +(linkDescarga?'<a class="btn" href="'+esc(linkDescarga)+'">'+T('btn')+'</a>':'')
       +'<div class="small">'+T('ok_note')+'</div>'
       +licBlock
       +'<div class="small">'+T('help')+' <a href="mailto:vieraschiavi@gmail.com?subject=Compra%20MV%20Data%20Governance">'+T('help_link')+'</a> · '
@@ -195,8 +204,30 @@ render();
 
 var paymentId=qp('payment_id') || qp('collection_id');
 var status=qp('status') || qp('collection_status');
+// La suscripcion (Professional) NO vuelve con payment_id: vuelve con
+// preapproval_id, porque no es un pago suelto sino un permiso de cobro
+// mensual. Sin esta rama el que se suscribia caia en "no se pudo verificar"
+// — habia pagado y no recibia nada.
+var preapprovalId=qp('preapproval_id');
 
-if (status==='pending' && !paymentId) { STATE.mode='pending'; render(); }
+if (preapprovalId) {
+  fetch('/api/suscripcion?id='+encodeURIComponent(preapprovalId))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.activa && d.license_key) {
+        STATE.mode='ok'; STATE.plan='pro'; STATE.license=d.license_key; render();
+      } else if (d.activa) {
+        // Suscripcion autorizada pero sin licencia: falta configurar el
+        // emisor. No se dice "fallo" (el cobro esta hecho) ni "listo" (no hay
+        // clave): queda en pendiente, que es lo que realmente pasa.
+        STATE.mode='pending'; render();
+      } else if (d.estado==='pending') {
+        STATE.mode='pending'; render();
+      } else { STATE.mode='fail'; render(); }
+    })
+    .catch(function(){ STATE.mode='fail'; STATE.msg=T('fail_conn'); render(); });
+}
+else if (status==='pending' && !paymentId) { STATE.mode='pending'; render(); }
 else if (!paymentId) { STATE.mode='fail'; render(); }
 else {
   fetch('/api/verify-payment?payment_id='+encodeURIComponent(paymentId))
