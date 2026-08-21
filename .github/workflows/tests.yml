@@ -92,6 +92,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: |
           node api/payments.test.js
+          node api/pago_a_licencia.test.js
           node landing/security.test.js
           node electron/lib/navegacion.test.js
           node electron/lib/instalador.test.js
