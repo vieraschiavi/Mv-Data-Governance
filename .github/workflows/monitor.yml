@@ -1,0 +1,144 @@
+# Monitor: cuántos bajaron el programa, cuántos pagaron y cuánta plata entró.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Qué contesta
+# ────────────────────────────────────────────────────────────────────────────
+# Las tres preguntas que uno se hace todos los días y que hoy hay que ir a
+# buscar a dos paneles distintos:
+#
+#   · cuánta gente bajó el instalador  -> GitHub cuenta las descargas de cada
+#     archivo publicado en Releases
+#   · cuántos compraron y cuánto entró  -> MercadoPago, pagos aprobados
+#   · qué se vendió de cada plan        -> el SKU viaja en metadata.plan
+#
+# Corre solo una vez por día y también a pedido (Actions -> Monitor -> Run
+# workflow). El resultado queda en el resumen de la corrida.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Por qué exige repositorio privado
+# ────────────────────────────────────────────────────────────────────────────
+# Acá salen ingresos y cantidad de clientes. En un repositorio público, los
+# logs de Actions los ve cualquiera: sería publicar la facturación. Hacer el
+# repo privado es gratis y tarda treinta segundos.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Lo que NO hace, y por qué
+# ────────────────────────────────────────────────────────────────────────────
+# No guarda histórico: cada corrida es una foto del momento. Llevar serie
+# temporal pediría una base de datos, y eso es una plataforma más que hoy no
+# hace falta. MercadoPago ya guarda los pagos y GitHub ya acumula las
+# descargas: esto los junta, no los reemplaza.
+name: Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      dias:
+        description: "Cuántos días hacia atrás mirar los pagos"
+        required: true
+        default: "30"
+        type: string
+  schedule:
+    # 12:00 UTC = 09:00 en Uruguay (UTC-3). Una vez por día alcanza.
+    - cron: "0 12 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  medir:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comprobar que el repositorio sea privado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          privado=$(gh api "repos/${{ github.repository }}" --jq .private)
+          if [ "$privado" != "true" ]; then
+            echo "::error title=El repositorio es PUBLICO::Este reporte muestra ingresos y clientes, y los logs de un repo publico los ve cualquiera. Hacelo privado en Settings > General > Danger Zone (es gratis)."
+            exit 1
+          fi
+
+      - name: Descargas del instalador
+        id: descargas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Cada release puede tener varios archivos; se suman todos.
+          gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | {tag: .tag_name, assets: [.assets[] | {n: .name, d: .download_count}]}]' \
+            > releases.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          rs = json.load(open("releases.json"))
+          total = 0
+          print("## Descargas del programa\n")
+          print("| Release | Archivo | Descargas |")
+          print("|---|---|---:|")
+          for r in rs:
+              for a in r["assets"]:
+                  total += a["d"]
+                  print(f"| `{r['tag']}` | {a['n']} | {a['d']} |")
+          if not any(r["assets"] for r in rs):
+              print("| — | todavía no hay archivos publicados | 0 |")
+          print(f"| | **TOTAL** | **{total}** |")
+          PY
+
+      - name: Ventas y dinero (MercadoPago)
+        env:
+          MP: ${{ secrets.MP_ACCESS_TOKEN }}
+          DIAS: ${{ inputs.dias || '30' }}
+        run: |
+          if [ -z "$MP" ]; then
+            echo "::warning title=Sin MP_ACCESS_TOKEN::No se puede leer MercadoPago. Carga el token en Settings > Secrets and variables > Actions para ver ventas e ingresos."
+            echo "## Ventas" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No configurado: falta el secreto \`MP_ACCESS_TOKEN\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os, urllib.request, urllib.parse
+          from collections import defaultdict
+
+          dias = int(os.environ.get("DIAS") or 30)
+          url = "https://api.mercadopago.com/v1/payments/search?" + urllib.parse.urlencode({
+              "status": "approved", "sort": "date_approved", "criteria": "desc",
+              "range": "date_created",
+              "begin_date": f"NOW-{dias}DAYS", "end_date": "NOW", "limit": 200,
+          })
+          req = urllib.request.Request(url, headers={
+              "Authorization": "Bearer " + os.environ["MP"]})
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  datos = json.load(r)
+          except Exception as e:
+              print("## Ventas\n")
+              print(f"No se pudo consultar MercadoPago: `{type(e).__name__}`.")
+              raise SystemExit(0)
+
+          pagos = datos.get("results", [])
+          por_sku = defaultdict(lambda: {"n": 0, "monto": 0.0, "moneda": ""})
+          total = defaultdict(float)
+          for p in pagos:
+              sku = ((p.get("metadata") or {}).get("plan")) or "(sin plan)"
+              monto = float(p.get("transaction_amount") or 0)
+              mon = p.get("currency_id") or "?"
+              por_sku[sku]["n"] += 1
+              por_sku[sku]["monto"] += monto
+              por_sku[sku]["moneda"] = mon
+              total[mon] += monto
+
+          print(f"\n## Ventas (últimos {dias} días)\n")
+          print("| Plan | Ventas | Bruto |")
+          print("|---|---:|---:|")
+          for sku, d in sorted(por_sku.items(), key=lambda kv: -kv[1]["monto"]):
+              print(f"| `{sku}` | {d['n']} | {d['monto']:,.2f} {d['moneda']} |")
+          if not por_sku:
+              print("| — | 0 | sin pagos aprobados en el período |")
+          print()
+          print(f"**Clientes que pagaron:** {len(pagos)}")
+          for mon, m in total.items():
+              print(f"**Ingreso bruto:** {m:,.2f} {mon}")
+          print()
+          print("> Bruto: **antes** de la comisión de MercadoPago y de impuestos.")
+          PY
