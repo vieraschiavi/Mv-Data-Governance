@@ -57,7 +57,7 @@ from .clients import data_dir
 #
 # Es la clave PÚBLICA: no es un secreto y no pasa nada si se lee del binario.
 # ---------------------------------------------------------------------------
-PUBLIC_KEY_B64 = "HpfWjaOv_Tpxkdpp-9mBo3clSBb3pLjuLVZBiX_ltKs"
+PUBLIC_KEY_B64 = "P00Ez9Ow4kUDYsyMAMvs-3kiJ9pJAlD0LNoW2VGsN28"
 
 _PREFIJO = "MVDG2"
 _ARCHIVO = "licencia.json"
