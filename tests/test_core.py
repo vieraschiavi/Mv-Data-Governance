@@ -7793,3 +7793,37 @@ def test_los_iconos_salen_del_logo_vectorial():
                        cwd=raiz, capture_output=True, text=True)
     assert r.returncode == 0, (
         "los iconos del repo no salen del logo actual:\n" + r.stderr)
+
+def test_los_workflows_que_exponen_datos_exigen_repo_privado():
+    """Los logs de Actions de un repositorio PUBLICO los ve cualquiera.
+
+    "Emitir licencia" imprime una licencia — el que la copia tiene el programa
+    completo gratis. "Monitor" imprime ingresos y cantidad de clientes. En un
+    repo publico, los dos serian una filtracion, y no hay canal alternativo:
+    los artefactos de un repo publico tambien son accesibles para cualquiera.
+
+    Por eso los dos comprueban la visibilidad ANTES de generar nada. Este test
+    evita que alguien saque ese chequeo por comodidad.
+    """
+    import yaml as _yaml
+    raiz = _repo_root()
+    for archivo in ("emitir_licencia.yml", "monitor.yml"):
+        ruta = os.path.join(raiz, ".github", "workflows", archivo)
+        assert os.path.exists(ruta), f"falta {archivo}"
+        with open(ruta, encoding="utf-8") as fh:
+            crudo = fh.read()
+        datos = _yaml.safe_load(crudo)
+        # solo lineas de codigo: un comentario que diga "privado" no cuenta
+        codigo = "\n".join(linea for linea in crudo.splitlines()
+                           if not linea.strip().startswith("#"))
+        assert ".private" in codigo, (
+            f"{archivo} no consulta la visibilidad del repositorio")
+        assert 'exit 1' in codigo, f"{archivo} no corta si el repo es publico"
+
+        # y el chequeo tiene que ser el PRIMER paso: despues de generar la
+        # licencia ya seria tarde, queda en el log igual.
+        job = next(iter(datos["jobs"].values()))
+        primero = job["steps"][0]
+        assert "privad" in primero.get("name", "").lower(), (
+            f"{archivo}: la comprobacion de visibilidad no es el primer paso "
+            f"(es '{primero.get('name')}')")
