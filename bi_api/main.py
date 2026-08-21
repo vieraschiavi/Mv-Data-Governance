@@ -246,6 +246,23 @@ def licencia_activar(cuerpo: dict = _CUERPO):
     return licensing.status()
 
 
+@app.post("/api/licencia/renovar", tags=["meta"])
+def licencia_renovar():
+    """Renueva la licencia si viene de una suscripcion que sigue paga.
+
+    Es la unica llamada del programa que sale a internet, y solo hace algo si
+    la licencia actual trae `sub`. Quien tiene Licencia PC (pago unico) recibe
+    "sin_suscripcion" y no se toca nada.
+
+    Nunca borra la licencia vigente: si la suscripcion figura impaga puede ser
+    que el cobro se acredite mañana, y dejar al cliente afuera al instante por
+    eso seria peor que esperar al vencimiento.
+    """
+    from mvdg import licensing
+    r = licensing.renovar()
+    return {**r, **licensing.status()}
+
+
 @app.delete("/api/licencia", tags=["meta"])
 def licencia_borrar():
     """Saca la licencia guardada y vuelve a plan demo."""

@@ -84,13 +84,23 @@ function signEd25519(payload, privateKeyB64u) {
 //   Professional para siempre. El mecanismo ya andaba (api/trial.js emite exp
 //   a 14 dias y el trial caduca solo): era el camino de pago el que lo omitia.
 //
-//   Hoy las dos son perpetuas, que es lo unico que esta infraestructura puede
-//   cumplir: sin base de datos (Vercel es sin estado) ni reentrega automatica,
-//   poner 31 dias sin via de renovacion dejaria afuera al mes siguiente a todo
-//   el que pago. Para pasar "pro" a mensual de verdad hacen falta ademas
-//   suscripciones de MercadoPago (preapproval), webhook de cobro recurrente y
-//   entrega de la clave nueva cada mes; hasta entonces la landing tampoco
-//   puede anunciarlo por mes, y hay un test que lo verifica.
+// `recurrente` — si MercadoPago lo cobra TODOS LOS MESES (preapproval) o una
+//   sola vez (preferencia de checkout). Esto es lo que faltaba y por lo que la
+//   version anterior dejo "pro" perpetuo a proposito: ponerle vencimiento sin
+//   una via de renovacion es peor que dejarlo perpetuo, porque al mes 2 se
+//   queda afuera el que SI paga. Con el preapproval hecho (api/checkout.js) y
+//   la renovacion contra MercadoPago (api/suscripcion.js), "pro" ya puede
+//   vencer: cada 35 dias el programa pide una licencia nueva y la recibe
+//   mientras la suscripcion siga paga.
+//
+//   35 y no 31: si el cobro de MP se atrasa un par de dias, un vencimiento de
+//   31 dejaria al cliente afuera por culpa de la pasarela.
+//
+// Esta tabla es la UNICA fuente de las tres cosas. checkout.js decide si crea
+// una suscripcion o una preferencia leyendo `recurrente` de aca — antes tenia
+// su propia bandera adentro de PLANS, o sea el mismo hecho escrito dos veces,
+// que es como empezo este bug: la condicion de venta vivia en el HTML y el
+// vencimiento en el JS, sin nada que los atara.
 //
 // UNA tabla y no un mapa por atributo: con dos mapas separados se podia
 // registrar MEDIO SKU — declararle el plan y olvidar el plazo — y como el
@@ -100,8 +110,8 @@ function signEd25519(payload, privateKeyB64u) {
 // estructura lo impide y no hay que acordarse de escribir el test.
 // --------------------------------------------------------------------------
 const SKU = {
-  licencia: { plan: "licencia", dias: 0 },
-  pro: { plan: "professional", dias: 0 },
+  licencia: { plan: "licencia", dias: 0, recurrente: false },
+  pro: { plan: "professional", dias: 35, recurrente: true },
 };
 
 // Derivados, para quien solo necesita una de las dos caras.
@@ -123,5 +133,13 @@ function planDeSku(sku) {
   return e ? e.plan : null;
 }
 
+// Un SKU desconocido NO es recurrente: en la duda se cobra una sola vez, que
+// es el error barato. Al reves (cobrarle todos los meses a alguien que compro
+// una vez) es un cargo indebido.
+function esRecurrente(sku) {
+  const e = sku && Object.prototype.hasOwnProperty.call(SKU, sku) ? SKU[sku] : null;
+  return Boolean(e && e.recurrente);
+}
+
 module.exports = { sign, verify, signEd25519, SKU, PLAN_POR_SKU, planDeSku,
-                   DIAS_POR_SKU, diasDeSku };
+                   DIAS_POR_SKU, diasDeSku, esRecurrente };

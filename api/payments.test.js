@@ -173,13 +173,91 @@ async function main() {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({ init_point: "https://mp.test/pay/abc" }) }),
           async () => {
-            await checkout({ method: "POST", headers: {}, body: { plan: "pro" } }, res);
+            await checkout({ method: "POST", headers: {}, body: { plan: "licencia" } }, res);
           }
         );
         assert.strictEqual(res._status, 200);
         assert.strictEqual(res._body.url, "https://mp.test/pay/abc");
       } finally {
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+      }
+    });
+    // --- suscripción: el plan mensual NO se cobra con una preferencia ------
+    // Una preferencia cobra UNA VEZ. Que "pro" saliera por ahí era el bug:
+    // US$390 anunciados por mes, cobrados una sola vez, licencia sin
+    // vencimiento. Estos tres checks fijan el camino nuevo.
+    await check("checkout: el plan mensual va a /preapproval, no a /preferences", async () => {
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      let urlLlamada = null, cuerpo = null;
+      try {
+        await withMockFetch(
+          async (url, opts) => {
+            urlLlamada = url; cuerpo = JSON.parse(opts.body);
+            return { ok: true, json: async () => ({ init_point: "https://mp.test/sub/abc" }) };
+          },
+          async () => {
+            await checkout({ method: "POST", headers: {},
+                             body: { plan: "pro", email: "cliente@empresa.com" } }, res);
+          }
+        );
+        assert.ok(/\/preapproval$/.test(urlLlamada),
+                  `se llamo a ${urlLlamada}: una preferencia cobra una sola vez`);
+        assert.strictEqual(cuerpo.auto_recurring.frequency_type, "months");
+        assert.strictEqual(cuerpo.auto_recurring.frequency, 1);
+        assert.strictEqual(cuerpo.payer_email, "cliente@empresa.com");
+        assert.strictEqual(res._status, 200);
+        assert.strictEqual(res._body.url, "https://mp.test/sub/abc");
+        assert.strictEqual(res._body.suscripcion, true);
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+      }
+    });
+    await check("checkout: suscripción sin email -> 400, sin tocar MercadoPago", async () => {
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      let toco = false;
+      try {
+        await withMockFetch(
+          async () => { toco = true; return { ok: true, json: async () => ({}) }; },
+          async () => {
+            await checkout({ method: "POST", headers: {}, body: { plan: "pro" } }, res);
+          }
+        );
+        assert.strictEqual(res._status, 400);
+        assert.strictEqual(res._body.error, "email_requerido");
+        assert.strictEqual(toco, false, "mando a MercadoPago un cuerpo que iba a rechazar");
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+      }
+    });
+    await check("checkout: lo recurrente sale de la tabla SKU, no de checkout.js", async () => {
+      // Si alguien saca `recurrente` de la tabla, el plan mensual vuelve a
+      // cobrarse una sola vez y nada mas se entera. Esto lo ata.
+      const { esRecurrente } = require("./_license");
+      for (const sku of Object.keys(checkout.PLANS)) {
+        const res = mockRes();
+        const envToken = process.env.MP_ACCESS_TOKEN;
+        process.env.MP_ACCESS_TOKEN = "token-de-test";
+        let urlLlamada = null;
+        try {
+          await withMockFetch(
+            async (url) => {
+              urlLlamada = url;
+              return { ok: true, json: async () => ({ init_point: "https://mp.test/x" }) };
+            },
+            async () => {
+              await checkout({ method: "POST", headers: {},
+                               body: { plan: sku, email: "c@e.com" } }, res);
+            }
+          );
+        } finally {
+          if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        }
+        assert.strictEqual(/\/preapproval$/.test(urlLlamada), esRecurrente(sku),
+          `'${sku}': esRecurrente=${esRecurrente(sku)} pero se llamo a ${urlLlamada}`);
       }
     });
     await check("checkout: MercadoPago responde error -> 502, nunca 200", async () => {
@@ -190,7 +268,8 @@ async function main() {
         await withMockFetch(
           async () => ({ ok: false, json: async () => ({}) }),
           async () => {
-            await checkout({ method: "POST", headers: {}, body: { plan: "pro" } }, res);
+            await checkout({ method: "POST", headers: {},
+                             body: { plan: "pro", email: "c@e.com" } }, res);
           }
         );
         assert.strictEqual(res._status, 502);
@@ -206,7 +285,8 @@ async function main() {
         await withMockFetch(
           async () => { throw new Error("red caída"); },
           async () => {
-            await checkout({ method: "POST", headers: {}, body: { plan: "pro" } }, res);
+            await checkout({ method: "POST", headers: {},
+                             body: { plan: "pro", email: "c@e.com" } }, res);
           }
         );
         assert.strictEqual(res._status, 500);
@@ -272,11 +352,15 @@ async function main() {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
             status: "approved", date_approved: new Date().toISOString(),
-            // "pro" es el SKU REAL que manda el checkout. Este test decia
-            // "professional", que es el PLAN — un valor que MercadoPago nunca
-            // envia. Por eso el test estaba verde mientras el circuito real
-            // estaba roto: verificaba un escenario que no puede ocurrir.
-            metadata: { plan: "pro" },
+            // El SKU REAL que manda el checkout, no el PLAN — un valor que
+            // MercadoPago nunca envia. El test decia "professional" y estaba
+            // verde mientras el circuito real estaba roto: verificaba un
+            // escenario que no puede ocurrir.
+            //
+            // Y es "licencia", el de pago unico: este endpoint es el del pago
+            // de una sola vez. "pro" se cobra por suscripcion y su licencia
+            // sale de /api/suscripcion (ver el check de mas abajo).
+            metadata: { plan: "licencia" },
             payer: { email: "c@empresa.com" },
           }) }),
           async () => {
@@ -284,8 +368,8 @@ async function main() {
           }
         );
         assert.strictEqual(res._body.approved, true);
-        assert.strictEqual(res._body.plan, "pro");            // SKU, lo que muestra la pagina
-        assert.strictEqual(res._body.tier, "professional");   // plan que entiende el programa
+        assert.strictEqual(res._body.plan, "licencia");    // SKU, lo que muestra la pagina
+        assert.strictEqual(res._body.tier, "licencia");    // plan que entiende el programa
         assert.ok(res._body.license_key && res._body.license_key.startsWith("MVDG2."));
         // y el token tiene que llevar el PLAN, no el SKU: con "pro" adentro,
         // licensing.verify() lo rechaza por plan desconocido y el cliente que
@@ -293,7 +377,7 @@ async function main() {
         const cuerpo = JSON.parse(Buffer.from(
           res._body.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
           "base64").toString("utf8"));
-        assert.strictEqual(cuerpo.plan, "professional");
+        assert.strictEqual(cuerpo.plan, "licencia");
       } finally {
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
@@ -302,13 +386,15 @@ async function main() {
     await check("verify-payment: un SKU temporal emite el token CON vencimiento", async () => {
       // El bug real: "pro" se vendia mensual y el token salia sin `exp`, asi
       // que la suscripcion era perpetua. Este test atraviesa el handler de
-      // verdad — no reimplementa la regla — subiendo pro a 31 dias.
+      // verdad — no reimplementa la regla — poniendole vencimiento a un SKU.
       // Se muta SKU y no DIAS_POR_SKU: ese ultimo es una copia derivada, y
       // tocarlo no cambiaria nada. Que el test se rompa al mover la fuente de
       // verdad es correcto — significa que esta atado a ella y no a un espejo.
+      // Se muta "licencia" porque este endpoint solo licencia lo de pago
+      // unico; lo recurrente lo atiende /api/suscripcion.
       const lic = require("./_license");
-      const original = lic.SKU.pro.dias;
-      lic.SKU.pro.dias = 31;
+      const original = lic.SKU.licencia.dias;
+      lic.SKU.licencia.dias = 31;
       const res = mockRes();
       const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
       process.env.MP_ACCESS_TOKEN = "token-de-test";
@@ -317,7 +403,8 @@ async function main() {
       try {
         await withMockFetch(
           async () => ({ ok: true, json: async () => ({
-            status: "approved", date_approved: new Date().toISOString(), metadata: { plan: "pro" },
+            status: "approved", date_approved: new Date().toISOString(),
+            metadata: { plan: "licencia" },
             payer: { email: "c@empresa.com" },
           }) }),
           async () => {
@@ -330,7 +417,7 @@ async function main() {
         assert.ok(cuerpo.exp, "un SKU de 31 dias tiene que emitir `exp`");
         assert.strictEqual(cuerpo.exp - cuerpo.iat, 31 * 86400);
       } finally {
-        lic.SKU.pro.dias = original;
+        lic.SKU.licencia.dias = original;
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
       }
@@ -357,6 +444,35 @@ async function main() {
           res._body.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
           "base64").toString("utf8"));
         assert.strictEqual(cuerpo.exp, undefined);
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;
+      }
+    });
+    await check("verify-payment: un SKU por suscripcion NO se licencia por aca", async () => {
+      // Una licencia emitida por este endpoint no lleva `sub` adentro, y sin
+      // ese id el programa no sabe contra que suscripcion renovar: se
+      // apagaria sola a los 35 dias y el cliente no tendria como recuperarla.
+      // Entregar eso es peor que no entregar nada, porque parece que funciono.
+      const res = mockRes();
+      const envToken = process.env.MP_ACCESS_TOKEN, envPriv = process.env.LICENSE_PRIVATE_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (buf) => Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      try {
+        await withMockFetch(
+          async () => ({ ok: true, json: async () => ({
+            status: "approved", date_approved: new Date().toISOString(),
+            metadata: { plan: "pro" },
+            payer: { email: "c@empresa.com" },
+          }) }),
+          async () => {
+            await verifyPayment({ query: { payment_id: "1003" }, headers: {} }, res);
+          }
+        );
+        assert.strictEqual(res._body.approved, true);
+        assert.strictEqual(res._body.license_key, null);
+        assert.strictEqual(res._body.motivo, "sku_por_suscripcion");
       } finally {
         if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
         if (envPriv !== undefined) process.env.LICENSE_PRIVATE_KEY = envPriv; else delete process.env.LICENSE_PRIVATE_KEY;

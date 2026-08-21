@@ -1979,11 +1979,22 @@ def _sku_a_plan() -> dict:
 
 
 def _skus_del_checkout() -> list[str]:
-    """Los SKUs que el checkout sabe cobrar, leidos de api/checkout.js."""
-    ruta = os.path.join(_repo_root(), "api", "checkout.js")
-    with open(ruta, encoding="utf-8") as fh:
-        cuerpo = re.search(r"const PLANS = \{(.*?)\n\};", fh.read(), re.S).group(1)
-    return re.findall(r"^\s*(\w+):", cuerpo, re.M)
+    """Los SKUs que el checkout sabe cobrar, leidos de api/checkout.js.
+
+    Se le pregunta a Node por el objeto REAL en vez de sacarlo con una regex
+    del texto fuente. La regex leia `^\\s*(\\w+):` adentro del bloque PLANS, o
+    sea cualquier clave — cuando "pro" gano un atributo (`suscripcion: true`)
+    lo tomo como si fuera un SKU mas y tres tests fallaron acusando un bug de
+    producto que no existia. Un test que no distingue un SKU de un campo no
+    esta verificando lo que dice verificar.
+    """
+    import json as _json
+    import subprocess
+    salida = subprocess.run(
+        ["node", "-e",
+         "console.log(JSON.stringify(Object.keys(require('./api/checkout').PLANS)))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True)
+    return _json.loads(salida.stdout)
 
 
 def test_todo_sku_que_se_cobra_esta_mapeado_a_un_plan():
@@ -2251,13 +2262,68 @@ def test_ningun_sku_queda_declarado_a_medias():
     for sku in _skus_del_checkout():
         assert sku in tabla, f"el checkout cobra '{sku}' y no esta en SKU"
     for sku, e in tabla.items():
-        assert set(e) == {"plan", "dias"}, (
+        assert set(e) == {"plan", "dias", "recurrente"}, (
             f"'{sku}' declara {sorted(e)}: cada SKU tiene que decir que plan "
-            f"da y por cuanto tiempo. Un campo ausente vale 0/null y se "
-            f"entrega perpetuo sin que nada avise")
+            f"da, por cuanto tiempo y si se cobra todos los meses. Un campo "
+            f"ausente vale 0/false y se entrega perpetuo sin que nada avise")
         assert isinstance(e["dias"], int) and e["dias"] >= 0
+        assert isinstance(e["recurrente"], bool)
+        # Lo que se cobra todos los meses tiene que vencer todos los meses, y
+        # lo que se cobra una vez no puede vencer: son las dos formas de que
+        # el cliente y el cobro dejen de coincidir. La primera es plata que no
+        # entra; la segunda es un cliente que pago y se queda afuera.
+        assert (e["dias"] > 0) == e["recurrente"], (
+            f"'{sku}': recurrente={e['recurrente']} pero dias={e['dias']}. "
+            f"Cobro recurrente sin vencimiento = se paga un mes y se tiene "
+            f"para siempre; vencimiento sin cobro recurrente = el cliente "
+            f"pago una vez y se queda sin nada")
 
 
+
+
+def test_el_boton_de_un_plan_mensual_pide_el_email_que_la_suscripcion_exige():
+    """Un preapproval de MercadoPago NO se puede crear sin `payer_email`, asi
+    que /api/checkout corta con 400 si el plan es recurrente y no viene email.
+
+    Este test existe por un bug que me comi yo: al pasar "pro" a suscripcion
+    puse esa validacion en el servidor y deje el boton de la landing mandando
+    {plan:'pro'} pelado. Todo el resto del gate quedaba VERDE — el endpoint
+    hacia exactamente lo que decia hacer — y el plan de mayor precio no se
+    podia comprar. El unico lugar donde eso se ve es en la union de las dos
+    mitades, y no habia nadie mirando ahi.
+
+    No alcanza con que EXISTA un campo de email en la pagina: hay uno para la
+    prueba de 14 dias, que llama a otro endpoint. Tiene que ser el boton de
+    ESE plan el que lleve a un formulario con un email adentro.
+    """
+    import json as _json
+    import subprocess
+    recurrentes = [
+        sku for sku, e in _json.loads(subprocess.run(
+            ["node", "-e",
+             "console.log(JSON.stringify(require('./api/_license').SKU))"],
+            cwd=_repo_root(), capture_output=True, text=True,
+            check=True).stdout).items() if e["recurrente"]]
+    assert recurrentes, "ningun SKU recurrente: este test dejo de proteger algo"
+
+    ruta = os.path.join(_repo_root(), "landing", "index.html")
+    with open(ruta, encoding="utf-8") as fh:
+        html = fh.read()
+
+    for sku in recurrentes:
+        boton = re.search(r"<a[^>]*data-mp=\"%s\"[^>]*>" % re.escape(sku), html)
+        assert boton, f"la landing no tiene boton de compra para '{sku}'"
+        form_id = re.search(r"data-mp-form=\"([\w-]+)\"", boton.group(0))
+        assert form_id, (
+            f"el boton de '{sku}' llama al checkout sin pedir email, y el "
+            f"checkout responde 400 email_requerido a los planes recurrentes: "
+            f"el plan seria imposible de comprar")
+        form = re.search(
+            r"<form[^>]*id=\"%s\".*?</form>" % re.escape(form_id.group(1)),
+            html, re.S)
+        assert form, f"'{sku}' apunta a #{form_id.group(1)}, que no existe"
+        assert 'type="email"' in form.group(0), (
+            f"el formulario de '{sku}' no pide un email")
 
 
 def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
@@ -2266,10 +2332,11 @@ def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
     siempre. Nada detectaba el desfasaje porque la condicion de venta vivia en
     el HTML y el vencimiento en el JS, sin nada que los atara.
 
-    Esto los ata: si un SKU esta declarado perpetuo (0 dias), la landing no
-    puede anunciarlo por mes. Y al reves — si algun dia "pro" pasa a
-    DIAS_POR_SKU=31, este test deja de exigir nada y hay que volver a poner el
-    "/mes" en la landing, que es lo correcto."""
+    Esto los ata EN LAS DOS DIRECCIONES: si un SKU esta declarado perpetuo (0
+    dias), la landing no puede anunciarlo por mes; y si vence, TIENE que
+    anunciarlo por mes. La version anterior solo miraba el primer caso, asi
+    que al pasar "pro" a 35 dias el test se volvia mudo justo cuando habia que
+    cambiar la landing — un guardarrail que se apaga solo el dia que sirve."""
     dias = _dias_por_sku()
     ruta = os.path.join(_repo_root(), "landing", "index.html")
     with open(ruta, encoding="utf-8") as fh:
@@ -2277,12 +2344,17 @@ def test_no_se_anuncia_como_mensual_lo_que_se_entrega_perpetuo():
 
     # Marcas de cobro recurrente en los tres idiomas.
     recurrente = ("mensual", "mensal", "monthly", "/mes", "/mês", '/mo"')
+    encontradas = [m for m in recurrente if m in html]
     if dias.get("pro", 0) == 0:
-        encontradas = [m for m in recurrente if m in html]
         assert not encontradas, (
             f"la landing anuncia cobro recurrente {encontradas} pero el SKU "
             f"'pro' esta declarado PERPETUO en DIAS_POR_SKU: el cliente pagaria "
             f"un mes y se quedaria con la licencia para siempre")
+    else:
+        assert encontradas, (
+            f"el SKU 'pro' vence a los {dias['pro']} dias pero la landing no "
+            f"dice en ningun lado que el cobro es mensual: el cliente cree que "
+            f"compro para siempre y a los {dias['pro']} dias se queda afuera")
 
 
 def test_el_vencimiento_del_token_sale_de_lo_que_se_vendio():

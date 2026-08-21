@@ -5,7 +5,7 @@
 // sin haber pagado. Si el pago está aprobado, emite automáticamente la
 // licencia MV Data Governance (firmada).
 
-const { sign, signEd25519, planDeSku, diasDeSku } = require("./_license");
+const { sign, signEd25519, planDeSku, diasDeSku, esRecurrente } = require("./_license");
 const { rateLimited, clientIp } = require("./_rate_limit");
 const { registrar } = require("./_usados");
 
@@ -36,7 +36,15 @@ module.exports = async (req, res) => {
     // Traducir es obligatorio: meter el SKU crudo en el token hacia que
     // licensing.verify() lo rechazara por plan desconocido.
     const sku = (data.metadata && data.metadata.plan) || null;
-    const plan = planDeSku(sku);
+    // Los SKU recurrentes NO se licencian por acá. Su licencia sale de
+    // /api/suscripcion, que es la única que le mete el `sub` adentro — sin ese
+    // id el programa no sabe contra qué suscripción renovar, y la licencia se
+    // apagaría sola a los 35 días sin forma de recuperarla. Emitirla acá sería
+    // entregar algo que muere en silencio; mejor no emitirla y decir por qué.
+    // Hoy este camino no se alcanza (los pagos de un preapproval no traen
+    // metadata.plan), pero eso depende de MercadoPago, no de nosotros.
+    const recurrente = esRecurrente(sku);
+    const plan = recurrente ? null : planDeSku(sku);
 
     // --- La licencia se emite solo en una ventana corta tras el pago -------
     //
@@ -132,7 +140,8 @@ module.exports = async (req, res) => {
       // Por que no hay licencia, cuando el pago si esta aprobado. La pagina
       // ya muestra 'escribinos y te la mandamos'; esto es para soporte.
       motivo: (approved && !licenseKey)
-        ? (!plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
+        ? (recurrente ? "sku_por_suscripcion"
+                 : !plan ? "sku_sin_licencia" : !privKey ? "emisor_no_configurado"
                  : !fresco ? "fuera_de_ventana"
                  : usado === "repetido" ? "ya_emitida" : "error_de_firma")
         : undefined,

@@ -681,15 +681,25 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <a class="btn btn-a" data-mp="licencia" href="#" data-i="pl2btn">Comprar con MercadoPago</a>
     </div>
     <div class="plan">
-      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (pago único).</div>
-      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2"></small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
+      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (suscripción mensual).</div>
+      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios · se cancela cuando quieras</div>
       <ul>
         <li data-i="pl3a">API REST para BI ilimitada</li>
         <li data-i="pl3b">Instalador Windows (.exe)</li>
         <li data-i="pl3c">Alertas de calidad y SLA</li>
         <li data-i="pl3d">Soporte prioritario</li>
       </ul>
-      <a class="btn btn-d" data-mp="pro" href="#" data-i="pl3btn">Suscribirme</a>
+      <a class="btn btn-d" data-mp="pro" data-mp-form="susForm" href="#" data-i="pl3btn">Suscribirme</a>
+      <!-- La suscripción de MercadoPago (preapproval) EXIGE el email del
+           pagador para crearse. Sin este campo el botón mandaba {plan:'pro'}
+           pelado y la compra moría en 400: no era un detalle de UX, era el
+           plan mensual entero sin forma de comprarse. -->
+      <form id="susForm" class="trial-form" hidden>
+        <input type="email" id="susEmail" required
+              data-i-ph="pl3sus_ph" placeholder="tu@empresa.com" autocomplete="email"
+              data-i-al="pl3sus_al" aria-label="Tu email para la suscripción">
+        <button type="submit" class="btn btn-d" data-i="pl3sus_go">Continuar a MercadoPago</button>
+      </form>
       <button type="button" class="trial-link" id="trialToggle" data-i="pl3trial">o probá 14 días gratis · sin tarjeta</button>
       <form id="trialForm" class="trial-form" hidden>
         <input type="email" id="trialEmail" required
@@ -946,9 +956,10 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   pl1a:"Full demo with synthetic data",pl1b:"3 languages included",pl1c:"CSV / Excel / JSON export",pl1d:"Windows program (.bat)",pl1btn:"Download demo",
   pl2tag:"Best value",pl2t:"PC License",pl2w:"One-time payment, yours forever. Download via MercadoPago.",pl2per:"One-time · 1 machine",
   pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
-  pl3t:"Professional",pl3w:"For teams governing for real (one-time).",pl_mo2:"",pl3per:"Up to 25 users",
+  pl3t:"Professional",pl3w:"For teams governing for real (monthly subscription).",pl_mo2:"/mo",pl3per:"Up to 25 users · cancel anytime",
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
   pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_al:"Your email for the 14-day trial",pl3trial_go:"Start 14-day trial",
+  pl3sus_ph:"you@company.com",pl3sus_al:"Your email for the subscription",pl3sus_go:"Continue to MercadoPago",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
   c_eye:"Contact",c_h2:"Let's talk about your data",
@@ -1121,9 +1132,10 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   pl1a:"Demo completa com dados sintéticos",pl1b:"3 idiomas incluídos",pl1c:"Exportação CSV / Excel / JSON",pl1d:"Programa Windows (.bat)",pl1btn:"Baixar demo",
   pl2tag:"Melhor valor",pl2t:"Licença PC",pl2w:"Pagamento único, sua para sempre. Download via MercadoPago.",pl2per:"Pagamento único · 1 equipamento",
   pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
-  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (pagamento único).",pl_mo2:"",pl3per:"Até 25 usuários",
+  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (assinatura mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários · cancele quando quiser",
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
   pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_al:"Seu email para o teste de 14 dias",pl3trial_go:"Começar teste de 14 dias",
+  pl3sus_ph:"voce@empresa.com",pl3sus_al:"Seu email para a assinatura",pl3sus_go:"Continuar para o MercadoPago",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
@@ -1339,24 +1351,48 @@ document.getElementById('cform').addEventListener('submit',function(ev){
   var MP_ERR={es:'No se pudo iniciar el pago. Probá de nuevo en un rato.',
     en:'Could not start the payment. Please try again shortly.',
     pt:'Não foi possível iniciar o pagamento. Tente novamente em instantes.'};
+  /* Un solo camino al checkout, con o sin email. `email` va solo si hay: los
+     planes de pago único no lo piden y mandar null les cambiaría el cuerpo. */
+  function iniciarPago(plan,email,btn){
+    var original=btn.textContent;
+    btn.setAttribute('aria-busy','true'); btn.style.opacity='.7'; btn.textContent='…';
+    function falla(){
+      btn.removeAttribute('aria-busy'); btn.style.opacity=''; btn.textContent=original;
+      alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
+    }
+    var cuerpo={plan:plan};
+    if(email)cuerpo.email=email;
+    fetch('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cuerpo)})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d && d.url){ window.location.href=d.url; return; }
+        falla();
+      })
+      .catch(falla);
+  }
+
   document.querySelectorAll('[data-mp]').forEach(function(btn){
+    var plan=btn.getAttribute('data-mp');
+    /* Los planes que se cobran todos los meses (suscripción de MercadoPago)
+       necesitan el email del pagador ANTES de llamar al checkout. El botón
+       abre su formulario y el envío del formulario es el que paga. */
+    var form=document.getElementById(btn.getAttribute('data-mp-form')||'');
     btn.addEventListener('click',function(ev){
       ev.preventDefault();
-      var plan=btn.getAttribute('data-mp');
-      var original=btn.textContent;
-      btn.setAttribute('aria-busy','true'); btn.style.opacity='.7'; btn.textContent='…';
-      fetch('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan:plan})})
-        .then(function(r){return r.json();})
-        .then(function(d){
-          if(d && d.url){ window.location.href=d.url; return; }
-          btn.style.opacity=''; btn.textContent=original;
-          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
-        })
-        .catch(function(){
-          btn.style.opacity=''; btn.textContent=original;
-          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
-        });
+      if(form){
+        form.hidden=!form.hidden;
+        if(!form.hidden)form.querySelector('input[type="email"]').focus();
+        return;
+      }
+      iniciarPago(plan,null,btn);
     });
+    if(form){
+      form.addEventListener('submit',function(ev){
+        ev.preventDefault();
+        var campo=form.querySelector('input[type="email"]');
+        iniciarPago(plan,campo.value.trim(),form.querySelector('button[type="submit"]'));
+      });
+    }
   });
 })();
 

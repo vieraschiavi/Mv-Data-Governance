@@ -107,3 +107,14 @@ export async function desactivarLicencia() {
   if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
   return r.json();
 }
+export async function renovarLicencia() {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/licencia/renovar`, { method: "POST" });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const cuerpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
+  return cuerpo;
+}

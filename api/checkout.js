@@ -17,7 +17,14 @@
 // pago (nadie cobra nada sin pagar de verdad en MercadoPago).
 
 const { rateLimited, clientIp } = require("./_rate_limit");
+const { esRecurrente } = require("./_license");
 
+// Solo lo que es propio del cobro: como se llama y cuanto sale. SI se cobra
+// todos los meses o una sola vez NO se decide aca — sale de la tabla SKU de
+// _license.js, que es la misma de la que sale el vencimiento del token. Que
+// vivan juntos no es prolijidad: "se vende mensual" y "la licencia vence" son
+// el mismo hecho, y tenerlos en dos archivos distintos fue exactamente el
+// bug — la landing cobraba US$390/mes y el token salia sin vencimiento.
 const PLANS = {
   licencia: { title: "MV Data Governance · Licencia PC (pago único)", price: 149.0 },
   pro:      { title: "MV Data Governance · Professional (mensual)",   price: 390.0 },
@@ -50,6 +57,48 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (esRecurrente(plan)) {
+      // ----------------------------------------------------------------
+      // Suscripcion (preapproval): MercadoPago cobra solo cada mes.
+      // ----------------------------------------------------------------
+      // payer_email es obligatorio para crear un preapproval, asi que el
+      // boton de la landing lo pide antes de mandar acá. Sin email no se
+      // puede crear la suscripcion — se corta con un mensaje claro en vez
+      // de mandarle a MercadoPago un cuerpo que va a rechazar.
+      const email = String(body.email || "").trim();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        res.status(400).json({ error: "email_requerido" });
+        return;
+      }
+      const sus = {
+        reason: p.title,
+        // El comprador vuelve acá con ?preapproval_id=... y con eso la
+        // pagina pide su primera licencia a /api/suscripcion.
+        back_url: base + "/pago.html?sus=1",
+        payer_email: email,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: "months",
+          transaction_amount: p.price,
+          currency_id: CURRENCY,
+        },
+        status: "pending",
+      };
+      const r = await fetch("https://api.mercadopago.com/preapproval", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token,
+                   "Content-Type": "application/json" },
+        body: JSON.stringify(sus),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.init_point) {
+        res.status(502).json({ error: "mercadopago" });
+        return;
+      }
+      res.status(200).json({ url: data.init_point, suscripcion: true });
+      return;
+    }
+
     const pref = {
       items: [{ title: p.title, quantity: 1, unit_price: p.price, currency_id: CURRENCY }],
       back_urls: {
