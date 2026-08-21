@@ -54,6 +54,20 @@ const T = {
                           en: "Scan the Power BI / Tableau tenant",
                           pt: "Escanear o tenant do Power BI / Tableau" },
 
+  lic_renovar: { es: "Renovar ahora", en: "Renew now", pt: "Renovar agora" },
+  lic_sus: { es: "Suscripción mensual activa. El programa se renueva solo mientras esté paga.",
+             en: "Monthly subscription active. The program renews itself while it is paid.",
+             pt: "Assinatura mensal ativa. O programa se renova sozinho enquanto estiver paga." },
+  lic_renovada: { es: "Licencia renovada.", en: "License renewed.", pt: "Licença renovada." },
+  lic_sin_conexion: {
+    es: "Sin conexión para renovar. Tu licencia sigue valiendo hasta su vencimiento.",
+    en: "No connection to renew. Your license remains valid until it expires.",
+    pt: "Sem conexão para renovar. Sua licença continua válida até vencer." },
+  lic_no_autorizada: {
+    es: "MercadoPago no reporta la suscripción como paga. Revisá tu medio de pago.",
+    en: "MercadoPago does not report the subscription as paid. Check your payment method.",
+    pt: "O MercadoPago não reporta a assinatura como paga. Verifique seu meio de pagamento." },
+
   lic_nota_exe: {
     es: "Tu licencia queda activada para todo el programa. Estas funciones se usan desde el panel completo de gobierno.",
     en: "Your license is activated for the whole program. These features are used from the full governance panel.",

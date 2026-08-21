@@ -304,6 +304,59 @@ def status() -> dict:
         "email": (payload or {}).get("email"),
         "emitida": (payload or {}).get("iat"),
         "vence": (payload or {}).get("exp"),
+        # Id de la suscripcion de MercadoPago, si esta licencia viene de una.
+        # Es lo que le permite al programa renovarse solo: pregunta por ese id
+        # y, mientras la suscripcion este paga, recibe una licencia nueva. Sin
+        # esto habria que pedirle al cliente que guarde el id a mano.
+        "suscripcion": (payload or {}).get("sub"),
         "emisor_configurado": bool(PUBLIC_KEY_B64),
         "funciones_pagas": sorted(FUNCIONES_PAGAS),
     }
+
+
+# Dominio donde vive el emisor. Se puede apuntar a otro lado con
+# MVDG_LICENCIAS_URL — util para probar contra un preview sin tocar codigo.
+EMISOR = "https://mv-data-governance.vercel.app"
+
+
+def renovar(timeout: float = 15.0) -> dict:
+    """Pide una licencia nueva para la suscripcion de la licencia actual.
+
+    Es LA UNICA parte del programa que sale a internet, y solo corre si la
+    licencia vigente trae `sub` — o sea, si es de una suscripcion. Un cliente
+    con Licencia PC (pago unico) nunca dispara esto: no tiene nada que
+    renovar.
+
+    Devuelve {"ok": bool, "motivo": str, "plan": str}. No lanza: quedarse sin
+    internet un rato no puede romper el programa, y la licencia vieja sigue
+    valiendo hasta su vencimiento.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    actual = current()
+    sub = (actual or {}).get("sub")
+    if not sub:
+        return {"ok": False, "motivo": "sin_suscripcion", "plan": plan()}
+
+    base = os.environ.get("MVDG_LICENCIAS_URL", EMISOR).rstrip("/")
+    url = f"{base}/api/suscripcion?id={sub}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            datos = _json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        # Sin conexion: no se toca nada. La licencia actual sigue en pie.
+        return {"ok": False, "motivo": "sin_conexion", "plan": plan()}
+
+    if not datos.get("activa"):
+        # La suscripcion se dio de baja o quedo impaga. NO se borra la
+        # licencia: se deja vencer sola. Borrarla acá dejaria al cliente
+        # afuera al instante por un pago que quizas se acredita mañana.
+        return {"ok": False, "motivo": datos.get("motivo") or "no_autorizada",
+                "plan": plan()}
+
+    token = datos.get("license_key")
+    if not token or save(token) is None:
+        return {"ok": False, "motivo": "licencia_invalida", "plan": plan()}
+    return {"ok": True, "motivo": "renovada", "plan": plan()}

@@ -73,7 +73,7 @@ finally:
     licensing.plan = _plan_real
 print(json.dumps({"valida": True, "plan": p["plan"],
                   "email": p.get("email"), "exp": p.get("exp"),
-                  "funciones": funcs}))
+                  "sub": p.get("sub"), "funciones": funcs}))
 `;
   const salida = execFileSync("python3", ["-c", codigo, token, PUBLICA],
                               { encoding: "utf8", cwd: RAIZ });
@@ -110,8 +110,10 @@ async function main() {
 
   console.log("\n== Un cliente compra y el programa se desbloquea ==\n");
 
-  for (const [sku, planEsperado] of [["licencia", "licencia"],
-                                     ["pro", "professional"]]) {
+  // Solo los SKU de PAGO UNICO: este endpoint es el del pago de una sola vez.
+  // "pro" se cobra por suscripcion y su licencia sale de /api/suscripcion —
+  // esta mas abajo, con su propio circuito completo hasta Python.
+  for (const [sku, planEsperado] of [["licencia", "licencia"]]) {
     const r = await comprar(sku);
     check(`SKU "${sku}": el pago aprobado devuelve una licencia`, () => {
       assert.strictEqual(r.approved, true, "MP dijo aprobado y la API no");
@@ -136,13 +138,13 @@ async function main() {
 
   console.log("\n== Lo que NO tiene que entregar licencia ==\n");
 
-  const rechazo = await comprar("pro", { estado: "pending" });
+  const rechazo = await comprar("licencia", { estado: "pending" });
   check("pago PENDIENTE: no emite licencia", () => {
     assert.strictEqual(rechazo.approved, false);
     assert.strictEqual(rechazo.license_key, null);
   });
 
-  const viejo = await comprar("pro", { hace_min: 120 });
+  const viejo = await comprar("licencia", { hace_min: 120 });
   check("pago aprobado hace 2 horas: fuera de ventana, no emite", () => {
     assert.strictEqual(viejo.license_key, null);
     assert.strictEqual(viejo.motivo, "fuera_de_ventana");
@@ -154,15 +156,98 @@ async function main() {
     assert.strictEqual(skuRaro.motivo, "sku_sin_licencia");
   });
 
+  // Un pago suelto de un SKU mensual NO se licencia por aca. La licencia que
+  // saldria de este endpoint no lleva `sub` adentro, asi que el programa no
+  // sabria contra que suscripcion renovar: se apagaria sola a los 35 dias y
+  // el cliente no tendria forma de recuperarla. Es peor que no darle nada,
+  // porque parece que funciono.
+  const mensual = await comprar("pro");
+  check("SKU mensual por la via de pago unico: no emite, va por /api/suscripcion", () => {
+    assert.strictEqual(mensual.approved, true);
+    assert.strictEqual(mensual.license_key, null);
+    assert.strictEqual(mensual.motivo, "sku_por_suscripcion");
+  });
+
   // sin emisor configurado — el caso que ESTABA pasando en produccion
   const guardada = process.env.LICENSE_PRIVATE_KEY;
   delete process.env.LICENSE_PRIVATE_KEY;
-  const sinEmisor = await comprar("pro");
+  const sinEmisor = await comprar("licencia");
   process.env.LICENSE_PRIVATE_KEY = guardada;
   check("sin LICENSE_PRIVATE_KEY: no emite, y el motivo lo explica", () => {
     assert.strictEqual(sinEmisor.license_key, null);
     assert.strictEqual(sinEmisor.motivo, "emisor_no_configurado");
   });
+
+  console.log("\n== Suscripcion Professional (el cobro mensual de verdad) ==\n");
+  {
+    delete require.cache[require.resolve(path.join(RAIZ, "api/suscripcion.js"))];
+    const suscripcion = require(path.join(RAIZ, "api/suscripcion.js"));
+
+    async function consultar(id, estado, email) {
+      rl.resetForTests();
+      global.fetch = async () => ({
+        ok: true, status: 200,
+        json: async () => ({ status: estado, payer_email: email || null }),
+      });
+      const res = mockRes();
+      await suscripcion({ query: { id }, headers: {} }, res);
+      global.fetch = real;
+      return res._body;
+    }
+
+    const activa = await consultar("2c93808493", "authorized", "sus@empresa.com");
+    check("suscripcion al dia: emite licencia CON vencimiento", () => {
+      assert.strictEqual(activa.activa, true);
+      assert.ok(activa.license_key, `no emitio (motivo: ${activa.motivo})`);
+    });
+
+    const v = verificarEnElPrograma(activa.license_key);
+    check("el PROGRAMA la acepta como professional y habilita las 3", () => {
+      assert.strictEqual(v.valida, true);
+      assert.strictEqual(v.plan, "professional");
+      assert.deepStrictEqual(
+        Object.entries(v.funciones).filter(([, on]) => !on).map(([f]) => f), []);
+    });
+
+    check("la licencia VENCE (esto es lo que se estaba perdiendo)", () => {
+      assert.ok(v.exp, "salio SIN vencimiento: el cliente paga un mes y se " +
+                       "queda con el plan para siempre");
+      const dias = Math.round((v.exp - Date.now() / 1000) / 86400);
+      assert.ok(dias > 30 && dias <= 36,
+        `vence en ${dias} dias; se esperaban ~35`);
+    });
+
+    // Y lo que hace que vencer no rompa al que paga: la licencia se puede
+    // renovar sola porque lleva su propio id de suscripcion adentro.
+    check("lleva el id de la suscripcion, para poder renovarse sola", () => {
+      const cuerpo = JSON.parse(Buffer.from(
+        activa.license_key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"),
+        "base64").toString());
+      assert.strictEqual(cuerpo.sub, "2c93808493",
+        "sin `sub` el programa no sabe por cual suscripcion preguntar");
+    });
+
+    for (const estado of ["pending", "paused", "cancelled"]) {
+      const r = await consultar("2c93808493", estado);
+      check(`suscripcion "${estado}": NO renueva`, () => {
+        assert.strictEqual(r.activa, false);
+        assert.ok(!r.license_key);
+      });
+    }
+
+    check("un id con formato invalido se rechaza sin llamar a MercadoPago",
+      () => {
+        rl.resetForTests();
+      });
+    for (const malo of ["", "../otro", "a", "x".repeat(80)]) {
+      rl.resetForTests();
+      const res = mockRes();
+      await suscripcion({ query: { id: malo }, headers: {} }, res);
+      check(`id invalido ${JSON.stringify(malo.slice(0, 12))} -> 400`, () => {
+        assert.strictEqual(res._status, 400);
+      });
+    }
+  }
 
   console.log("\n== La demo ==\n");
   const demo = verificarEnElPrograma("no-hay-licencia");

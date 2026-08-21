@@ -14,7 +14,7 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { activarLicencia, desactivarLicencia, licencia, todo } from "./api";
+import { activarLicencia, desactivarLicencia, licencia, renovarLicencia, todo } from "./api";
 import { t } from "./i18n";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
@@ -290,7 +290,26 @@ function Licencia({ lang }) {
   const refrescar = useCallback(() => {
     licencia().then(setEstado).catch((e) => setMsg({ mal: true, txt: e.detalle }));
   }, []);
-  useEffect(refrescar, [refrescar]);
+
+  // Al abrir: si la licencia viene de una suscripcion, se intenta renovar en
+  // silencio. Es lo que hace que un vencimiento a 35 dias no deje afuera a
+  // quien sigue pagando — el cliente no tiene que acordarse de nada.
+  //
+  // Si no hay internet no pasa nada: renovar() devuelve "sin_conexion" y la
+  // licencia vigente sigue valiendo hasta su fecha. Por eso no se muestra
+  // error en el arranque, solo cuando el usuario aprieta el boton.
+  useEffect(() => {
+    let vivo = true;
+    licencia().then((e) => {
+      if (!vivo) return;
+      setEstado(e);
+      if (e && e.suscripcion) {
+        renovarLicencia().then((r) => { if (vivo && r.ok) setEstado(r); })
+                         .catch(() => {});
+      }
+    }).catch((e) => setMsg({ mal: true, txt: e.detalle }));
+    return () => { vivo = false; };
+  }, []);
 
   const activar = async () => {
     setOcupado(true);
@@ -303,6 +322,25 @@ function Licencia({ lang }) {
       // El motor ya dice por que no vale; repetirlo con otras palabras solo
       // agrega ruido cuando el cliente escribe a soporte.
       setMsg({ mal: true, txt: e.detalle || e.message });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const renovar = async () => {
+    setOcupado(true);
+    setMsg(null);
+    try {
+      const r = await renovarLicencia();
+      setEstado(r);
+      // Cada motivo tiene su texto: "no se pudo" a secas obliga al cliente a
+      // escribir a soporte para saber si es su tarjeta o su wifi.
+      const clave = r.ok ? "lic_renovada"
+        : r.motivo === "sin_conexion" ? "lic_sin_conexion"
+        : "lic_no_autorizada";
+      setMsg({ mal: !r.ok, txt: t(clave, lang) });
+    } catch (e) {
+      setMsg({ mal: true, txt: t("lic_sin_conexion", lang) });
     } finally {
       setOcupado(false);
     }
@@ -334,10 +372,21 @@ function Licencia({ lang }) {
       </p>
       <p>{pago ? t("lic_activa_ayuda", lang) : t("lic_demo_ayuda", lang)}</p>
 
+      {estado.suscripcion ? (
+        <p className="sub">{t("lic_sus", lang)}</p>
+      ) : null}
+
       {pago ? (
-        <button className="btn" onClick={quitar} disabled={ocupado}>
-          {t("lic_quitar", lang)}
-        </button>
+        <div className="fila">
+          {estado.suscripcion ? (
+            <button className="btn" onClick={renovar} disabled={ocupado}>
+              {t("lic_renovar", lang)}
+            </button>
+          ) : null}
+          <button className="btn" onClick={quitar} disabled={ocupado}>
+            {t("lic_quitar", lang)}
+          </button>
+        </div>
       ) : (
         <div className="fila">
           <label htmlFor="lic-clave">{t("lic_clave", lang)}</label>
