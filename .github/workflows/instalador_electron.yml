@@ -454,3 +454,24 @@ jobs:
               --title "MV Data Governance $v · OWNER" --notes-file "$notas"
           fi
           echo "Release lista: https://github.com/${{ github.repository }}/releases/tag/owner-latest"
+
+          # La URL exacta que va en Vercel, impresa en el resumen de la
+          # corrida. /api/descargar elige el build por el PLAN de la licencia:
+          # con plan owner busca MVDG_INSTALLER_URL_OWNER, y si no esta
+          # cargada responde 503 en vez de entregarte el build del cliente.
+          # Sin esta linea habia que armar la URL a mano y era el paso donde
+          # se erraba.
+          url="https://github.com/${{ github.repository }}/releases/download/owner-latest/MVDataGovernance_Setup_$v.exe"
+          {
+            echo "## Instalador OWNER publicado"
+            echo
+            echo "Pone esto en Vercel como \`MVDG_INSTALLER_URL_OWNER\`:"
+            echo
+            echo '```'
+            echo "$url"
+            echo '```'
+            echo
+            echo "Con eso, tu licencia owner te baja ESTE build y la de un"
+            echo "cliente le baja el suyo — la decide la licencia firmada,"
+            echo "no la URL."
+          } >> "$GITHUB_STEP_SUMMARY"

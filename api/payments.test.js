@@ -1024,6 +1024,97 @@ async function main() {
       });
     });
 
+    // ---- cada plan baja SU build --------------------------------------
+    await check("descargar: el OWNER baja el build owner, no el del cliente", async () => {
+      // El bug que esto cierra: habia una sola variable, asi que el owner
+      // —con su licencia owner— bajaba el mismo .exe sin desbloquear que un
+      // cliente. La version owner existia en Actions y no llegaba por ningun
+      // lado.
+      const antesC = process.env.MVDG_INSTALLER_URL;
+      const antesO = process.env.MVDG_INSTALLER_URL_OWNER;
+      process.env.MVDG_INSTALLER_URL = "https://ejemplo.com/cliente.exe";
+      process.env.MVDG_INSTALLER_URL_OWNER = "https://ejemplo.com/owner.exe";
+      try {
+        rateLimit.resetForTests();
+        const kOwner = license.signEd25519({ plan: "owner", iat: ahora }, privDemo);
+        const res = mockRes();
+        await descargar({ method: "GET", query: { k: kOwner } }, res);
+        assert.strictEqual(res._status, 302);
+        assert.strictEqual(res._headers.location, "https://ejemplo.com/owner.exe");
+      } finally {
+        if (antesC !== undefined) process.env.MVDG_INSTALLER_URL = antesC; else delete process.env.MVDG_INSTALLER_URL;
+        if (antesO !== undefined) process.env.MVDG_INSTALLER_URL_OWNER = antesO; else delete process.env.MVDG_INSTALLER_URL_OWNER;
+      }
+    });
+
+    await check("descargar: NINGUN plan que no sea owner llega al build owner", async () => {
+      // Lo inverso, que es lo que importa para que no se filtre: el build
+      // owner viene desbloqueado, y aunque este atado a una maquina no tiene
+      // por que salir a pasear.
+      const antesC = process.env.MVDG_INSTALLER_URL;
+      const antesO = process.env.MVDG_INSTALLER_URL_OWNER;
+      process.env.MVDG_INSTALLER_URL = "https://ejemplo.com/cliente.exe";
+      process.env.MVDG_INSTALLER_URL_OWNER = "https://ejemplo.com/owner.exe";
+      try {
+        for (const plan of ["licencia", "professional", "trial", "demo",
+                            "enterprise", "OWNER", "owner ", "", null]) {
+          rateLimit.resetForTests();
+          const k = license.signEd25519({ plan, iat: ahora }, privDemo);
+          const res = mockRes();
+          await descargar({ method: "GET", query: { k } }, res);
+          assert.strictEqual(res._headers.location, "https://ejemplo.com/cliente.exe",
+            `el plan ${JSON.stringify(plan)} llego al build owner`);
+        }
+      } finally {
+        if (antesC !== undefined) process.env.MVDG_INSTALLER_URL = antesC; else delete process.env.MVDG_INSTALLER_URL;
+        if (antesO !== undefined) process.env.MVDG_INSTALLER_URL_OWNER = antesO; else delete process.env.MVDG_INSTALLER_URL_OWNER;
+      }
+    });
+
+    await check("descargar: sin el build owner configurado, el owner NO recibe el del cliente", async () => {
+      // Caer al build del cliente en silencio es como se termina probando el
+      // producto equivocado creyendo que se probo el bueno. Falla ruidoso y
+      // dice QUE variable falta.
+      const antesC = process.env.MVDG_INSTALLER_URL;
+      const antesO = process.env.MVDG_INSTALLER_URL_OWNER;
+      process.env.MVDG_INSTALLER_URL = "https://ejemplo.com/cliente.exe";
+      delete process.env.MVDG_INSTALLER_URL_OWNER;
+      try {
+        rateLimit.resetForTests();
+        const kOwner = license.signEd25519({ plan: "owner", iat: ahora }, privDemo);
+        const res = mockRes();
+        await descargar({ method: "GET", query: { k: kOwner } }, res);
+        assert.strictEqual(res._status, 503);
+        assert.ok(!res._headers.location, "le dio el build del cliente al owner");
+        assert.strictEqual(res._body.variable, "MVDG_INSTALLER_URL_OWNER");
+        for (const idioma of ["es", "en", "pt"]) {
+          assert.ok(res._body[idioma].includes("MVDG_INSTALLER_URL_OWNER"));
+        }
+      } finally {
+        if (antesC !== undefined) process.env.MVDG_INSTALLER_URL = antesC; else delete process.env.MVDG_INSTALLER_URL;
+        if (antesO !== undefined) process.env.MVDG_INSTALLER_URL_OWNER = antesO; else delete process.env.MVDG_INSTALLER_URL_OWNER;
+      }
+    });
+
+    await check("descargar: el ?plan= de la URL NO puede pedir el build owner", async () => {
+      // El plan sale de la licencia firmada. Si saliera de la query,
+      // ?plan=owner seria la llave del build desbloqueado para cualquiera.
+      const antesC = process.env.MVDG_INSTALLER_URL;
+      const antesO = process.env.MVDG_INSTALLER_URL_OWNER;
+      process.env.MVDG_INSTALLER_URL = "https://ejemplo.com/cliente.exe";
+      process.env.MVDG_INSTALLER_URL_OWNER = "https://ejemplo.com/owner.exe";
+      try {
+        rateLimit.resetForTests();
+        const res = mockRes();
+        await descargar({ method: "GET", query: { k: K, plan: "owner" } }, res);
+        assert.strictEqual(res._headers.location, "https://ejemplo.com/cliente.exe",
+          "?plan=owner alcanzo para bajar el build desbloqueado");
+      } finally {
+        if (antesC !== undefined) process.env.MVDG_INSTALLER_URL = antesC; else delete process.env.MVDG_INSTALLER_URL;
+        if (antesO !== undefined) process.env.MVDG_INSTALLER_URL_OWNER = antesO; else delete process.env.MVDG_INSTALLER_URL_OWNER;
+      }
+    });
+
     await check("descargar: rate limit corta a los 30 de la misma IP", async () => {
       await conUrl("https://ejemplo.com/setup.exe", async () => {
         rateLimit.resetForTests();

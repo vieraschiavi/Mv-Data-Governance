@@ -3693,6 +3693,99 @@ def test_landing_estados_de_error_visibles():
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
 
 
+def test_los_secretos_no_se_pueden_commitear_ni_por_accidente():
+    """El repo es PUBLICO. Un `git add -A` con un .env al lado publica el
+    Access Token de MercadoPago y la clave que FIRMA LAS LICENCIAS.
+
+    Con esa clave cualquiera emite licencias infinitas del producto, y no hay
+    forma de revocarlas: habria que rotar el par, lo que le rompe la licencia
+    a TODOS los que ya compraron. Es el peor secreto del proyecto y el
+    .gitignore no lo cubria.
+
+    No se verifica leyendo el .gitignore —una linea puede estar y no aplicar—
+    sino preguntandole a git si ignoraria cada archivo."""
+    import subprocess
+    import tempfile
+    raiz = _repo_root()
+    peligrosos = [".env", ".env.local", ".env.production",
+                  "clave.pem", "id_rsa", "servidor.key"]
+    for nombre in peligrosos:
+        ruta = os.path.join(raiz, nombre)
+        creado = not os.path.exists(ruta)
+        if creado:
+            with open(ruta, "w", encoding="utf-8") as fh:
+                fh.write("secreto-de-prueba\n")
+        try:
+            r = subprocess.run(["git", "check-ignore", nombre],
+                               cwd=raiz, capture_output=True, text=True)
+            assert r.returncode == 0, (
+                f"'{nombre}' NO esta ignorado: un `git add -A` lo sube a un "
+                f"repo publico junto con las claves que tenga adentro")
+        finally:
+            if creado:
+                os.remove(ruta)
+    del tempfile
+
+    # La plantilla SI tiene que poder versionarse: es la que documenta que
+    # variables hacen falta, y no lleva ningun valor real.
+    ejemplo = os.path.join(raiz, ".env.example")
+    creado = not os.path.exists(ejemplo)
+    if creado:
+        with open(ejemplo, "w", encoding="utf-8") as fh:
+            fh.write("MP_ACCESS_TOKEN=\n")
+    try:
+        r = subprocess.run(["git", "check-ignore", ".env.example"],
+                           cwd=raiz, capture_output=True, text=True)
+        assert r.returncode != 0, (
+            ".env.example quedo ignorado: es la plantilla sin valores, tiene "
+            "que poder versionarse")
+    finally:
+        if creado:
+            os.remove(ejemplo)
+
+
+def test_cada_plan_baja_su_build_y_el_workflow_publica_los_dos():
+    """El owner tiene que bajar el build owner y el cliente el suyo.
+
+    Antes habia UNA sola variable de entorno, asi que el owner —con su
+    licencia owner en la mano— bajaba el mismo .exe sin desbloquear que
+    cualquier cliente. El build owner existia solo como artefacto de Actions y
+    no llegaba por ningun lado.
+
+    Esto ata las tres puntas: que el endpoint elija por plan, que el workflow
+    publique el build owner, y que te diga la URL exacta que va en Vercel —
+    porque una variable que hay que armar a mano es donde se erraba."""
+    import json as _json
+    import subprocess
+    elige = _json.loads(subprocess.run(
+        ["node", "-e",
+         "const d=require('./api/descargar');"
+         "console.log(JSON.stringify({"
+         "  owner: d.variableDelPlan('owner'),"
+         "  licencia: d.variableDelPlan('licencia'),"
+         "  professional: d.variableDelPlan('professional'),"
+         "  trial: d.variableDelPlan('trial'),"
+         "  nada: d.variableDelPlan(undefined)}))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
+
+    assert elige["owner"] == "MVDG_INSTALLER_URL_OWNER"
+    for plan in ("licencia", "professional", "trial", "nada"):
+        assert elige[plan] == "MVDG_INSTALLER_URL", (
+            f"el plan '{plan}' llega al build owner, que viene desbloqueado")
+
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    for tag in ("cliente-latest", "owner-latest"):
+        assert tag in wf, f"el workflow no publica {tag}"
+    # Y cada release tiene que decir QUE variable llenar con SU url: si el
+    # workflow publica el build owner pero nadie sabe donde apuntarlo, el
+    # endpoint contesta 503 y la version owner sigue sin llegar.
+    for var in ("MVDG_INSTALLER_URL", "MVDG_INSTALLER_URL_OWNER"):
+        assert var in wf, f"el workflow no dice donde poner {var}"
+
+
 def test_la_clave_publica_es_LA_MISMA_en_el_servidor_y_en_el_programa():
     """El servidor decide quien baja el instalador verificando la firma de la
     licencia (api/_license.js), y el programa decide que habilita verificando
@@ -3973,9 +4066,14 @@ def test_security_md_documenta_cves_de_dependencias():
     assert os.path.exists(ruta), "falta SECURITY.md"
     with open(ruta, encoding="utf-8") as fh:
         sec = fh.read()
-    for paquete in ("electron-builder", "esbuild", "electron"):
+    for paquete in ("electron-builder", "esbuild", "electron", "extract-zip"):
         assert paquete in sec, f"SECURITY.md no menciona {paquete}"
     assert "npm audit" in sec
+    # Y tiene que distinguir lo que corre en la PC del cliente de lo que solo
+    # corre al compilar: son dos riesgos distintos y meterlos en la misma
+    # bolsa hace que el documento no sirva para decidir nada.
+    assert "NO viaja en la app instalada" in sec, (
+        "SECURITY.md no aclara que dependencias son solo de compilacion")
     # el gap real (electron sin actualizar) tiene que quedar dicho, no oculto
     assert "sin actualizar" in sec or "CVE" in sec
 

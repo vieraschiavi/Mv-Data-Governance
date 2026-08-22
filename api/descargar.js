@@ -60,11 +60,33 @@
 const { rateLimited, clientIp } = require("./_rate_limit");
 const { verifyEd25519 } = require("./_license");
 
-// Variable de entorno con la URL del instalador. Sin esto configurado la
-// función NO inventa una URL ni sirve un archivo viejo: responde 503 con un
-// mensaje que dice exactamente qué falta. Fallar ruidoso es mejor que dejar
-// un botón que baja algo equivocado.
+// ────────────────────────────────────────────────────────────────────────────
+// CADA UNO BAJA EL BUILD DE SU PLAN
+// ────────────────────────────────────────────────────────────────────────────
+// Antes había UNA sola variable para todos, así que el owner —con su licencia
+// owner en la mano— bajaba el mismo instalador que un cliente: el build sin
+// desbloquear. La versión owner existía en Actions y no llegaba por ningún
+// lado. Ahora la elige el plan que trae la licencia FIRMADA, que es un dato
+// que el que descarga no puede falsear.
+//
+// Sigue habiendo UN SOLO PROGRAMA. Lo que cambia entre los dos artefactos no
+// es el código: el build owner lleva `licencia_owner.txt` adentro (atada a la
+// máquina) para abrir desbloqueado sin pegar nada. Todo lo demás —qué habilita
+// cada plan pago— lo decide la licencia en tiempo de ejecución
+// (mvdg/licensing.py), no el instalador. Hacer un .exe por plan sería tener
+// cuatro superficies que se desincronizan sin que nadie se entere, que es
+// justo lo que este proyecto viene evitando a propósito.
+//
+// Sin la variable del build owner configurada, el owner recibe 503 diciendo
+// cuál falta — NO se le entrega el build del cliente. Servir "algo parecido"
+// en silencio es cómo se termina probando el producto equivocado y creyendo
+// que se probó el bueno.
 const VAR_URL = "MVDG_INSTALLER_URL";
+const VAR_URL_OWNER = "MVDG_INSTALLER_URL_OWNER";
+
+function variableDelPlan(plan) {
+  return plan === "owner" ? VAR_URL_OWNER : VAR_URL;
+}
 
 module.exports = async (req, res) => {
   // 30/min por IP: bajar un instalador es algo que se hace una vez, pero un
@@ -96,13 +118,17 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const destino = (process.env[VAR_URL] || "").trim();
+  // El plan sale de la licencia verificada, nunca de la query: `?plan=` lo
+  // pone quien descarga y solo sirve para medir de dónde vino el clic.
+  const variable = variableDelPlan(licencia.plan);
+  const destino = (process.env[variable] || "").trim();
   if (!destino) {
     res.status(503).json({
       error: "sin_configurar",
-      es: `Falta la variable de entorno ${VAR_URL} con la URL del instalador.`,
-      en: `Missing ${VAR_URL} environment variable with the installer URL.`,
-      pt: `Falta a variável de ambiente ${VAR_URL} com a URL do instalador.`,
+      variable: variable,
+      es: `Falta la variable de entorno ${variable} con la URL del instalador.`,
+      en: `Missing ${variable} environment variable with the installer URL.`,
+      pt: `Falta a variável de ambiente ${variable} com a URL do instalador.`,
     });
     return;
   }
@@ -128,3 +154,7 @@ module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.status(302).end();
 };
+
+module.exports.VAR_URL = VAR_URL;
+module.exports.VAR_URL_OWNER = VAR_URL_OWNER;
+module.exports.variableDelPlan = variableDelPlan;

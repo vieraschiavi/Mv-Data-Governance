@@ -22,6 +22,20 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 
+# Secretos que NUNCA entran al repo. Esto no es prolijidad: el repo es
+# PUBLICO, y un `git add -A` con un .env al lado publica el Access Token de
+# MercadoPago y la clave que FIRMA LAS LICENCIAS. Con esa clave cualquiera
+# emite licencias infinitas del producto, y no hay forma de revocarlas sin
+# rotar el par y romperle la licencia a todos los que ya compraron.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+*.p12
+*.pfx
+
 # Licencias: nada de esto entra al repo, que ES PUBLICO.
 #   · licencia_owner.txt  = token que abre el programa DESBLOQUEADO. El
 #     workflow del instalador lo escribe al lado del motor en tiempo de build,
