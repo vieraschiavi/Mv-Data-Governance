@@ -2793,9 +2793,17 @@ def test_la_ui_de_escritorio_no_usa_streamlit():
         assert os.path.exists(ruta), f"falta {archivo}"
         with open(ruta, encoding="utf-8") as fh:
             cuerpo = fh.read()
-        # aparece solo en comentarios que EXPLICAN que no se usa
-        codigo = "\n".join(linea for linea in cuerpo.splitlines()
-                           if not linea.strip().startswith(("*", "//", "/*")))
+        # Aparece solo en comentarios que EXPLICAN que no se usa, asi que se
+        # sacan los comentarios ANTES de buscar.
+        #
+        # Se sacan con una regex de bloque y no salteando lineas que empiecen
+        # con "*" o "//": un /* ... */ de varias lineas tiene lineas del medio
+        # que no empiezan con nada de eso, y quedaban adentro. El sintoma es
+        # un test que se pone rojo porque alguien ESCRIBIO la palabra en una
+        # explicacion — acusando un problema de producto que no existe. Es la
+        # tercera vez que este mismo atajo falla en este repo.
+        codigo = re.sub(r"/\*.*?\*/", "", cuerpo, flags=re.S)
+        codigo = re.sub(r"//.*", "", codigo)
         assert "streamlit" not in codigo.lower(), f"{archivo} usa Streamlit"
 
     # el instalador empaqueta la UI y un Python propio
@@ -8074,3 +8082,161 @@ def test_los_workflows_que_exponen_datos_exigen_repo_privado():
         assert "privad" in primero.get("name", "").lower(), (
             f"{archivo}: la comprobacion de visibilidad no es el primer paso "
             f"(es '{primero.get('name')}')")
+
+
+def _api_cliente(tmp_path, monkeypatch):
+    """TestClient de bi_api con un directorio de datos limpio."""
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    return TestClient(app)
+
+
+def test_el_que_paga_puede_USAR_las_tres_funciones_desde_el_exe(tmp_path, monkeypatch):
+    """El .exe habla SOLO con bi_api, y bi_api no tenia ni un endpoint para
+    las tres unicas funciones que se cobran.
+
+    O sea: el cliente pagaba, pegaba su clave, y la pantalla de licencia le
+    decia "estas 3 funciones estan desbloqueadas" sin ninguna forma de
+    usarlas. Vivian solo en app/app.py (Streamlit), que el .exe no levanta.
+    Pagar y no recibir es el mismo problema que cobrar un mes y entregar para
+    siempre, mirado desde el otro lado.
+
+    Este test recorre el circuito completo por HTTP, con el motor de verdad.
+    """
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    # --- en demo: la VISTA PREVIA anda (es lo que hace lucir el producto) ---
+    for destino in ("purview", "collibra"):
+        r = c.post(f"/api/migracion/{destino}", json={})
+        assert r.status_code == 200, (
+            f"la vista previa de {destino} no anda en demo: {r.text[:200]}")
+        assert r.json()["aplicado"] is False
+
+    # --- en demo: el PUSH REAL se cobra ---
+    for destino, funcion in (("purview", "migracion_purview"),
+                             ("collibra", "migracion_collibra")):
+        r = c.post(f"/api/migracion/{destino}", json={"aplicar": True})
+        assert r.status_code == 402, (
+            f"{destino}: un plan demo pudo hacer el push REAL (status "
+            f"{r.status_code})")
+        assert r.json()["detail"]["funcion"] == funcion
+
+    r = c.post("/api/bi/escanear-tenant", json={})
+    assert r.status_code == 402, "un plan demo escaneo el tenant"
+
+    # --- con licencia: ya no responde 402 -------------------------------
+    # Se parchea el plan, no se firma un token: la firma ya la cubre
+    # api/pago_a_licencia.test.js de punta a punta. Lo que se prueba ACA es
+    # que el endpoint consulte la licencia, que era lo que no existia.
+    monkeypatch.setattr(licensing, "plan", lambda: "professional")
+    for destino in ("purview", "collibra"):
+        r = c.post(f"/api/migracion/{destino}", json={"aplicar": True})
+        assert r.status_code != 402, (
+            f"{destino}: con plan professional sigue diciendo que hay que pagar")
+    r = c.post("/api/bi/escanear-tenant", json={})
+    assert r.status_code != 402, "con plan professional sigue pidiendo licencia"
+
+
+def test_los_conectores_externos_siguen_apagados_por_defecto(tmp_path, monkeypatch):
+    """Regla del proyecto: los conectores externos estan apagados por defecto.
+
+    El riesgo concreto de equivocarse: si `aplicar` fuera el default, un
+    cuerpo mal armado —o vacio— le escribiria al Purview de PRODUCCION de un
+    cliente. Por eso el default es la vista previa y sin credenciales el push
+    real ni se intenta."""
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+    monkeypatch.setattr(licensing, "plan", lambda: "owner")
+
+    # Sin `aplicar`, y con cuerpo vacio, NUNCA se aplica.
+    for cuerpo in ({}, {"aplicar": False}, {"otra_cosa": True}):
+        r = c.post("/api/migracion/purview", json=cuerpo)
+        assert r.status_code == 200
+        assert r.json()["aplicado"] is False, (
+            f"con el cuerpo {cuerpo} se hizo un push REAL contra Purview")
+
+    # Con licencia pero sin credenciales: 409, no un 500 ni un push a ciegas.
+    from mvdg import purview_export
+    monkeypatch.setattr(purview_export, "configured", lambda: False)
+    r = c.post("/api/migracion/purview", json={"aplicar": True})
+    assert r.status_code == 409
+    assert r.json()["detail"]["error"] == "conector_sin_configurar"
+
+
+def test_la_api_dice_por_que_no_se_puede_antes_de_apretar(tmp_path, monkeypatch):
+    """/api/conectores separa "te falta licencia" de "te faltan credenciales".
+
+    Sin esto los dos casos se ven igual desde la interfaz —un boton que
+    falla— y el cliente que SI pago cree que su licencia no sirve."""
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+    d = c.get("/api/conectores").json()
+    assert d["plan"] == licensing.PLAN_DEMO
+    for clave in ("purview", "collibra"):
+        assert d[clave]["licenciado"] is False
+        assert "configurado" in d[clave]
+    assert d["tenant_bi"]["licenciado"] is False
+
+    monkeypatch.setattr(licensing, "plan", lambda: "professional")
+    d = c.get("/api/conectores").json()
+    assert d["purview"]["licenciado"] is True
+    assert d["tenant_bi"]["licenciado"] is True
+
+
+def test_los_errores_de_la_api_llegan_con_su_motivo_a_la_pantalla():
+    """ApiError tiene que exponer `code`, y la pantalla tiene que ramificar
+    por ese campo.
+
+    Lo encontro una prueba en Chromium contra la API real: el endpoint
+    devolvia 402 correctamente, el codigo compilaba, y la pantalla mostraba
+    "el sistema remoto no respondio". Motivo: ApiError guardaba el
+    identificador en `message` y App.jsx leia `e.code`, que era undefined —
+    asi que TODOS los errores caian en el mensaje generico. El que pagaba y
+    no tenia licencia no se enteraba de que le faltaba la licencia.
+
+    Ningun test de unidad lo hubiera visto: las dos mitades eran correctas
+    por separado."""
+    api = os.path.join(_repo_root(), "electron", "ui", "src", "api.js")
+    with open(api, encoding="utf-8") as fh:
+        codigo = fh.read()
+    assert re.search(r"this\.code\s*=", codigo), (
+        "ApiError no expone `code`: quien lea e.code recibe undefined y todos "
+        "los errores se ven iguales")
+
+    app = os.path.join(_repo_root(), "electron", "ui", "src", "App.jsx")
+    with open(app, encoding="utf-8") as fh:
+        jsx = fh.read()
+    for motivo in ("requiere_licencia", "sin_credenciales"):
+        assert motivo in jsx, (
+            f"la pantalla no distingue '{motivo}': el cliente que pago vería "
+            f"un error generico y creería que su licencia no sirve")
+        assert motivo in codigo, f"api.js no produce el motivo '{motivo}'"
+
+
+def test_la_pantalla_de_licencia_deja_USAR_las_funciones_no_solo_listarlas():
+    """El .exe listaba las tres funciones pagas sin ningun boton. Este test
+    ata la pantalla a la API: si se agrega una funcion paga al motor y no se
+    puede llamar desde el programa, el cliente paga y no recibe."""
+    app = os.path.join(_repo_root(), "electron", "ui", "src", "App.jsx")
+    with open(app, encoding="utf-8") as fh:
+        jsx = fh.read()
+    api = os.path.join(_repo_root(), "electron", "ui", "src", "api.js")
+    with open(api, encoding="utf-8") as fh:
+        cliente = fh.read()
+
+    for fn in ("migrar", "escanearTenant", "conectores"):
+        assert fn in cliente, f"api.js no sabe llamar a {fn}"
+        assert fn in jsx, f"la pantalla nunca llama a {fn}"
+
+    # Y la vista previa tiene que seguir siendo gratis: es lo que hace lucir
+    # el producto y lo unico que un plan demo puede ver.
+    assert "migrar(destino, false" in jsx, (
+        "no quedo ningun boton de vista previa: en demo la pantalla no "
+        "muestra nada de las funciones pagas")
+    assert "migrar(destino, true" in jsx, "no quedo el boton de envio real"

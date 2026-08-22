@@ -271,6 +271,170 @@ def licencia_borrar():
     return licensing.status()
 
 
+# ───────────────────────────────────────────────────────────────────────────
+# LAS TRES FUNCIONES QUE SE COBRAN
+# ───────────────────────────────────────────────────────────────────────────
+# El .exe que baja el cliente habla SOLO con esta API. Y acá no existía ni un
+# endpoint para migrar a Purview, migrar a Collibra ni escanear el tenant de
+# BI — las tres únicas funciones que se pagan.
+#
+# O sea: el cliente pagaba, pegaba su clave, y la pantalla de licencia le
+# decía "estas 3 funciones están desbloqueadas"… sin ninguna forma de
+# usarlas. Vivían solo en app/app.py (Streamlit), que el .exe no levanta.
+# Pagar y no recibir es el mismo problema que cobrar un mes y entregar para
+# siempre, mirado desde el otro lado.
+#
+# Se replica el criterio que ya tenía Streamlit, que es el correcto
+# comercialmente: LA VISTA PREVIA ES GRATIS —es lo que hace lucir el
+# producto— y lo que se licencia es el push REAL contra el sistema de la
+# empresa. Un plan demo puede ver exactamente qué se enviaría; no puede
+# enviarlo.
+#
+# Y se respeta lo que manda el proyecto: los conectores externos están
+# apagados por defecto. `dry_run` es True salvo pedido explícito, y sin
+# credenciales configuradas el push real ni se intenta.
+
+_DESTINOS_MIGRACION = {
+    "purview": ("migracion_purview", "purview_export"),
+    "collibra": ("migracion_collibra", "collibra_export"),
+}
+
+
+def _exigir_licencia(funcion: str) -> None:
+    """Corta con 402 si el plan actual no incluye esa función.
+
+    402 y no 403: 403 es "no tenés permiso" y suena a error del cliente. Acá
+    la respuesta es "esto se paga", que es exactamente lo que significa
+    Payment Required — y le deja a la interfaz un código sin ambigüedad para
+    mostrar el aviso de licencia en vez de un error genérico.
+    """
+    from mvdg import licensing
+    if not licensing.has_feature(funcion):
+        raise HTTPException(402, {
+            "error": "requiere_licencia",
+            "funcion": funcion,
+            "plan": licensing.plan(),
+            "es": "Esta función necesita una licencia activa. La vista previa "
+                  "no requiere ninguna.",
+            "en": "This feature needs an active license. The preview needs "
+                  "none.",
+            "pt": "Esta função precisa de uma licença ativa. A pré-visualização "
+                  "não precisa de nenhuma.",
+        })
+
+
+@app.get("/api/conectores", tags=["governance"])
+def conectores_estado():
+    """Qué conectores externos están configurados y cuáles habilita el plan.
+
+    La interfaz lo necesita para decir la verdad ANTES de que el cliente
+    apriete: sin credenciales el push real no puede correr por más licencia
+    que tenga, y con licencia pero sin credenciales el problema no es la
+    licencia. Sin esto los dos casos se ven igual — un botón que falla.
+    """
+    from mvdg import collibra_export, licensing, purview_export
+    return {
+        "plan": licensing.plan(),
+        "purview": {
+            "configurado": bool(purview_export.configured()),
+            "licenciado": licensing.has_feature("migracion_purview"),
+        },
+        "collibra": {
+            "configurado": bool(collibra_export.configured()),
+            "licenciado": licensing.has_feature("migracion_collibra"),
+        },
+        "tenant_bi": {
+            "licenciado": licensing.has_feature("escaneo_tenant_bi"),
+        },
+    }
+
+
+@app.post("/api/migracion/{destino}", tags=["governance"])
+def migrar(destino: str, cuerpo: dict = _CUERPO,
+           lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Migra el catálogo a Purview o Collibra.
+
+    `aplicar: false` (el default) es la vista previa: no toca nada afuera y no
+    pide licencia. `aplicar: true` es el push real contra el sistema de la
+    empresa, y ese sí se licencia.
+
+    El default es la vista previa a propósito: si mandar de verdad fuera lo
+    que pasa cuando no se aclara nada, alcanzaría un cuerpo mal armado para
+    escribirle al Purview de producción de un cliente.
+    """
+    import importlib
+
+    if destino not in _DESTINOS_MIGRACION:
+        raise HTTPException(404, f"Destino desconocido: {destino}. "
+                                 f"Disponibles: {sorted(_DESTINOS_MIGRACION)}")
+    funcion, modulo = _DESTINOS_MIGRACION[destino]
+    aplicar = bool((cuerpo or {}).get("aplicar"))
+    if aplicar:
+        _exigir_licencia(funcion)
+
+    exporter = importlib.import_module(f"mvdg.{modulo}")
+    if aplicar and not exporter.configured():
+        raise HTTPException(409, {
+            "error": "conector_sin_configurar",
+            "destino": destino,
+            "es": f"Faltan las credenciales de {destino}. La vista previa "
+                  f"funciona igual.",
+            "en": f"{destino} credentials are missing. The preview still works.",
+            "pt": f"Faltam as credenciais do {destino}. A pré-visualização "
+                  f"funciona mesmo assim.",
+        })
+
+    t = governance_tables(lang)
+    try:
+        resultado = exporter.push_all(t["catalog"], t["dictionary"],
+                                      t["glossary"], dry_run=not aplicar)
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo del conector
+        # El detalle del error del sistema remoto no se filtra al cliente: el
+        # tipo alcanza para diagnosticar sin exponer URLs internas ni tokens
+        # que a veces vienen en el mensaje de la excepción.
+        raise HTTPException(502, {
+            "error": "conector_fallo", "destino": destino,
+            "tipo": type(exc).__name__,
+        }) from exc
+    return {"destino": destino, "aplicado": aplicar, "resultado": resultado}
+
+
+@app.post("/api/bi/escanear-tenant", tags=["governance"])
+def escanear_tenant(cuerpo: dict = _CUERPO,
+                    lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Escanea el tenant de Power BI y cataloga lo que encuentre.
+
+    Acá no hay vista previa que valga: leer el tenant de la empresa ES la
+    función. Por eso pide licencia siempre, a diferencia de las migraciones.
+    """
+    _exigir_licencia("escaneo_tenant_bi")
+    from mvdg import powerbi_meta
+
+    try:
+        maximo = int((cuerpo or {}).get("max_workspaces") or 25)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "max_workspaces tiene que ser un numero") from None
+    maximo = max(1, min(maximo, 1000))
+
+    try:
+        salida = powerbi_meta.ingest_tenant(lang, max_workspaces=maximo)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, {
+            "error": "tenant_fallo", "tipo": type(exc).__name__,
+        }) from exc
+
+    # Las tablas vuelven como DataFrame; se serializan igual que el resto de
+    # la API para que la interfaz no tenga que tratarlas distinto.
+    tablas = {}
+    for nombre, valor in (salida or {}).items():
+        if hasattr(valor, "to_json"):
+            tablas[nombre] = json.loads(valor.to_json(orient="records",
+                                                      date_format="iso"))
+        else:
+            tablas[nombre] = valor
+    return {"max_workspaces": maximo, "tablas": tablas}
+
+
 def _serve(df, table: str, lang: str, format: str):
     if format == "csv":
         return PlainTextResponse(df.to_csv(index=False),

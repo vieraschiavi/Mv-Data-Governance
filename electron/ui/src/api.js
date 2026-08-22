@@ -18,6 +18,15 @@ export class ApiError extends Error {
   constructor(mensaje, detalle) {
     super(mensaje);
     this.detalle = detalle || "";
+    // `code` es el mismo valor que `message`, con nombre de lo que realmente
+    // es: todos los que construyen esto pasan un identificador
+    // ("sin_conexion", "requiere_licencia"), no un texto para mostrarle a
+    // nadie. Sin este campo, `e.code` daba undefined y TODOS los errores
+    // caian en el mensaje generico — el que pagaba y no tenia licencia veia
+    // "el sistema remoto no respondio" en vez de "esto necesita licencia".
+    // Lo encontro una prueba en Chromium contra la API real; compilaba y el
+    // endpoint estaba bien, asi que ningun test de unidad lo hubiera visto.
+    this.code = mensaje;
   }
 }
 
@@ -117,4 +126,46 @@ export async function renovarLicencia() {
   const cuerpo = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
   return cuerpo;
+}
+
+/* --- Las tres funciones que se cobran -------------------------------------
+   Estaban en la API y no habia forma de llamarlas desde el programa: el que
+   pagaba veia la lista de funciones desbloqueadas y ningun boton. --- */
+
+export async function conectores() {
+  return pedir("/api/conectores");
+}
+
+// `aplicar` es lo que separa la vista previa (gratis) del push REAL contra el
+// sistema de la empresa (licenciado). Va explicito en cada llamada: un default
+// que aplique de verdad seria un push a produccion por olvidarse un parametro.
+export async function migrar(destino, aplicar, lang) {
+  return enviar(`/api/migracion/${destino}?lang=${encodeURIComponent(lang)}`,
+                { aplicar: Boolean(aplicar) });
+}
+
+export async function escanearTenant(maxWorkspaces, lang) {
+  return enviar(`/api/bi/escanear-tenant?lang=${encodeURIComponent(lang)}`,
+                { max_workspaces: maxWorkspaces });
+}
+
+// POST comun a los tres. El 402 se distingue del resto porque no es un error
+// del programa: es "esto se paga", y la interfaz tiene que mostrarlo como el
+// aviso de licencia y no como una falla.
+async function enviar(ruta, cuerpo) {
+  let r;
+  try {
+    r = await fetch(`${BASE}${ruta}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(cuerpo),
+    });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const datos = await r.json().catch(() => ({}));
+  if (r.status === 402) throw new ApiError("requiere_licencia", datos.detail);
+  if (r.status === 409) throw new ApiError("sin_credenciales", datos.detail);
+  if (!r.ok) throw new ApiError("respuesta_invalida", datos.detail || `HTTP ${r.status}`);
+  return datos;
 }

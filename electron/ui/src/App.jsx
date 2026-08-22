@@ -14,7 +14,7 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { activarLicencia, desactivarLicencia, licencia, renovarLicencia, todo } from "./api";
+import { activarLicencia, conectores, desactivarLicencia, escanearTenant, licencia, migrar, renovarLicencia, todo } from "./api";
 import { t } from "./i18n";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
@@ -415,7 +415,102 @@ function Licencia({ lang }) {
         })}
       </ul>
       <p className="sub">{t("lic_nota_exe", lang)}</p>
+
+      <Funciones lang={lang} />
     </section>
+  );
+}
+
+/* --- Las tres funciones que se cobran ------------------------------------
+   Antes esta pantalla LISTABA las funciones pagas y no habia forma de
+   usarlas: el cliente pagaba, veia "estas 3 estan desbloqueadas" y no tenia
+   donde apretar. Vivian solo en la version Streamlit, que el .exe no levanta.
+
+   La vista previa queda libre a proposito —es lo que hace lucir el producto,
+   y deja ver exactamente que se enviaria antes de enviar nada—; lo que se
+   licencia es el push REAL contra el sistema de la empresa. --- */
+function Funciones({ lang }) {
+  const [estado, setEstado] = useState(null);
+  const [ocupado, setOcupado] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [salida, setSalida] = useState(null);
+
+  useEffect(() => {
+    conectores().then(setEstado).catch(() => setEstado(null));
+  }, []);
+
+  async function correr(clave, fn) {
+    setOcupado(clave);
+    setMsg(null);
+    setSalida(null);
+    try {
+      const r = await fn();
+      setSalida(r);
+      setMsg({ txt: t("fn_listo", lang), mal: false });
+    } catch (e) {
+      // Cada motivo dice algo distinto y accionable. Mostrarlos todos como
+      // "error" hacia que el que SI pago creyera que su licencia no sirve,
+      // cuando lo que falta son las credenciales del conector.
+      const texto = e.code === "requiere_licencia" ? t("fn_requiere", lang)
+        : e.code === "sin_credenciales" ? t("fn_sin_cred", lang)
+        : t("fn_fallo", lang);
+      setMsg({ txt: texto, mal: true });
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  if (!estado) return null;
+
+  const destinos = [
+    ["purview", "fn_migracion_purview", estado.purview],
+    ["collibra", "fn_migracion_collibra", estado.collibra],
+  ];
+
+  return (
+    <div className="funciones">
+      <h3>{t("fn_titulo", lang)}</h3>
+      <p className="sub">{t("fn_previa_libre", lang)}</p>
+
+      {destinos.map(([destino, clave, info]) => (
+        <div className="fn-fila" key={destino}>
+          <span>
+            {t(clave, lang)}
+            {info && !info.configurado
+              ? <em className="sub"> · {t("fn_no_conf", lang)}</em> : null}
+          </span>
+          <span className="fn-botones">
+            <button className="btn btn-sec" disabled={ocupado !== null}
+                    onClick={() => correr(`${destino}:previa`,
+                                          () => migrar(destino, false, lang))}>
+              {t("fn_previa", lang)}
+            </button>
+            <button className="btn" disabled={ocupado !== null}
+                    onClick={() => correr(`${destino}:real`,
+                                          () => migrar(destino, true, lang))}>
+              {t("fn_aplicar", lang)}
+            </button>
+          </span>
+        </div>
+      ))}
+
+      <div className="fn-fila">
+        <span>{t("fn_escaneo_tenant_bi", lang)}</span>
+        <span className="fn-botones">
+          <button className="btn" disabled={ocupado !== null}
+                  onClick={() => correr("tenant", () => escanearTenant(25, lang))}>
+            {t("fn_escanear", lang)}
+          </button>
+        </span>
+      </div>
+
+      {msg ? (
+        <p className={msg.mal ? "malo" : "bueno"} role="status">{msg.txt}</p>
+      ) : null}
+      {salida ? (
+        <pre className="fn-salida">{JSON.stringify(salida, null, 2).slice(0, 4000)}</pre>
+      ) : null}
+    </div>
   );
 }
 
