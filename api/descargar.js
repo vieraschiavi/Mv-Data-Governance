@@ -32,8 +32,33 @@
 //
 // El parámetro ?plan= solo sirve para medir desde dónde se descargó; no cambia
 // el archivo que se entrega, y no se usa para autorizar nada.
+//
+// ────────────────────────────────────────────────────────────────────────────
+// LA DESCARGA NO ES PÚBLICA: hay que traer una licencia (?k=)
+// ────────────────────────────────────────────────────────────────────────────
+// Antes esta URL entregaba el instalador a cualquiera que la escribiera. La
+// página de descargas era pública, así que "público" era el diseño — pero el
+// artefacto de ingeniería quedaba regalado: cualquier competidor se bajaba el
+// producto entero sin dejar rastro, sin dar un nombre y sin hablar con nadie.
+//
+// El criterio nuevo es que la demo se pide. Y el gate tiene que estar ACÁ, no
+// en el HTML: sacar el botón de la página y dejar el endpoint abierto es
+// decoración — la URL ya está publicada y quien la tenga sigue bajando.
+//
+// Qué habilita la descarga: una licencia MVDG2 válida y sin vencer.
+//   · el que paga         -> la recibe al pagar (pago.html la agrega al link)
+//   · el que pide la demo -> se le emite una licencia `trial` DESPUÉS de la
+//                            demo 1:1, con Actions -> "Emitir licencia"
+// Sin base de datos y sin cuentas: la firma Ed25519 ya es la credencial, y es
+// la misma que el programa valida después. Un solo mecanismo, no dos.
+//
+// Lo que esto NO es: una protección contra que alguien reparta su propio
+// instalador una vez bajado. Eso no existe para software que se instala.
+// Lo que sí hace es que nadie se lo lleve ANÓNIMAMENTE: para bajarlo hay que
+// haber pasado por una compra o por una demo agendada, y las dos dejan quién.
 
 const { rateLimited, clientIp } = require("./_rate_limit");
+const { verifyEd25519 } = require("./_license");
 
 // Variable de entorno con la URL del instalador. Sin esto configurado la
 // función NO inventa una URL ni sirve un archivo viejo: responde 503 con un
@@ -51,6 +76,23 @@ module.exports = async (req, res) => {
   }
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.status(405).json({ error: "method" });
+    return;
+  }
+
+  // La licencia primero: si no autoriza, no hay por qué mirar la URL del
+  // instalador ni revelar si está configurada.
+  const clave = String((req.query && (req.query.k || req.query.licencia)) || "").trim();
+  const licencia = verifyEd25519(clave);
+  if (!licencia) {
+    res.status(403).json({
+      error: clave ? "licencia_invalida" : "licencia_requerida",
+      es: "La demo no es de descarga libre. Pedí acceso en /descargas.html: "
+          + "coordinamos una demo 1:1 y te enviamos tu licencia.",
+      en: "The demo is not a free download. Request access at /descargas.html: "
+          + "we set up a 1:1 demo and send you your license.",
+      pt: "A demo não é de download livre. Peça acesso em /descargas.html: "
+          + "marcamos uma demo 1:1 e enviamos sua licença.",
+    });
     return;
   }
 

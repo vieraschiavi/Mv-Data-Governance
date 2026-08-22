@@ -66,6 +66,50 @@ function signEd25519(payload, privateKeyB64u) {
   return "MVDG2." + body + "." + b64u(sig);
 }
 
+// La clave PUBLICA. Es la misma que lleva embebida el programa
+// (mvdg/licensing.py PUBLIC_KEY_B64) y es inofensiva: solo sirve para
+// verificar firmas, nunca para hacerlas. Va acá y no en una variable de
+// entorno porque una publica que se puede "olvidar de configurar" es un
+// chequeo que se apaga solo — y este chequeo es el que decide quien baja el
+// programa. LICENSE_PUBLIC_KEY la pisa, para poder rotar el par sin deploy.
+const PUBLIC_KEY_B64 = "P00Ez9Ow4kUDYsyMAMvs-3kiJ9pJAlD0LNoW2VGsN28";
+
+function clavePublica() {
+  const b = (process.env.LICENSE_PUBLIC_KEY || PUBLIC_KEY_B64).trim();
+  const raw = Buffer.from(b.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  if (raw.length !== 32) throw new Error("clave publica Ed25519 invalida");
+  return crypto.createPublicKey({
+    key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]),
+    format: "der", type: "spki",
+  });
+}
+
+// Devuelve el payload si la licencia es autentica y no vencio; null si no.
+// Es el mismo criterio que mvdg/licensing.verify() del lado Python: firma
+// valida, formato MVDG2, y `exp` en el futuro si existe. NO mira la maquina —
+// del lado del servidor no hay forma de saber en que PC se va a instalar.
+//
+// Nunca tira: cualquier basura que llegue por la URL termina en null. Un
+// throw acá seria un 500 en la cara de alguien que pego mal una clave.
+function verifyEd25519(licencia, ahoraSeg) {
+  if (typeof licencia !== "string") return null;
+  const partes = licencia.split(".");
+  if (partes.length !== 3 || partes[0] !== "MVDG2") return null;
+  let payload;
+  try {
+    const sig = Buffer.from(partes[2].replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    if (!crypto.verify(null, Buffer.from(partes[1], "ascii"), clavePublica(), sig)) {
+      return null;
+    }
+    payload = JSON.parse(Buffer.from(
+      partes[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  } catch (e) { return null; }
+  if (!payload || typeof payload !== "object") return null;
+  const ahora = Number.isFinite(ahoraSeg) ? ahoraSeg : Math.floor(Date.now() / 1000);
+  if (typeof payload.exp === "number" && payload.exp <= ahora) return null;
+  return payload;
+}
+
 // --------------------------------------------------------------------------
 // QUE SE VENDE: por cada SKU del checkout, que licencia otorga y por cuanto.
 //
@@ -81,8 +125,9 @@ function signEd25519(payload, privateKeyB64u) {
 // `dias` — cuanto dura. 0 = perpetua, o sea sin `exp` en el token. Se vendia
 //   "pro" como MENSUAL y el token salia sin `exp`; como verify() solo rechaza
 //   cuando `exp` existe y ya paso, el cliente pagaba un mes y se quedaba con
-//   Professional para siempre. El mecanismo ya andaba (api/trial.js emite exp
-//   a 14 dias y el trial caduca solo): era el camino de pago el que lo omitia.
+//   Professional para siempre. El mecanismo ya andaba (las licencias de
+//   prueba llevan exp a 14 dias y caducan solas): era el camino de pago el
+//   que lo omitia.
 //
 // `recurrente` — si MercadoPago lo cobra TODOS LOS MESES (preapproval) o una
 //   sola vez (preferencia de checkout). Esto es lo que faltaba y por lo que la
@@ -141,5 +186,6 @@ function esRecurrente(sku) {
   return Boolean(e && e.recurrente);
 }
 
-module.exports = { sign, verify, signEd25519, SKU, PLAN_POR_SKU, planDeSku,
+module.exports = { sign, verify, signEd25519, verifyEd25519, PUBLIC_KEY_B64,
+                   SKU, PLAN_POR_SKU, planDeSku,
                    DIAS_POR_SKU, diasDeSku, esRecurrente };
