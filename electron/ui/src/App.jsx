@@ -14,11 +14,11 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { activarLicencia, desactivarLicencia, licencia, renovarLicencia, todo } from "./api";
+import { activarLicencia, conectores, desactivarLicencia, escanearTenant, licencia, migrar, perfilar, renovarLicencia, todo } from "./api";
 import { t } from "./i18n";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
-                "politicas", "licencia"];
+                "politicas", "misdatos", "licencia"];
 
 /* ------------------------------------------------------------- helpers */
 
@@ -415,13 +415,206 @@ function Licencia({ lang }) {
         })}
       </ul>
       <p className="sub">{t("lic_nota_exe", lang)}</p>
+
+      <Funciones lang={lang} />
+    </section>
+  );
+}
+
+/* --- Las tres funciones que se cobran ------------------------------------
+   Antes esta pantalla LISTABA las funciones pagas y no habia forma de
+   usarlas: el cliente pagaba, veia "estas 3 estan desbloqueadas" y no tenia
+   donde apretar. Vivian solo en la version Streamlit, que el .exe no levanta.
+
+   La vista previa queda libre a proposito —es lo que hace lucir el producto,
+   y deja ver exactamente que se enviaria antes de enviar nada—; lo que se
+   licencia es el push REAL contra el sistema de la empresa. --- */
+function Funciones({ lang }) {
+  const [estado, setEstado] = useState(null);
+  const [ocupado, setOcupado] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [salida, setSalida] = useState(null);
+
+  useEffect(() => {
+    conectores().then(setEstado).catch(() => setEstado(null));
+  }, []);
+
+  async function correr(clave, fn) {
+    setOcupado(clave);
+    setMsg(null);
+    setSalida(null);
+    try {
+      const r = await fn();
+      setSalida(r);
+      setMsg({ txt: t("fn_listo", lang), mal: false });
+    } catch (e) {
+      // Cada motivo dice algo distinto y accionable. Mostrarlos todos como
+      // "error" hacia que el que SI pago creyera que su licencia no sirve,
+      // cuando lo que falta son las credenciales del conector.
+      const texto = e.code === "requiere_licencia" ? t("fn_requiere", lang)
+        : e.code === "sin_credenciales" ? t("fn_sin_cred", lang)
+        : t("fn_fallo", lang);
+      setMsg({ txt: texto, mal: true });
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  if (!estado) return null;
+
+  const destinos = [
+    ["purview", "fn_migracion_purview", estado.purview],
+    ["collibra", "fn_migracion_collibra", estado.collibra],
+  ];
+
+  return (
+    <div className="funciones">
+      <h3>{t("fn_titulo", lang)}</h3>
+      <p className="sub">{t("fn_previa_libre", lang)}</p>
+
+      {destinos.map(([destino, clave, info]) => (
+        <div className="fn-fila" key={destino}>
+          <span>
+            {t(clave, lang)}
+            {info && !info.configurado
+              ? <em className="sub"> · {t("fn_no_conf", lang)}</em> : null}
+          </span>
+          <span className="fn-botones">
+            <button className="btn btn-sec" disabled={ocupado !== null}
+                    onClick={() => correr(`${destino}:previa`,
+                                          () => migrar(destino, false, lang))}>
+              {t("fn_previa", lang)}
+            </button>
+            <button className="btn" disabled={ocupado !== null}
+                    onClick={() => correr(`${destino}:real`,
+                                          () => migrar(destino, true, lang))}>
+              {t("fn_aplicar", lang)}
+            </button>
+          </span>
+        </div>
+      ))}
+
+      <div className="fn-fila">
+        <span>{t("fn_escaneo_tenant_bi", lang)}</span>
+        <span className="fn-botones">
+          <button className="btn" disabled={ocupado !== null}
+                  onClick={() => correr("tenant", () => escanearTenant(25, lang))}>
+            {t("fn_escanear", lang)}
+          </button>
+        </span>
+      </div>
+
+      {msg ? (
+        <p className={msg.mal ? "malo" : "bueno"} role="status">{msg.txt}</p>
+      ) : null}
+      {salida ? (
+        <pre className="fn-salida">{JSON.stringify(salida, null, 2).slice(0, 4000)}</pre>
+      ) : null}
+    </div>
+  );
+}
+
+/* --- Mis datos: perfilar tu propio CSV o Excel ---------------------------
+   La landing lo anuncia como la primera funcion del producto —«Subí un CSV o
+   Excel y obtené al instante esquema, nulos, duplicados, PII detectada y
+   reglas sugeridas»— y el .exe no la tenia. Vivia solo en la version
+   Streamlit, que el .exe no levanta: el cliente bajaba el programa, buscaba
+   la funcion que vio anunciada, y no existia.
+
+   Es gratis, como en Streamlit: no esta en FUNCIONES_PAGAS. Es lo que hace
+   que alguien entienda el producto con SUS datos, que es lo que despues se
+   compra. --- */
+function MisDatos({ lang }) {
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function elegido(ev) {
+    const archivo = ev.target.files && ev.target.files[0];
+    if (!archivo) return;
+    setCargando(true);
+    setError(null);
+    setDatos(null);
+    try {
+      setDatos(await perfilar(archivo, lang));
+    } catch (e) {
+      setError(e.code === "archivo_muy_grande" ? t("md_grande", lang)
+                                               : t("md_malo", lang));
+    } finally {
+      setCargando(false);
+      // Se limpia el input para que elegir DE NUEVO el mismo archivo vuelva a
+      // disparar el evento: sin esto, corregir el archivo y reintentar con el
+      // mismo nombre no hace nada y parece que el programa se colgo.
+      ev.target.value = "";
+    }
+  }
+
+  const r = datos && datos.resumen;
+  return (
+    <section>
+      <h2>{t("md_titulo", lang)}</h2>
+      <p className="sub">{t("md_bajada", lang)}</p>
+      <p className="sub">{t("md_privado", lang)}</p>
+
+      <label className="btn md-elegir">
+        {cargando ? t("md_leyendo", lang) : t("md_elegir", lang)}
+        <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls"
+               onChange={elegido} disabled={cargando} hidden />
+      </label>
+
+      {error ? <p className="malo" role="status">{error}</p> : null}
+      {!datos && !error && !cargando
+        ? <p className="sub md-vacio">{t("md_vacio", lang)}</p> : null}
+
+      {r ? (
+        <>
+          <div className="md-cifras">
+            <div><b>{r.rows}</b><span>{t("md_filas", lang)}</span></div>
+            <div><b>{r.columns}</b><span>{t("md_columnas", lang)}</span></div>
+            <div><b>{r.duplicate_rows}</b><span>{t("md_duplicados", lang)}</span></div>
+            <div><b>{r.null_cells_pct}%</b><span>{t("md_nulos", lang)}</span></div>
+            <div><b>{r.pii_columns}</b><span>{t("md_pii", lang)}</span></div>
+          </div>
+          {datos.truncado
+            ? <p className="sub md-truncado">{t("md_truncado", lang)}</p> : null}
+
+          <table className="tabla">
+            <thead><tr>
+              <th>{t("md_col", lang)}</th><th>{t("md_tipo", lang)}</th>
+              <th>{t("md_nulos_pct", lang)}</th><th>{t("md_unicos", lang)}</th>
+              <th>{t("md_ejemplo", lang)}</th><th>{t("md_espii", lang)}</th>
+            </tr></thead>
+            <tbody>
+              {datos.perfil.map((c) => (
+                <tr key={c.column}>
+                  <td>{c.column}</td>
+                  <td>{c.dtype}</td>
+                  <td>{c.null_pct}</td>
+                  <td>{c.unique_values}</td>
+                  <td>{String(c.sample === null ? "" : c.sample)}</td>
+                  <td>{c.possible_pii ? "PII" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {datos.reglas && datos.reglas.length ? (
+            <>
+              <h3>{t("md_reglas", lang)}</h3>
+              <ul className="md-reglas">
+                {datos.reglas.map((regla, i) => <li key={i}>{regla}</li>)}
+              </ul>
+            </>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }
 
 const RENDER = { panorama: Panorama, catalogo: Catalogo, calidad: Calidad,
                  linaje: Linaje, glosario: Glosario, politicas: Politicas,
-                 licencia: Licencia };
+                 misdatos: MisDatos, licencia: Licencia };
 
 /* ----------------------------------------------------------------- app */
 

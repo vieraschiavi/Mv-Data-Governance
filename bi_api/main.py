@@ -22,7 +22,7 @@ import time
 from collections import deque
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -224,8 +224,10 @@ def licencia_estado():
     return licensing.status()
 
 
-# Body(...) en el default lo marca ruff (B008): se saca a una constante.
+# Body(...)/File(...) en el default los marca ruff (B008): se sacan a
+# constantes de modulo.
 _CUERPO = Body(...)
+_ARCHIVO = File(...)
 
 
 @app.post("/api/licencia", tags=["meta"])
@@ -269,6 +271,275 @@ def licencia_borrar():
     from mvdg import licensing
     licensing.clear()
     return licensing.status()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# LAS TRES FUNCIONES QUE SE COBRAN
+# ───────────────────────────────────────────────────────────────────────────
+# El .exe que baja el cliente habla SOLO con esta API. Y acá no existía ni un
+# endpoint para migrar a Purview, migrar a Collibra ni escanear el tenant de
+# BI — las tres únicas funciones que se pagan.
+#
+# O sea: el cliente pagaba, pegaba su clave, y la pantalla de licencia le
+# decía "estas 3 funciones están desbloqueadas"… sin ninguna forma de
+# usarlas. Vivían solo en app/app.py (Streamlit), que el .exe no levanta.
+# Pagar y no recibir es el mismo problema que cobrar un mes y entregar para
+# siempre, mirado desde el otro lado.
+#
+# Se replica el criterio que ya tenía Streamlit, que es el correcto
+# comercialmente: LA VISTA PREVIA ES GRATIS —es lo que hace lucir el
+# producto— y lo que se licencia es el push REAL contra el sistema de la
+# empresa. Un plan demo puede ver exactamente qué se enviaría; no puede
+# enviarlo.
+#
+# Y se respeta lo que manda el proyecto: los conectores externos están
+# apagados por defecto. `dry_run` es True salvo pedido explícito, y sin
+# credenciales configuradas el push real ni se intenta.
+
+_DESTINOS_MIGRACION = {
+    "purview": ("migracion_purview", "purview_export"),
+    "collibra": ("migracion_collibra", "collibra_export"),
+}
+
+
+def _exigir_licencia(funcion: str) -> None:
+    """Corta con 402 si el plan actual no incluye esa función.
+
+    402 y no 403: 403 es "no tenés permiso" y suena a error del cliente. Acá
+    la respuesta es "esto se paga", que es exactamente lo que significa
+    Payment Required — y le deja a la interfaz un código sin ambigüedad para
+    mostrar el aviso de licencia en vez de un error genérico.
+    """
+    from mvdg import licensing
+    if not licensing.has_feature(funcion):
+        raise HTTPException(402, {
+            "error": "requiere_licencia",
+            "funcion": funcion,
+            "plan": licensing.plan(),
+            "es": "Esta función necesita una licencia activa. La vista previa "
+                  "no requiere ninguna.",
+            "en": "This feature needs an active license. The preview needs "
+                  "none.",
+            "pt": "Esta função precisa de uma licença ativa. A pré-visualização "
+                  "não precisa de nenhuma.",
+        })
+
+
+@app.get("/api/conectores", tags=["governance"])
+def conectores_estado():
+    """Qué conectores externos están configurados y cuáles habilita el plan.
+
+    La interfaz lo necesita para decir la verdad ANTES de que el cliente
+    apriete: sin credenciales el push real no puede correr por más licencia
+    que tenga, y con licencia pero sin credenciales el problema no es la
+    licencia. Sin esto los dos casos se ven igual — un botón que falla.
+    """
+    from mvdg import collibra_export, licensing, purview_export
+    return {
+        "plan": licensing.plan(),
+        "purview": {
+            "configurado": bool(purview_export.configured()),
+            "licenciado": licensing.has_feature("migracion_purview"),
+        },
+        "collibra": {
+            "configurado": bool(collibra_export.configured()),
+            "licenciado": licensing.has_feature("migracion_collibra"),
+        },
+        "tenant_bi": {
+            "licenciado": licensing.has_feature("escaneo_tenant_bi"),
+        },
+    }
+
+
+@app.post("/api/migracion/{destino}", tags=["governance"])
+def migrar(destino: str, cuerpo: dict = _CUERPO,
+           lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Migra el catálogo a Purview o Collibra.
+
+    `aplicar: false` (el default) es la vista previa: no toca nada afuera y no
+    pide licencia. `aplicar: true` es el push real contra el sistema de la
+    empresa, y ese sí se licencia.
+
+    El default es la vista previa a propósito: si mandar de verdad fuera lo
+    que pasa cuando no se aclara nada, alcanzaría un cuerpo mal armado para
+    escribirle al Purview de producción de un cliente.
+    """
+    import importlib
+
+    if destino not in _DESTINOS_MIGRACION:
+        raise HTTPException(404, f"Destino desconocido: {destino}. "
+                                 f"Disponibles: {sorted(_DESTINOS_MIGRACION)}")
+    funcion, modulo = _DESTINOS_MIGRACION[destino]
+    aplicar = bool((cuerpo or {}).get("aplicar"))
+    if aplicar:
+        _exigir_licencia(funcion)
+
+    exporter = importlib.import_module(f"mvdg.{modulo}")
+    if aplicar and not exporter.configured():
+        raise HTTPException(409, {
+            "error": "conector_sin_configurar",
+            "destino": destino,
+            "es": f"Faltan las credenciales de {destino}. La vista previa "
+                  f"funciona igual.",
+            "en": f"{destino} credentials are missing. The preview still works.",
+            "pt": f"Faltam as credenciais do {destino}. A pré-visualização "
+                  f"funciona mesmo assim.",
+        })
+
+    t = governance_tables(lang)
+    try:
+        resultado = exporter.push_all(t["catalog"], t["dictionary"],
+                                      t["glossary"], dry_run=not aplicar)
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo del conector
+        # El detalle del error del sistema remoto no se filtra al cliente: el
+        # tipo alcanza para diagnosticar sin exponer URLs internas ni tokens
+        # que a veces vienen en el mensaje de la excepción.
+        raise HTTPException(502, {
+            "error": "conector_fallo", "destino": destino,
+            "tipo": type(exc).__name__,
+        }) from exc
+    return {"destino": destino, "aplicado": aplicar, "resultado": resultado}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# PERFILAR TUS PROPIOS DATOS
+# ───────────────────────────────────────────────────────────────────────────
+# La landing lo vende con estas palabras: «Subí un CSV o Excel y obtené al
+# instante esquema, nulos, duplicados, PII detectada y reglas sugeridas». Y el
+# plan de US$ 149 dice «Todo el programa sin límite de tiempo».
+#
+# El .exe no tenía NADA de eso. Ni endpoint, ni pantalla, ni forma de cargar un
+# archivo. El perfilador vivía solo en app/app.py (Streamlit), que el .exe no
+# levanta — así que el cliente bajaba el programa, buscaba la función principal
+# que vio anunciada, y no existía.
+#
+# Es gratis a propósito: no está en FUNCIONES_PAGAS, igual que en Streamlit.
+# Es lo que hace que alguien entienda el producto con SUS datos, que es lo que
+# después se compra.
+#
+# EL ARCHIVO NO SALE DE LA MÁQUINA y no toca el disco: la API escucha en
+# 127.0.0.1, se lee en memoria y se descarta. No hay ningún lugar donde
+# quede — que es exactamente lo que la landing promete cuando dice que tus
+# datos nunca salen de tu PC.
+
+# 40 MB: un Excel de gobierno de datos rara vez pasa de unos pocos MB, y el
+# .exe corre con el Python embebido en la PC del cliente. Sin tope, un archivo
+# de 2 GB se lleva puesta la memoria del programa entero.
+_MAX_BYTES = 40 * 1024 * 1024
+_MAX_FILAS = 200_000
+_EXT_OK = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
+
+
+@app.post("/api/perfilar", tags=["governance"])
+async def perfilar(archivo: UploadFile = _ARCHIVO,
+                   lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Perfila un CSV o Excel: esquema, nulos, duplicados, PII y reglas.
+
+    No requiere licencia. No guarda nada.
+    """
+    import io
+
+    import pandas as pd
+
+    from mvdg import profiler
+
+    nombre = (archivo.filename or "").strip()
+    if not nombre.lower().endswith(_EXT_OK):
+        raise HTTPException(400, {
+            "error": "formato_no_soportado",
+            "es": f"Se aceptan {', '.join(_EXT_OK)}.",
+            "en": f"Accepted formats: {', '.join(_EXT_OK)}.",
+            "pt": f"Formatos aceitos: {', '.join(_EXT_OK)}.",
+        })
+
+    crudo = await archivo.read(_MAX_BYTES + 1)
+    if len(crudo) > _MAX_BYTES:
+        raise HTTPException(413, {
+            "error": "archivo_muy_grande",
+            "max_mb": _MAX_BYTES // (1024 * 1024),
+            "es": f"El archivo pasa de {_MAX_BYTES // (1024 * 1024)} MB.",
+            "en": f"The file is over {_MAX_BYTES // (1024 * 1024)} MB.",
+            "pt": f"O arquivo passa de {_MAX_BYTES // (1024 * 1024)} MB.",
+        })
+    if not crudo:
+        raise HTTPException(400, {"error": "archivo_vacio"})
+
+    try:
+        if nombre.lower().endswith((".xlsx", ".xlsm", ".xls")):
+            df = pd.read_excel(io.BytesIO(crudo), nrows=_MAX_FILAS)
+        else:
+            # sep=None + engine="python" deja que pandas descubra si es coma,
+            # punto y coma o tabulador. En Uruguay el Excel exporta con punto y
+            # coma por el separador decimal, asi que asumir la coma daria una
+            # sola columna con todo adentro y un perfil que no dice nada.
+            df = pd.read_csv(io.BytesIO(crudo), sep=None, engine="python",
+                             nrows=_MAX_FILAS)
+    except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
+        raise HTTPException(400, {
+            "error": "no_se_pudo_leer", "tipo": type(exc).__name__,
+            "es": "No se pudo leer el archivo. ¿Está completo y bien formado?",
+            "en": "The file could not be read. Is it complete and well formed?",
+            "pt": "Não foi possível ler o arquivo. Está completo e bem formado?",
+        }) from exc
+
+    if df.empty or not len(df.columns):
+        raise HTTPException(400, {"error": "sin_datos"})
+
+    perfil = profiler.profile_table(df)
+    return {
+        "archivo": nombre,
+        # Los conteos se convierten uno por uno y NO metiendolos en una Series:
+        # pandas unifica el tipo de la Series entera, asi que un solo decimal
+        # (null_cells_pct) convertia "4 filas" en "4.0 filas". Un conteo con
+        # decimales en pantalla se lee como un error del programa.
+        "resumen": {k: (int(v) if float(v).is_integer() and k != "null_cells_pct"
+                        else round(float(v), 2))
+                    for k, v in profiler.summary(df).items()},
+        "perfil": json.loads(perfil.to_json(orient="records",
+                                            date_format="iso")),
+        "reglas": profiler.suggest_rules(df, lang),
+        # Que el cliente sepa que vio TODO su archivo, o que se corto. Un
+        # perfil sobre la mitad de las filas presentado como si fuera el total
+        # es un dato equivocado con cara de dato bueno.
+        "filas_leidas": int(len(df)),
+        "truncado": bool(len(df) >= _MAX_FILAS),
+    }
+
+
+@app.post("/api/bi/escanear-tenant", tags=["governance"])
+def escanear_tenant(cuerpo: dict = _CUERPO,
+                    lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Escanea el tenant de Power BI y cataloga lo que encuentre.
+
+    Acá no hay vista previa que valga: leer el tenant de la empresa ES la
+    función. Por eso pide licencia siempre, a diferencia de las migraciones.
+    """
+    _exigir_licencia("escaneo_tenant_bi")
+    from mvdg import powerbi_meta
+
+    try:
+        maximo = int((cuerpo or {}).get("max_workspaces") or 25)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "max_workspaces tiene que ser un numero") from None
+    maximo = max(1, min(maximo, 1000))
+
+    try:
+        salida = powerbi_meta.ingest_tenant(lang, max_workspaces=maximo)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, {
+            "error": "tenant_fallo", "tipo": type(exc).__name__,
+        }) from exc
+
+    # Las tablas vuelven como DataFrame; se serializan igual que el resto de
+    # la API para que la interfaz no tenga que tratarlas distinto.
+    tablas = {}
+    for nombre, valor in (salida or {}).items():
+        if hasattr(valor, "to_json"):
+            tablas[nombre] = json.loads(valor.to_json(orient="records",
+                                                      date_format="iso"))
+        else:
+            tablas[nombre] = valor
+    return {"max_workspaces": maximo, "tablas": tablas}
 
 
 def _serve(df, table: str, lang: str, format: str):

@@ -2793,9 +2793,17 @@ def test_la_ui_de_escritorio_no_usa_streamlit():
         assert os.path.exists(ruta), f"falta {archivo}"
         with open(ruta, encoding="utf-8") as fh:
             cuerpo = fh.read()
-        # aparece solo en comentarios que EXPLICAN que no se usa
-        codigo = "\n".join(linea for linea in cuerpo.splitlines()
-                           if not linea.strip().startswith(("*", "//", "/*")))
+        # Aparece solo en comentarios que EXPLICAN que no se usa, asi que se
+        # sacan los comentarios ANTES de buscar.
+        #
+        # Se sacan con una regex de bloque y no salteando lineas que empiecen
+        # con "*" o "//": un /* ... */ de varias lineas tiene lineas del medio
+        # que no empiezan con nada de eso, y quedaban adentro. El sintoma es
+        # un test que se pone rojo porque alguien ESCRIBIO la palabra en una
+        # explicacion — acusando un problema de producto que no existe. Es la
+        # tercera vez que este mismo atajo falla en este repo.
+        codigo = re.sub(r"/\*.*?\*/", "", cuerpo, flags=re.S)
+        codigo = re.sub(r"//.*", "", codigo)
         assert "streamlit" not in codigo.lower(), f"{archivo} usa Streamlit"
 
     # el instalador empaqueta la UI y un Python propio
@@ -3693,6 +3701,99 @@ def test_landing_estados_de_error_visibles():
         assert "rvempty" in _landing(archivo), f"{archivo}: sin estado vacio"
 
 
+def test_los_secretos_no_se_pueden_commitear_ni_por_accidente():
+    """El repo es PUBLICO. Un `git add -A` con un .env al lado publica el
+    Access Token de MercadoPago y la clave que FIRMA LAS LICENCIAS.
+
+    Con esa clave cualquiera emite licencias infinitas del producto, y no hay
+    forma de revocarlas: habria que rotar el par, lo que le rompe la licencia
+    a TODOS los que ya compraron. Es el peor secreto del proyecto y el
+    .gitignore no lo cubria.
+
+    No se verifica leyendo el .gitignore —una linea puede estar y no aplicar—
+    sino preguntandole a git si ignoraria cada archivo."""
+    import subprocess
+    import tempfile
+    raiz = _repo_root()
+    peligrosos = [".env", ".env.local", ".env.production",
+                  "clave.pem", "id_rsa", "servidor.key"]
+    for nombre in peligrosos:
+        ruta = os.path.join(raiz, nombre)
+        creado = not os.path.exists(ruta)
+        if creado:
+            with open(ruta, "w", encoding="utf-8") as fh:
+                fh.write("secreto-de-prueba\n")
+        try:
+            r = subprocess.run(["git", "check-ignore", nombre],
+                               cwd=raiz, capture_output=True, text=True)
+            assert r.returncode == 0, (
+                f"'{nombre}' NO esta ignorado: un `git add -A` lo sube a un "
+                f"repo publico junto con las claves que tenga adentro")
+        finally:
+            if creado:
+                os.remove(ruta)
+    del tempfile
+
+    # La plantilla SI tiene que poder versionarse: es la que documenta que
+    # variables hacen falta, y no lleva ningun valor real.
+    ejemplo = os.path.join(raiz, ".env.example")
+    creado = not os.path.exists(ejemplo)
+    if creado:
+        with open(ejemplo, "w", encoding="utf-8") as fh:
+            fh.write("MP_ACCESS_TOKEN=\n")
+    try:
+        r = subprocess.run(["git", "check-ignore", ".env.example"],
+                           cwd=raiz, capture_output=True, text=True)
+        assert r.returncode != 0, (
+            ".env.example quedo ignorado: es la plantilla sin valores, tiene "
+            "que poder versionarse")
+    finally:
+        if creado:
+            os.remove(ejemplo)
+
+
+def test_cada_plan_baja_su_build_y_el_workflow_publica_los_dos():
+    """El owner tiene que bajar el build owner y el cliente el suyo.
+
+    Antes habia UNA sola variable de entorno, asi que el owner —con su
+    licencia owner en la mano— bajaba el mismo .exe sin desbloquear que
+    cualquier cliente. El build owner existia solo como artefacto de Actions y
+    no llegaba por ningun lado.
+
+    Esto ata las tres puntas: que el endpoint elija por plan, que el workflow
+    publique el build owner, y que te diga la URL exacta que va en Vercel —
+    porque una variable que hay que armar a mano es donde se erraba."""
+    import json as _json
+    import subprocess
+    elige = _json.loads(subprocess.run(
+        ["node", "-e",
+         "const d=require('./api/descargar');"
+         "console.log(JSON.stringify({"
+         "  owner: d.variableDelPlan('owner'),"
+         "  licencia: d.variableDelPlan('licencia'),"
+         "  professional: d.variableDelPlan('professional'),"
+         "  trial: d.variableDelPlan('trial'),"
+         "  nada: d.variableDelPlan(undefined)}))"],
+        cwd=_repo_root(), capture_output=True, text=True, check=True).stdout)
+
+    assert elige["owner"] == "MVDG_INSTALLER_URL_OWNER"
+    for plan in ("licencia", "professional", "trial", "nada"):
+        assert elige[plan] == "MVDG_INSTALLER_URL", (
+            f"el plan '{plan}' llega al build owner, que viene desbloqueado")
+
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+    for tag in ("cliente-latest", "owner-latest"):
+        assert tag in wf, f"el workflow no publica {tag}"
+    # Y cada release tiene que decir QUE variable llenar con SU url: si el
+    # workflow publica el build owner pero nadie sabe donde apuntarlo, el
+    # endpoint contesta 503 y la version owner sigue sin llegar.
+    for var in ("MVDG_INSTALLER_URL", "MVDG_INSTALLER_URL_OWNER"):
+        assert var in wf, f"el workflow no dice donde poner {var}"
+
+
 def test_la_clave_publica_es_LA_MISMA_en_el_servidor_y_en_el_programa():
     """El servidor decide quien baja el instalador verificando la firma de la
     licencia (api/_license.js), y el programa decide que habilita verificando
@@ -3973,9 +4074,14 @@ def test_security_md_documenta_cves_de_dependencias():
     assert os.path.exists(ruta), "falta SECURITY.md"
     with open(ruta, encoding="utf-8") as fh:
         sec = fh.read()
-    for paquete in ("electron-builder", "esbuild", "electron"):
+    for paquete in ("electron-builder", "esbuild", "electron", "extract-zip"):
         assert paquete in sec, f"SECURITY.md no menciona {paquete}"
     assert "npm audit" in sec
+    # Y tiene que distinguir lo que corre en la PC del cliente de lo que solo
+    # corre al compilar: son dos riesgos distintos y meterlos en la misma
+    # bolsa hace que el documento no sirva para decidir nada.
+    assert "NO viaja en la app instalada" in sec, (
+        "SECURITY.md no aclara que dependencias son solo de compilacion")
     # el gap real (electron sin actualizar) tiene que quedar dicho, no oculto
     assert "sin actualizar" in sec or "CVE" in sec
 
@@ -7976,3 +8082,303 @@ def test_los_workflows_que_exponen_datos_exigen_repo_privado():
         assert "privad" in primero.get("name", "").lower(), (
             f"{archivo}: la comprobacion de visibilidad no es el primer paso "
             f"(es '{primero.get('name')}')")
+
+
+def _api_cliente(tmp_path, monkeypatch):
+    """TestClient de bi_api con un directorio de datos limpio."""
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    return TestClient(app)
+
+
+def test_el_que_paga_puede_USAR_las_tres_funciones_desde_el_exe(tmp_path, monkeypatch):
+    """El .exe habla SOLO con bi_api, y bi_api no tenia ni un endpoint para
+    las tres unicas funciones que se cobran.
+
+    O sea: el cliente pagaba, pegaba su clave, y la pantalla de licencia le
+    decia "estas 3 funciones estan desbloqueadas" sin ninguna forma de
+    usarlas. Vivian solo en app/app.py (Streamlit), que el .exe no levanta.
+    Pagar y no recibir es el mismo problema que cobrar un mes y entregar para
+    siempre, mirado desde el otro lado.
+
+    Este test recorre el circuito completo por HTTP, con el motor de verdad.
+    """
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    # --- en demo: la VISTA PREVIA anda (es lo que hace lucir el producto) ---
+    for destino in ("purview", "collibra"):
+        r = c.post(f"/api/migracion/{destino}", json={})
+        assert r.status_code == 200, (
+            f"la vista previa de {destino} no anda en demo: {r.text[:200]}")
+        assert r.json()["aplicado"] is False
+
+    # --- en demo: el PUSH REAL se cobra ---
+    for destino, funcion in (("purview", "migracion_purview"),
+                             ("collibra", "migracion_collibra")):
+        r = c.post(f"/api/migracion/{destino}", json={"aplicar": True})
+        assert r.status_code == 402, (
+            f"{destino}: un plan demo pudo hacer el push REAL (status "
+            f"{r.status_code})")
+        assert r.json()["detail"]["funcion"] == funcion
+
+    r = c.post("/api/bi/escanear-tenant", json={})
+    assert r.status_code == 402, "un plan demo escaneo el tenant"
+
+    # --- con licencia: ya no responde 402 -------------------------------
+    # Se parchea el plan, no se firma un token: la firma ya la cubre
+    # api/pago_a_licencia.test.js de punta a punta. Lo que se prueba ACA es
+    # que el endpoint consulte la licencia, que era lo que no existia.
+    monkeypatch.setattr(licensing, "plan", lambda: "professional")
+    for destino in ("purview", "collibra"):
+        r = c.post(f"/api/migracion/{destino}", json={"aplicar": True})
+        assert r.status_code != 402, (
+            f"{destino}: con plan professional sigue diciendo que hay que pagar")
+    r = c.post("/api/bi/escanear-tenant", json={})
+    assert r.status_code != 402, "con plan professional sigue pidiendo licencia"
+
+
+def test_los_conectores_externos_siguen_apagados_por_defecto(tmp_path, monkeypatch):
+    """Regla del proyecto: los conectores externos estan apagados por defecto.
+
+    El riesgo concreto de equivocarse: si `aplicar` fuera el default, un
+    cuerpo mal armado —o vacio— le escribiria al Purview de PRODUCCION de un
+    cliente. Por eso el default es la vista previa y sin credenciales el push
+    real ni se intenta."""
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+    monkeypatch.setattr(licensing, "plan", lambda: "owner")
+
+    # Sin `aplicar`, y con cuerpo vacio, NUNCA se aplica.
+    for cuerpo in ({}, {"aplicar": False}, {"otra_cosa": True}):
+        r = c.post("/api/migracion/purview", json=cuerpo)
+        assert r.status_code == 200
+        assert r.json()["aplicado"] is False, (
+            f"con el cuerpo {cuerpo} se hizo un push REAL contra Purview")
+
+    # Con licencia pero sin credenciales: 409, no un 500 ni un push a ciegas.
+    from mvdg import purview_export
+    monkeypatch.setattr(purview_export, "configured", lambda: False)
+    r = c.post("/api/migracion/purview", json={"aplicar": True})
+    assert r.status_code == 409
+    assert r.json()["detail"]["error"] == "conector_sin_configurar"
+
+
+def test_la_api_dice_por_que_no_se_puede_antes_de_apretar(tmp_path, monkeypatch):
+    """/api/conectores separa "te falta licencia" de "te faltan credenciales".
+
+    Sin esto los dos casos se ven igual desde la interfaz —un boton que
+    falla— y el cliente que SI pago cree que su licencia no sirve."""
+    from mvdg import licensing
+
+    c = _api_cliente(tmp_path, monkeypatch)
+    d = c.get("/api/conectores").json()
+    assert d["plan"] == licensing.PLAN_DEMO
+    for clave in ("purview", "collibra"):
+        assert d[clave]["licenciado"] is False
+        assert "configurado" in d[clave]
+    assert d["tenant_bi"]["licenciado"] is False
+
+    monkeypatch.setattr(licensing, "plan", lambda: "professional")
+    d = c.get("/api/conectores").json()
+    assert d["purview"]["licenciado"] is True
+    assert d["tenant_bi"]["licenciado"] is True
+
+
+def test_los_errores_de_la_api_llegan_con_su_motivo_a_la_pantalla():
+    """ApiError tiene que exponer `code`, y la pantalla tiene que ramificar
+    por ese campo.
+
+    Lo encontro una prueba en Chromium contra la API real: el endpoint
+    devolvia 402 correctamente, el codigo compilaba, y la pantalla mostraba
+    "el sistema remoto no respondio". Motivo: ApiError guardaba el
+    identificador en `message` y App.jsx leia `e.code`, que era undefined —
+    asi que TODOS los errores caian en el mensaje generico. El que pagaba y
+    no tenia licencia no se enteraba de que le faltaba la licencia.
+
+    Ningun test de unidad lo hubiera visto: las dos mitades eran correctas
+    por separado."""
+    api = os.path.join(_repo_root(), "electron", "ui", "src", "api.js")
+    with open(api, encoding="utf-8") as fh:
+        codigo = fh.read()
+    assert re.search(r"this\.code\s*=", codigo), (
+        "ApiError no expone `code`: quien lea e.code recibe undefined y todos "
+        "los errores se ven iguales")
+
+    app = os.path.join(_repo_root(), "electron", "ui", "src", "App.jsx")
+    with open(app, encoding="utf-8") as fh:
+        jsx = fh.read()
+    for motivo in ("requiere_licencia", "sin_credenciales"):
+        assert motivo in jsx, (
+            f"la pantalla no distingue '{motivo}': el cliente que pago vería "
+            f"un error generico y creería que su licencia no sirve")
+        assert motivo in codigo, f"api.js no produce el motivo '{motivo}'"
+
+
+def test_la_pantalla_de_licencia_deja_USAR_las_funciones_no_solo_listarlas():
+    """El .exe listaba las tres funciones pagas sin ningun boton. Este test
+    ata la pantalla a la API: si se agrega una funcion paga al motor y no se
+    puede llamar desde el programa, el cliente paga y no recibe."""
+    app = os.path.join(_repo_root(), "electron", "ui", "src", "App.jsx")
+    with open(app, encoding="utf-8") as fh:
+        jsx = fh.read()
+    api = os.path.join(_repo_root(), "electron", "ui", "src", "api.js")
+    with open(api, encoding="utf-8") as fh:
+        cliente = fh.read()
+
+    for fn in ("migrar", "escanearTenant", "conectores"):
+        assert fn in cliente, f"api.js no sabe llamar a {fn}"
+        assert fn in jsx, f"la pantalla nunca llama a {fn}"
+
+    # Y la vista previa tiene que seguir siendo gratis: es lo que hace lucir
+    # el producto y lo unico que un plan demo puede ver.
+    assert "migrar(destino, false" in jsx, (
+        "no quedo ningun boton de vista previa: en demo la pantalla no "
+        "muestra nada de las funciones pagas")
+    assert "migrar(destino, true" in jsx, "no quedo el boton de envio real"
+
+
+def test_el_perfilador_detecta_la_PII_que_se_usa_en_uruguay_y_latam():
+    """El detector de PII no marcaba `cedula` ni `apellido`.
+
+    Este producto se vende en Uruguay, donde «cédula» es LA columna de PII más
+    común que existe, y un apellido identifica a una persona igual que un
+    nombre. Un informe de cumplimiento que no las marca no está incompleto:
+    está EQUIVOCADO, y el cliente lo firma creyendo que revisó.
+
+    La causa era de regex: con búsqueda por subcadena, `ci` matchea adentro de
+    «precio», así que llevaba `\\b`… y `\\b` no corta antes de un guión bajo
+    porque `_` es carácter de palabra. O sea que `ci\\b` no encontraba
+    `ci_cliente`, que es como se llama la columna en media base uruguaya.
+    """
+    from mvdg.profiler import _es_pii_por_nombre as pii
+
+    debe_marcar = [
+        # documentos de la región
+        "ci", "ci_cliente", "cedula", "cédula", "Cedula_Identidad",
+        "documento", "nro_documento", "doc", "dni", "rut", "ruc", "cuit",
+        "cuil", "cpf", "curp", "pasaporte",
+        # persona y contacto
+        "nombre", "NOMBRE COMPLETO", "apellido", "Apellido Materno",
+        "sobrenome", "email", "correo", "telefono", "telefono2", "celular",
+        "whatsapp",
+        # ubicación y financieros
+        "direccion", "domicilio", "iban", "cbu", "tarjeta", "ip", "ip_origen",
+        "fecha_nacimiento",
+    ]
+    faltan = [c for c in debe_marcar if not pii(c)]
+    assert not faltan, f"PII sin detectar: {faltan}"
+
+    # Y lo que NO puede marcar: un falso positivo hace que el cliente
+    # desconfíe del informe entero y deje de mirarlo.
+    no_debe = [
+        "precio", "inicio", "equipo", "servicio", "monto", "saldo", "cantidad",
+        "ciudad", "municipio", "codigo", "id", "fecha", "estado", "producto",
+        "descripcion", "negocio", "ejercicio", "participacion", "anticipo",
+        "principal", "docente", "ipc",
+    ]
+    sobran = [c for c in no_debe if pii(c)]
+    assert not sobran, f"marcadas como PII sin serlo: {sobran}"
+
+
+def test_el_exe_puede_perfilar_un_archivo_propio(tmp_path, monkeypatch):
+    """La landing lo anuncia con estas palabras: «Subí un CSV o Excel y obtené
+    al instante esquema, nulos, duplicados, PII detectada y reglas
+    sugeridas». Y el plan de US$ 149 dice «Todo el programa sin límite de
+    tiempo».
+
+    El .exe no tenía nada de eso: ni endpoint, ni pantalla, ni forma de cargar
+    un archivo. El perfilador vivía solo en app/app.py (Streamlit), que el
+    .exe no levanta — así que el cliente bajaba el programa, buscaba la
+    función principal que vio anunciada, y no existía.
+
+    Es gratis, como en Streamlit: no está en FUNCIONES_PAGAS."""
+    import io
+
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    csv = ("email,monto,cedula\n"
+           "a@empresa.com,10.5,1.234.567-8\n"
+           "b@empresa.com,20,2.345.678-9\n"
+           ",30,\n"
+           "a@empresa.com,10.5,1.234.567-8\n")
+    r = c.post("/api/perfilar",
+               files={"archivo": ("clientes.csv", csv.encode(), "text/csv")})
+    assert r.status_code == 200, r.text[:300]
+    d = r.json()
+
+    # lo que promete la landing, campo por campo
+    assert d["resumen"]["rows"] == 4
+    assert d["resumen"]["columns"] == 3
+    assert d["resumen"]["duplicate_rows"] == 1          # duplicados
+    assert d["resumen"]["null_cells_pct"] > 0           # nulos
+    assert d["resumen"]["pii_columns"] == 2             # PII detectada
+    pii = [col["column"] for col in d["perfil"] if col["possible_pii"]]
+    assert set(pii) == {"email", "cedula"}
+    assert d["reglas"], "no sugirio ninguna regla de calidad"
+
+    # Los conteos son ENTEROS. Salieron de una Series de pandas y venian como
+    # 4.0 porque un solo decimal unifica el tipo de la Series entera: "4.0
+    # filas" en pantalla se lee como un error del programa.
+    assert isinstance(d["resumen"]["rows"], int)
+
+    # Excel, que es como llega la mitad de los archivos de una empresa.
+    import pandas as pd
+    buf = io.BytesIO()
+    pd.DataFrame({"telefono": ["099123456"], "saldo": [100]}).to_excel(buf, index=False)
+    r = c.post("/api/perfilar", files={"archivo": ("datos.xlsx", buf.getvalue(), "")})
+    assert r.status_code == 200
+    assert [col["column"] for col in r.json()["perfil"]] == ["telefono", "saldo"]
+
+    # CSV con punto y coma: es lo que exporta Excel en español, y asumir la
+    # coma daba UNA sola columna con todo adentro y un perfil que no dice nada.
+    r = c.post("/api/perfilar", files={
+        "archivo": ("uy.csv", b"nombre;importe\nAna;1,5\nLuis;2,5\n", "text/csv")})
+    assert r.status_code == 200
+    assert len(r.json()["perfil"]) == 2, "no reconocio el punto y coma"
+
+
+def test_el_perfilador_no_se_come_la_memoria_ni_acepta_cualquier_cosa(tmp_path, monkeypatch):
+    """Corre en la PC del cliente, con el Python embebido del .exe: un archivo
+    de 2 GB se lleva puesta la memoria del programa entero."""
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    for nombre, cuerpo, estado, motivo in [
+        ("virus.exe", b"MZ\x90\x00", 400, "formato_no_soportado"),
+        ("vacio.csv", b"", 400, "archivo_vacio"),
+        ("roto.xlsx", b"no soy un excel", 400, "no_se_pudo_leer"),
+    ]:
+        r = c.post("/api/perfilar", files={"archivo": (nombre, cuerpo, "")})
+        assert r.status_code == estado, f"{nombre}: {r.status_code}"
+        assert r.json()["detail"]["error"] == motivo
+
+    grande = b"a,b\n" + b"1,2\n" * 12_000_000        # ~45 MB
+    r = c.post("/api/perfilar", files={"archivo": ("grande.csv", grande, "text/csv")})
+    assert r.status_code == 413
+    assert r.json()["detail"]["error"] == "archivo_muy_grande"
+
+
+def test_el_perfilador_llega_a_la_pantalla_del_exe():
+    """Que el endpoint exista no alcanza: el cliente tiene que poder apretar
+    algo. Esto ata las dos mitades — es la union donde ya se escondio un bug
+    esta misma sesion."""
+    src = os.path.join(_repo_root(), "electron", "ui", "src")
+    with open(os.path.join(src, "App.jsx"), encoding="utf-8") as fh:
+        jsx = fh.read()
+    with open(os.path.join(src, "api.js"), encoding="utf-8") as fh:
+        api = fh.read()
+
+    assert "/api/perfilar" in api, "api.js no sabe llamar al perfilador"
+    assert "perfilar" in jsx, "la pantalla nunca llama al perfilador"
+    assert '"misdatos"' in jsx, "no hay pestaña para perfilar datos propios"
+    assert 'type="file"' in jsx, "no hay forma de elegir un archivo"
+    # FormData sin content-type a mano: escribirlo rompe el boundary del
+    # multipart, y eso solo se ve con un archivo real.
+    assert "FormData" in api
+    assert not re.search(r'content-type["\']\s*:\s*["\']multipart', api), (
+        "api.js escribe el content-type del multipart a mano: el navegador "
+        "tiene que ponerlo con su boundary")
