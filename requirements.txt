@@ -34,6 +34,12 @@ mcp>=1.28,<2
 # acá es de uso DIRECTO y en Windows keyring no la arrastra: sin declararla, el
 # programa no podría validar ninguna licencia en el SO donde más se instala.
 cryptography>=42.0,<52
+# Subida de archivos del perfilador (FastAPI la necesita para multipart).
+# Ya venia instalada por streamlit y mcp; se declara explicita porque una
+# funcion del producto no puede depender de que OTRA dependencia siga
+# arrastrandola. Si manana streamlit la suelta, el .exe pierde el perfilador
+# —la funcion que la landing anuncia primero— y solo se nota en produccion.
+python-multipart>=0.0.9,<1
 
 # --- Drivers de base de datos (opcionales, instalá el que uses) ---
 # Database drivers (optional — install the one you use):

@@ -13,10 +13,61 @@ import re
 
 import pandas as pd
 
-_PII_NAME_HINTS = re.compile(
-    r"(email|e-mail|correo|mail|phone|tel[eé]fono|celular|documento|dni|cpf|"
-    r"ci\b|rut|passport|pasaporte|name|nombre|nome|address|direcci[oó]n|"
-    r"endere[cç]o|birth|nacimiento|nascimento)", re.IGNORECASE)
+# ---------------------------------------------------------------------------
+# Detección de PII por nombre de columna
+# ---------------------------------------------------------------------------
+# Se mira en dos pasadas y no en una sola regex:
+#
+#   1) TOKENS EXACTOS — el nombre se parte por los separadores que se usan de
+#      verdad (`ci_cliente`, `nro-documento`, `Fecha Nacimiento`) y cada
+#      pedazo se compara entero. Es lo que hace falta para las siglas: con una
+#      regex de subcadena, `ci` matchea adentro de «precio» y `ip` adentro de
+#      «equipo», así que había que ponerles `\b`… y `\b` no corta antes de un
+#      guión bajo, porque `_` es carácter de palabra. Resultado: `ci\b` no
+#      encontraba `ci_cliente`, que es exactamente como se llama la columna en
+#      media base uruguaya.
+#
+#   2) SUBCADENAS — para las palabras largas, donde no hay ambigüedad
+#      (`email_corporativo`, `telefono2`).
+#
+# Lo que faltaba, y por qué importa acá: `cédula` y `apellido` no se detectaban.
+# Este producto se vende en Uruguay, donde «cédula» es LA columna de PII más
+# común que hay, y un apellido identifica a una persona igual que un nombre.
+# Un informe de cumplimiento que no las marca no está incompleto: está
+# equivocado, y el cliente lo firma creyendo que revisó.
+_PII_TOKENS = frozenset({
+    # documentos de identidad de la región
+    "ci", "cedula", "cédula", "doc", "documento", "dni", "rut", "ruc", "rfc",
+    "nit", "cuit", "cuil", "cpf", "curp", "nif", "pasaporte", "passport",
+    # contacto
+    "mail", "email", "correo", "tel", "telefono", "teléfono", "celular",
+    "movil", "móvil", "whatsapp",
+    # persona
+    "nombre", "nombres", "apellido", "apellidos", "sobrenome", "name",
+    # ubicación
+    "direccion", "dirección", "domicilio", "address", "endereco", "endereço",
+    # instrumentos financieros y de red (personales bajo GDPR/LGPD)
+    "iban", "cbu", "cvu", "tarjeta", "ip",
+})
+_PII_SUBSTR = re.compile(
+    r"(e-mail|email|correo|phone|tel[eé]fono|celular|whatsapp|documento|"
+    r"c[eé]dula|apellido|sobrenome|pasaporte|passport|name|nombre|nome|"
+    r"address|direcci[oó]n|domicilio|endere[cç]o|birth|nacimiento|nascimento|"
+    r"tarjeta|credit_card|creditcard)", re.IGNORECASE)
+_SEPARADORES = re.compile(r"[^0-9a-záéíóúñüàâãêôç]+", re.IGNORECASE)
+
+
+def _es_pii_por_nombre(col: str) -> bool:
+    """¿El nombre de la columna delata datos personales?"""
+    nombre = str(col).strip().lower()
+    if _PII_SUBSTR.search(nombre):
+        return True
+    # `telefono2`, `doc1`: el número pegado al final es parte del nombre, no
+    # un token aparte, así que se saca antes de comparar.
+    piezas = (re.sub(r"\d+$", "", p) for p in _SEPARADORES.split(nombre) if p)
+    return any(p in _PII_TOKENS for p in piezas)
+
+
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.]+$")
 
 
@@ -36,7 +87,7 @@ def profile_table(df: pd.DataFrame) -> pd.DataFrame:
             "null_pct": round(100.0 * s.isna().sum() / n, 2) if n else 0.0,
             "unique_values": int(s.nunique(dropna=True)),
             "sample": sample[:40],
-            "possible_pii": bool(_PII_NAME_HINTS.search(str(col))) or looks_email,
+            "possible_pii": _es_pii_por_nombre(col) or looks_email,
         })
     return pd.DataFrame(rows)
 

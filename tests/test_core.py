@@ -8240,3 +8240,145 @@ def test_la_pantalla_de_licencia_deja_USAR_las_funciones_no_solo_listarlas():
         "no quedo ningun boton de vista previa: en demo la pantalla no "
         "muestra nada de las funciones pagas")
     assert "migrar(destino, true" in jsx, "no quedo el boton de envio real"
+
+
+def test_el_perfilador_detecta_la_PII_que_se_usa_en_uruguay_y_latam():
+    """El detector de PII no marcaba `cedula` ni `apellido`.
+
+    Este producto se vende en Uruguay, donde «cédula» es LA columna de PII más
+    común que existe, y un apellido identifica a una persona igual que un
+    nombre. Un informe de cumplimiento que no las marca no está incompleto:
+    está EQUIVOCADO, y el cliente lo firma creyendo que revisó.
+
+    La causa era de regex: con búsqueda por subcadena, `ci` matchea adentro de
+    «precio», así que llevaba `\\b`… y `\\b` no corta antes de un guión bajo
+    porque `_` es carácter de palabra. O sea que `ci\\b` no encontraba
+    `ci_cliente`, que es como se llama la columna en media base uruguaya.
+    """
+    from mvdg.profiler import _es_pii_por_nombre as pii
+
+    debe_marcar = [
+        # documentos de la región
+        "ci", "ci_cliente", "cedula", "cédula", "Cedula_Identidad",
+        "documento", "nro_documento", "doc", "dni", "rut", "ruc", "cuit",
+        "cuil", "cpf", "curp", "pasaporte",
+        # persona y contacto
+        "nombre", "NOMBRE COMPLETO", "apellido", "Apellido Materno",
+        "sobrenome", "email", "correo", "telefono", "telefono2", "celular",
+        "whatsapp",
+        # ubicación y financieros
+        "direccion", "domicilio", "iban", "cbu", "tarjeta", "ip", "ip_origen",
+        "fecha_nacimiento",
+    ]
+    faltan = [c for c in debe_marcar if not pii(c)]
+    assert not faltan, f"PII sin detectar: {faltan}"
+
+    # Y lo que NO puede marcar: un falso positivo hace que el cliente
+    # desconfíe del informe entero y deje de mirarlo.
+    no_debe = [
+        "precio", "inicio", "equipo", "servicio", "monto", "saldo", "cantidad",
+        "ciudad", "municipio", "codigo", "id", "fecha", "estado", "producto",
+        "descripcion", "negocio", "ejercicio", "participacion", "anticipo",
+        "principal", "docente", "ipc",
+    ]
+    sobran = [c for c in no_debe if pii(c)]
+    assert not sobran, f"marcadas como PII sin serlo: {sobran}"
+
+
+def test_el_exe_puede_perfilar_un_archivo_propio(tmp_path, monkeypatch):
+    """La landing lo anuncia con estas palabras: «Subí un CSV o Excel y obtené
+    al instante esquema, nulos, duplicados, PII detectada y reglas
+    sugeridas». Y el plan de US$ 149 dice «Todo el programa sin límite de
+    tiempo».
+
+    El .exe no tenía nada de eso: ni endpoint, ni pantalla, ni forma de cargar
+    un archivo. El perfilador vivía solo en app/app.py (Streamlit), que el
+    .exe no levanta — así que el cliente bajaba el programa, buscaba la
+    función principal que vio anunciada, y no existía.
+
+    Es gratis, como en Streamlit: no está en FUNCIONES_PAGAS."""
+    import io
+
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    csv = ("email,monto,cedula\n"
+           "a@empresa.com,10.5,1.234.567-8\n"
+           "b@empresa.com,20,2.345.678-9\n"
+           ",30,\n"
+           "a@empresa.com,10.5,1.234.567-8\n")
+    r = c.post("/api/perfilar",
+               files={"archivo": ("clientes.csv", csv.encode(), "text/csv")})
+    assert r.status_code == 200, r.text[:300]
+    d = r.json()
+
+    # lo que promete la landing, campo por campo
+    assert d["resumen"]["rows"] == 4
+    assert d["resumen"]["columns"] == 3
+    assert d["resumen"]["duplicate_rows"] == 1          # duplicados
+    assert d["resumen"]["null_cells_pct"] > 0           # nulos
+    assert d["resumen"]["pii_columns"] == 2             # PII detectada
+    pii = [col["column"] for col in d["perfil"] if col["possible_pii"]]
+    assert set(pii) == {"email", "cedula"}
+    assert d["reglas"], "no sugirio ninguna regla de calidad"
+
+    # Los conteos son ENTEROS. Salieron de una Series de pandas y venian como
+    # 4.0 porque un solo decimal unifica el tipo de la Series entera: "4.0
+    # filas" en pantalla se lee como un error del programa.
+    assert isinstance(d["resumen"]["rows"], int)
+
+    # Excel, que es como llega la mitad de los archivos de una empresa.
+    import pandas as pd
+    buf = io.BytesIO()
+    pd.DataFrame({"telefono": ["099123456"], "saldo": [100]}).to_excel(buf, index=False)
+    r = c.post("/api/perfilar", files={"archivo": ("datos.xlsx", buf.getvalue(), "")})
+    assert r.status_code == 200
+    assert [col["column"] for col in r.json()["perfil"]] == ["telefono", "saldo"]
+
+    # CSV con punto y coma: es lo que exporta Excel en español, y asumir la
+    # coma daba UNA sola columna con todo adentro y un perfil que no dice nada.
+    r = c.post("/api/perfilar", files={
+        "archivo": ("uy.csv", b"nombre;importe\nAna;1,5\nLuis;2,5\n", "text/csv")})
+    assert r.status_code == 200
+    assert len(r.json()["perfil"]) == 2, "no reconocio el punto y coma"
+
+
+def test_el_perfilador_no_se_come_la_memoria_ni_acepta_cualquier_cosa(tmp_path, monkeypatch):
+    """Corre en la PC del cliente, con el Python embebido del .exe: un archivo
+    de 2 GB se lleva puesta la memoria del programa entero."""
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    for nombre, cuerpo, estado, motivo in [
+        ("virus.exe", b"MZ\x90\x00", 400, "formato_no_soportado"),
+        ("vacio.csv", b"", 400, "archivo_vacio"),
+        ("roto.xlsx", b"no soy un excel", 400, "no_se_pudo_leer"),
+    ]:
+        r = c.post("/api/perfilar", files={"archivo": (nombre, cuerpo, "")})
+        assert r.status_code == estado, f"{nombre}: {r.status_code}"
+        assert r.json()["detail"]["error"] == motivo
+
+    grande = b"a,b\n" + b"1,2\n" * 12_000_000        # ~45 MB
+    r = c.post("/api/perfilar", files={"archivo": ("grande.csv", grande, "text/csv")})
+    assert r.status_code == 413
+    assert r.json()["detail"]["error"] == "archivo_muy_grande"
+
+
+def test_el_perfilador_llega_a_la_pantalla_del_exe():
+    """Que el endpoint exista no alcanza: el cliente tiene que poder apretar
+    algo. Esto ata las dos mitades — es la union donde ya se escondio un bug
+    esta misma sesion."""
+    src = os.path.join(_repo_root(), "electron", "ui", "src")
+    with open(os.path.join(src, "App.jsx"), encoding="utf-8") as fh:
+        jsx = fh.read()
+    with open(os.path.join(src, "api.js"), encoding="utf-8") as fh:
+        api = fh.read()
+
+    assert "/api/perfilar" in api, "api.js no sabe llamar al perfilador"
+    assert "perfilar" in jsx, "la pantalla nunca llama al perfilador"
+    assert '"misdatos"' in jsx, "no hay pestaña para perfilar datos propios"
+    assert 'type="file"' in jsx, "no hay forma de elegir un archivo"
+    # FormData sin content-type a mano: escribirlo rompe el boundary del
+    # multipart, y eso solo se ve con un archivo real.
+    assert "FormData" in api
+    assert not re.search(r'content-type["\']\s*:\s*["\']multipart', api), (
+        "api.js escribe el content-type del multipart a mano: el navegador "
+        "tiene que ponerlo con su boundary")

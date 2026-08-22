@@ -169,3 +169,26 @@ async function enviar(ruta, cuerpo) {
   if (!r.ok) throw new ApiError("respuesta_invalida", datos.detail || `HTTP ${r.status}`);
   return datos;
 }
+
+/* --- Perfilar tus propios datos ------------------------------------------
+   La landing lo anuncia como la primera funcion del producto y el .exe no la
+   tenia. El archivo NO sale de la maquina: la API escucha en 127.0.0.1, se lee
+   en memoria y se descarta. --- */
+export async function perfilar(archivo, lang) {
+  const cuerpo = new FormData();
+  cuerpo.append("archivo", archivo);
+  let r;
+  try {
+    // Sin content-type a mano: el navegador tiene que poner el boundary del
+    // multipart. Escribirlo rompe la subida de una forma que solo se ve con
+    // un archivo real.
+    r = await fetch(`${BASE}/api/perfilar?lang=${encodeURIComponent(lang)}`,
+                    { method: "POST", body: cuerpo });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const datos = await r.json().catch(() => ({}));
+  if (r.status === 413) throw new ApiError("archivo_muy_grande", datos.detail);
+  if (!r.ok) throw new ApiError("archivo_invalido", datos.detail);
+  return datos;
+}

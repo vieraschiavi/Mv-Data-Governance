@@ -14,11 +14,11 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { activarLicencia, conectores, desactivarLicencia, escanearTenant, licencia, migrar, renovarLicencia, todo } from "./api";
+import { activarLicencia, conectores, desactivarLicencia, escanearTenant, licencia, migrar, perfilar, renovarLicencia, todo } from "./api";
 import { t } from "./i18n";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
-                "politicas", "licencia"];
+                "politicas", "misdatos", "licencia"];
 
 /* ------------------------------------------------------------- helpers */
 
@@ -514,9 +514,107 @@ function Funciones({ lang }) {
   );
 }
 
+/* --- Mis datos: perfilar tu propio CSV o Excel ---------------------------
+   La landing lo anuncia como la primera funcion del producto —«Subí un CSV o
+   Excel y obtené al instante esquema, nulos, duplicados, PII detectada y
+   reglas sugeridas»— y el .exe no la tenia. Vivia solo en la version
+   Streamlit, que el .exe no levanta: el cliente bajaba el programa, buscaba
+   la funcion que vio anunciada, y no existia.
+
+   Es gratis, como en Streamlit: no esta en FUNCIONES_PAGAS. Es lo que hace
+   que alguien entienda el producto con SUS datos, que es lo que despues se
+   compra. --- */
+function MisDatos({ lang }) {
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function elegido(ev) {
+    const archivo = ev.target.files && ev.target.files[0];
+    if (!archivo) return;
+    setCargando(true);
+    setError(null);
+    setDatos(null);
+    try {
+      setDatos(await perfilar(archivo, lang));
+    } catch (e) {
+      setError(e.code === "archivo_muy_grande" ? t("md_grande", lang)
+                                               : t("md_malo", lang));
+    } finally {
+      setCargando(false);
+      // Se limpia el input para que elegir DE NUEVO el mismo archivo vuelva a
+      // disparar el evento: sin esto, corregir el archivo y reintentar con el
+      // mismo nombre no hace nada y parece que el programa se colgo.
+      ev.target.value = "";
+    }
+  }
+
+  const r = datos && datos.resumen;
+  return (
+    <section>
+      <h2>{t("md_titulo", lang)}</h2>
+      <p className="sub">{t("md_bajada", lang)}</p>
+      <p className="sub">{t("md_privado", lang)}</p>
+
+      <label className="btn md-elegir">
+        {cargando ? t("md_leyendo", lang) : t("md_elegir", lang)}
+        <input type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls"
+               onChange={elegido} disabled={cargando} hidden />
+      </label>
+
+      {error ? <p className="malo" role="status">{error}</p> : null}
+      {!datos && !error && !cargando
+        ? <p className="sub md-vacio">{t("md_vacio", lang)}</p> : null}
+
+      {r ? (
+        <>
+          <div className="md-cifras">
+            <div><b>{r.rows}</b><span>{t("md_filas", lang)}</span></div>
+            <div><b>{r.columns}</b><span>{t("md_columnas", lang)}</span></div>
+            <div><b>{r.duplicate_rows}</b><span>{t("md_duplicados", lang)}</span></div>
+            <div><b>{r.null_cells_pct}%</b><span>{t("md_nulos", lang)}</span></div>
+            <div><b>{r.pii_columns}</b><span>{t("md_pii", lang)}</span></div>
+          </div>
+          {datos.truncado
+            ? <p className="sub md-truncado">{t("md_truncado", lang)}</p> : null}
+
+          <table className="tabla">
+            <thead><tr>
+              <th>{t("md_col", lang)}</th><th>{t("md_tipo", lang)}</th>
+              <th>{t("md_nulos_pct", lang)}</th><th>{t("md_unicos", lang)}</th>
+              <th>{t("md_ejemplo", lang)}</th><th>{t("md_espii", lang)}</th>
+            </tr></thead>
+            <tbody>
+              {datos.perfil.map((c) => (
+                <tr key={c.column}>
+                  <td>{c.column}</td>
+                  <td>{c.dtype}</td>
+                  <td>{c.null_pct}</td>
+                  <td>{c.unique_values}</td>
+                  <td>{String(c.sample === null ? "" : c.sample)}</td>
+                  <td>{c.possible_pii ? "PII" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {datos.reglas && datos.reglas.length ? (
+            <>
+              <h3>{t("md_reglas", lang)}</h3>
+              <ul className="md-reglas">
+                {datos.reglas.map((regla, i) => <li key={i}>{regla}</li>)}
+              </ul>
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 const RENDER = { panorama: Panorama, catalogo: Catalogo, calidad: Calidad,
                  linaje: Linaje, glosario: Glosario, politicas: Politicas,
-                 licencia: Licencia };
+                 misdatos: MisDatos, licencia: Licencia };
 
 /* ----------------------------------------------------------------- app */
 
