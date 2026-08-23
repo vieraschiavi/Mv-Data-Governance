@@ -18,6 +18,7 @@
 
 const { rateLimited, clientIp } = require("./_rate_limit");
 const { esRecurrente } = require("./_license");
+const { avisarIntentoDeCompra } = require("./_aviso");
 
 // Solo lo que es propio del cobro: como se llama y cuanto sale. SI se cobra
 // todos los meses o una sola vez NO se decide aca — sale de la tabla SKU de
@@ -51,7 +52,14 @@ module.exports = async (req, res) => {
 
   // Sin Access Token: si hay link de pago configurado, devuelvo ese.
   if (!token) {
-    if (link) { res.status(200).json({ url: link }); return; }
+    if (link) {
+      await avisarIntentoDeCompra({
+        plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
+        suscripcion: esRecurrente(plan), host: base,
+      });
+      res.status(200).json({ url: link });
+      return;
+    }
     res.status(503).json({ error: "medio_pago_no_configurado" });
     return;
   }
@@ -95,6 +103,13 @@ module.exports = async (req, res) => {
         res.status(502).json({ error: "mercadopago" });
         return;
       }
+      // El aviso va ANTES de responder: en serverless la funcion se congela
+      // apenas responde, asi que una promesa suelta no llega a mandarse.
+      // avisar() no lanza nunca — si el mail falla, la compra sigue igual.
+      await avisarIntentoDeCompra({
+        plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
+        email, suscripcion: true, host: base,
+      });
       res.status(200).json({ url: data.init_point, suscripcion: true });
       return;
     }
@@ -119,6 +134,10 @@ module.exports = async (req, res) => {
       res.status(502).json({ error: "mercadopago" });
       return;
     }
+    await avisarIntentoDeCompra({
+      plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
+      suscripcion: false, host: base,
+    });
     res.status(200).json({ url: data.init_point });
   } catch (e) {
     res.status(500).json({ error: "exception" });
