@@ -23,6 +23,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from mvdg import APP_NAME, BRAND, __version__
+from mvdg import dataeng
 from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
 from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
@@ -1132,6 +1133,136 @@ with tab_p:
     }), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Mis datos
+def _render_dataeng(user_df, dataset_name: str, lang: str):
+    """Motor completo de ingeniería de datos (mvdg/dataeng.py) sobre el
+    MISMO DataFrame que _render_profile ya perfiló arriba — no arma una
+    fuente paralela: reusa lo que el usuario ya cargó, sea archivo o tabla
+    de base de datos. Gratis, igual que el resto de esta pestaña: no está
+    en FUNCIONES_PAGAS.
+
+    El texto de contenido (issues, roles, fuga, features) sale de
+    `dataeng.traducir_resultado()`, el mismo que usa bi_api para el .exe —
+    un solo lugar traduce los códigos, no dos que puedan desalinearse.
+    """
+    with st.expander(t("de_titulo", lang), expanded=False):
+        st.caption(t("de_bajada_streamlit", lang))
+        cols_disponibles = [""] + [str(c) for c in user_df.columns]
+        c1, c2 = st.columns(2)
+        target = c1.selectbox(t("de_target", lang), cols_disponibles,
+                              key=f"de_target_{dataset_name}")
+        columna_tiempo = c2.selectbox(t("de_tiempo_col", lang), cols_disponibles,
+                                      key=f"de_tcol_{dataset_name}")
+        res_key = f"de_res_{dataset_name}"
+        if st.button(t("de_analizar", lang), key=f"de_btn_{dataset_name}"):
+            with st.spinner(t("de_leyendo", lang)):
+                crudo = dataeng.analizar_tabla(
+                    dataset_name, user_df, target=target or None,
+                    columna_tiempo=columna_tiempo or None)
+                st.session_state[res_key] = dataeng.traducir_resultado(crudo, lang)
+
+        res = st.session_state.get(res_key)
+        if not res:
+            return
+
+        if res["muestreado"]:
+            st.caption(t("de_muestreado", lang))
+
+        cal = res["calidad"]
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric(t("de_kpi_filas", lang), res["perfil"]["filas"])
+        k2.metric(t("de_kpi_columnas", lang), res["perfil"]["columnas"])
+        k3.metric(t("de_kpi_score", lang), cal["score"])
+        criticos = sum(1 for i in cal["issues"] if i["severidad"] == "critico")
+        k4.metric(t("de_kpi_criticos", lang), criticos)
+
+        st.subheader(t("de_dimensiones_titulo", lang))
+        dims = pd.DataFrame([{"dimension": cal["dimensiones_texto"][k], "quality_index": v}
+                             for k, v in cal["dimensiones"].items()])
+        fig = px.bar(dims, x="dimension", y="quality_index", text="quality_index",
+                    color_discrete_sequence=[BRAND["amber"]])
+        fig.update_traces(texttemplate="%{text:.1f}")
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101], xaxis_title=None,
+                          yaxis_title=None, height=260)
+        st.plotly_chart(fig, width="stretch", key=f"de_dims_{dataset_name}")
+
+        if res["cambios_tipo"]:
+            st.subheader(t("de_tipos_titulo", lang))
+            st.dataframe(pd.DataFrame(res["cambios_tipo"]).rename(columns={
+                "columna": t("de_tipos_col", lang), "de": t("de_tipos_de", lang),
+                "a": t("de_tipos_a", lang)}), width="stretch", hide_index=True)
+
+        st.subheader(t("de_perfil_titulo", lang))
+        perfil_df = pd.DataFrame(res["perfil"]["detalle"])
+        if not perfil_df.empty:
+            cols_mostrar = [c for c in ("columna", "dtype", "rol_texto", "nulos_pct", "unicos")
+                            if c in perfil_df.columns]
+            st.dataframe(perfil_df[cols_mostrar].rename(columns={
+                "columna": t("col_column", lang), "dtype": t("col_type", lang),
+                "rol_texto": t("de_perfil_rol", lang), "nulos_pct": t("de_perfil_nulos", lang),
+                "unicos": t("de_perfil_unicos", lang)}), width="stretch", hide_index=True)
+
+        st.subheader(t("de_issues_titulo", lang))
+        if cal["issues"]:
+            issues_df = pd.DataFrame(cal["issues"])
+            st.dataframe(issues_df[["severidad_texto", "columna", "detalle", "accion"]].rename(columns={
+                "severidad_texto": t("de_issues_severidad", lang),
+                "columna": t("de_issues_columna", lang),
+                "detalle": t("de_issues_detalle", lang), "accion": t("de_issues_accion", lang)}),
+                width="stretch", hide_index=True)
+        else:
+            st.caption(t("de_issues_sin", lang))
+
+        st.subheader(t("de_claves_titulo", lang))
+        if res["claves"]["pk"]:
+            pk_df = pd.DataFrame(res["claves"]["pk"])[["columna", "tipo_texto", "confianza_texto"]]
+            st.dataframe(pk_df.rename(columns={
+                "columna": t("de_pk_columna", lang), "tipo_texto": t("de_pk_tipo", lang),
+                "confianza_texto": t("de_pk_confianza", lang)}), width="stretch", hide_index=True)
+        else:
+            st.caption(t("de_claves_ninguna", lang))
+
+        if res["tiempo"]:
+            tiempo = res["tiempo"]
+            st.subheader(t("de_tiempo_titulo", lang))
+            tc1, tc2, tc3 = st.columns(3)
+            tc1.metric(t("de_tiempo_dias_cubiertos", lang), tiempo["dias_cubiertos"])
+            tc2.metric(t("de_tiempo_dias_faltantes", lang), tiempo["dias_faltantes"])
+            tc3.metric(t("de_tiempo_frescura", lang), tiempo["frescura_dias"])
+            if tiempo.get("huecos_texto"):
+                st.caption(tiempo["huecos_texto"])
+            if tiempo.get("futuras_texto"):
+                st.warning(tiempo["futuras_texto"])
+
+        if res["target"]:
+            tg = res["target"]
+            st.subheader(t("de_target_titulo", lang))
+            if tg.get("fugas"):
+                st.error(t("de_fuga_titulo", lang))
+                for f in tg["fugas"]:
+                    st.markdown(f"- **{f['variable']}** — {f['texto']}")
+            if tg.get("ranking"):
+                st.subheader(t("de_ranking_titulo", lang))
+                st.dataframe(pd.DataFrame(tg["ranking"]).rename(columns={
+                    "variable": t("de_ranking_variable", lang),
+                    "metrica": t("de_ranking_metrica", lang),
+                    "valor": t("de_ranking_valor", lang),
+                    "fuerza": t("de_ranking_fuerza", lang)}), width="stretch", hide_index=True)
+
+        if res["dicc_features"]:
+            st.subheader(t("de_features_titulo", lang))
+            feats = pd.DataFrame(res["dicc_features"])
+            feats["apto_texto"] = feats["apto_series_temporales"].map(
+                lambda v: t("apto_cuidado", lang) if v == "cuidado" else t("apto_si", lang))
+            st.dataframe(feats[["feature", "origen", "etiqueta", "apto_texto"]].rename(columns={
+                "feature": t("de_features_feature", lang), "origen": t("de_features_origen", lang),
+                "etiqueta": t("de_features_calculo", lang),
+                "apto_texto": t("de_features_apto", lang)}), width="stretch", hide_index=True)
+
+        if res["ddl"]:
+            st.subheader(t("de_ddl_titulo", lang))
+            st.code(res["ddl"], language="sql")
+
+
 def _render_profile(user_df, dataset_name: str | None = None):
     """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
     Además lo deja disponible en session_state para guardarlo en el proyecto
@@ -1196,6 +1327,13 @@ def _render_profile(user_df, dataset_name: str | None = None):
     st.caption(t("pr_suggestions_note", lang))
     for s in suggest_rules(user_df, lang):
         st.markdown(f"- {s}")
+
+    # El motor completo de ingeniería de datos, sobre el mismo DataFrame que
+    # ya se perfiló arriba. Solo con dataset_name (archivo o base): la
+    # comparación genérica de los ejemplos no lo necesita, y sin nombre no
+    # hay bajo qué guardar el resultado en session_state.
+    if dataset_name:
+        _render_dataeng(user_df, dataset_name, lang)
 
     # El cierre del recorrido comercial: lo que se ve en pantalla, en un
     # Excel para el cliente del consultor. Solo con dataset_name (archivo o

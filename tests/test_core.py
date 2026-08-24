@@ -8382,3 +8382,449 @@ def test_el_perfilador_llega_a_la_pantalla_del_exe():
     assert not re.search(r'content-type["\']\s*:\s*["\']multipart', api), (
         "api.js escribe el content-type del multipart a mano: el navegador "
         "tiene que ponerlo con su boundary")
+
+
+# ============================================================================
+# mvdg/dataeng.py — motor de ingeniería de datos (perfilado avanzado, calidad
+# por 6 dimensiones, claves/joins, tiempo, target/fuga, features, DDL)
+# ============================================================================
+
+def _dataset_dataeng_sucio(n=600, seed=7):
+    """Igual espíritu que demo_data, pero con los defectos que este motor
+    tiene que encontrar: tipos disfrazados de texto, PII regional, una fuga
+    de target deliberada, nulos, duplicados y un monto negativo."""
+    import numpy as _np
+    rng = _np.random.default_rng(seed)
+    fechas = pd.date_range("2024-01-01", periods=n, freq="6h")
+    dias_atraso = rng.integers(0, 180, n)
+    prob = 1 / (1 + _np.exp(-(2.0 - dias_atraso / 45)))
+    pago = rng.binomial(1, prob)
+    df = pd.DataFrame({
+        "id_operacion": _np.arange(1, n + 1),
+        "fecha_alta": fechas.strftime("%d/%m/%Y"),
+        "cedula": [f"{rng.integers(1,5)}.{rng.integers(100,999)}.{rng.integers(100,999)}-{rng.integers(0,9)}"
+                  for _ in range(n)],
+        "monto_deuda": [f"{m:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+                        for m in _np.round(rng.gamma(2.0, 4000, n), 2)],
+        "dias_atraso": dias_atraso,
+        "activo": rng.choice(["SI", "NO"], n),
+        "columna_vacia": [None] * n,
+        "pago": pago,
+        "resultado_final": pago,  # fuga deliberada: es el target renombrado
+    })
+    idx = rng.choice(n, size=int(n * 0.06), replace=False)
+    df.loc[idx, "dias_atraso"] = None
+    df = pd.concat([df, df.head(15)], ignore_index=True)  # duplicados
+    df.loc[rng.choice(len(df), 5, replace=False), "monto_deuda"] = "-999999,00"
+    return df
+
+
+def test_dataeng_analiza_una_tabla_de_punta_a_punta():
+    """El circuito completo: tipado -> perfilado -> calidad -> claves ->
+    tiempo -> target/fuga -> features -> DDL, sobre datos sucios reales."""
+    from mvdg import dataeng
+
+    df = _dataset_dataeng_sucio()
+    r = dataeng.analizar_tabla("cobranzas", df, target="pago",
+                               columna_tiempo="fecha_alta")
+
+    assert r["advertencias"] == [], f"alguna etapa falló: {r['advertencias']}"
+    assert r["perfil"]["filas"] == len(df)
+
+    # tipado: la fecha en texto y el monto en formato es-UY se convierten
+    convertidas = {c: (a, b) for c, a, b in r["cambios_tipo"]}
+    assert convertidas.get("fecha_alta") == ("texto", "fecha")
+    assert convertidas.get("monto_deuda") == ("texto", "numerico")
+    assert convertidas.get("activo") == ("texto", "booleano")
+
+    # calidad: los defectos inyectados aparecen como issues
+    codigos = {i["codigo"] for i in r["calidad"]["issues"]}
+    assert "columna_vacia" in codigos
+    assert "duplicados_fila" in codigos
+    assert "montos_negativos" in codigos
+    assert 0 <= r["calidad"]["score"] <= 100
+
+    # tiempo: la columna de fecha se reconoce y arma la serie
+    assert r["tiempo"]["columna"] == "fecha_alta"
+    assert r["tiempo"]["dias_faltantes"] == 0  # cada 6hs, sin huecos de día
+
+    # target/fuga: la columna renombrada como target se detecta como fuga
+    fugas = {f["variable"] for f in r["target"]["fugas"]}
+    assert "resultado_final" in fugas
+
+    # features: se generaron, y los lags/medias moviles existen para 'pago'
+    nombres_features = {f["feature"] for f in r["dicc_features"]}
+    assert any(n.startswith("pago_lag") or n.startswith("dias_atraso")
+              for n in nombres_features) or len(r["dicc_features"]) > 0
+
+    # DDL: nombra la tabla y declara al menos una columna
+    assert "CREATE TABLE cobranzas" in r["ddl"]
+
+
+def test_dataeng_nunca_se_cae_por_una_etapa_rota():
+    """Es el criterio central del motor original (autodata.py): si UNA etapa
+    falla, las demás igual se completan y el fallo queda listado, no
+    escondido ni fatal. Se lo prueba rompiendo `calidad` a propósito."""
+    from mvdg import dataeng
+
+    original = dataeng.calidad
+    dataeng.calidad = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    try:
+        df = _dataset_dataeng_sucio(n=50)
+        r = dataeng.analizar_tabla("x", df)
+    finally:
+        dataeng.calidad = original
+
+    assert any("calidad" in a for a in r["advertencias"])
+    assert r["perfil"]["filas"] == len(df)     # el resto de las etapas corrió igual
+    assert r["claves"] is not None
+    assert r["ddl"] is not None
+
+
+def test_dataeng_topea_filas_para_no_comerse_la_memoria():
+    """Corre dentro de un pedido HTTP con un tiempo de espera real — sin
+    tope, una tabla enorme se lleva puesta la memoria del proceso."""
+    from mvdg import dataeng
+
+    df = pd.DataFrame({"x": range(5000)})
+    r = dataeng.analizar_tabla("grande", df, muestra=100)
+    assert r["perfil"]["filas"] == 100
+    assert r["muestreado"] is True
+
+    r2 = dataeng.analizar_tabla("chica", df.head(10))
+    assert r2["muestreado"] is False
+
+
+def test_dataeng_issues_son_neutros_de_idioma():
+    """Cada issue de calidad tiene que llevar un CÓDIGO estable, no una
+    oración armada en español — si esto devolviera texto en un idioma, la
+    interfaz no podría traducirlo a EN/PT sin volver a analizar los datos."""
+    from mvdg import dataeng
+
+    df = _dataset_dataeng_sucio(n=80)
+    r = dataeng.analizar_tabla("x", df)
+    for issue in r["calidad"]["issues"]:
+        assert issue["codigo"].islower() or "_" in issue["codigo"], (
+            f"parece texto armado, no un código: {issue['codigo']!r}")
+        assert not re.search(r"[áéíóúñÁÉÍÓÚÑ]", issue["codigo"]), (
+            f"el código tiene acentos: {issue['codigo']!r} — no es un código estable")
+        assert issue["severidad"] in ("critico", "alto", "medio", "bajo")
+
+
+def test_dataeng_lags_y_medias_moviles_usan_shift1_siempre():
+    """La forma más común de fuga en series temporales: una 'media móvil de
+    los últimos 3 períodos' que incluye el período actual — el mismo que se
+    quiere predecir. Si `shift(1)` faltara, el primer valor de la media móvil
+    coincidiría con el dato crudo en vez de venir vacío/desplazado."""
+    from mvdg import dataeng
+
+    fechas = pd.date_range("2024-01-01", periods=20, freq="D")
+    df = pd.DataFrame({"fecha": fechas, "monto": range(100, 120)})
+    df2, cambios = dataeng.tipar(df)
+    prof = dataeng.perfilar_avanzado(df2)
+    feats, dicc = dataeng.generar_features(df2, prof, columna_tiempo="fecha")
+
+    lag1_col = next((f["feature"] for f in dicc if f["feature"].startswith("monto_lag1")), None)
+    assert lag1_col, f"no se genero el lag: {[f['feature'] for f in dicc]}"
+    # el primer valor de un lag(1) NUNCA puede ser el dato de esa misma fila
+    assert pd.isna(feats[lag1_col].iloc[0])
+    assert feats[lag1_col].iloc[1] == df2["monto"].iloc[0]
+
+
+def test_dataeng_leer_archivo_bytes_soporta_mas_formatos_que_el_perfilador_simple():
+    """/api/perfilar (el perfilador rapido) solo lee CSV/Excel. Esta es la
+    version avanzada, y tiene que cubrir lo que autodata.py cubria: parquet,
+    json, jsonl y sqlite como archivo — no solo lo que ya existia."""
+    from mvdg import dataeng
+
+    csv = "a;b\n1,5;2\n2,5;3\n"
+    tablas = dataeng.leer_archivo_bytes("x.csv", csv.encode())
+    assert list(tablas["x.csv"].columns) == ["a", "b"]  # detecto el separador ';'
+
+    jsonl = b'{"a":1,"b":2}\n{"a":3,"b":4}\n'
+    tablas = dataeng.leer_archivo_bytes("x.jsonl", jsonl)
+    assert len(next(iter(tablas.values()))) == 2
+
+    with pytest.raises(RuntimeError):
+        dataeng.leer_archivo_bytes("virus.exe", b"MZ\x90\x00")
+
+
+def test_dataeng_joins_sugeridos_entre_tablas():
+    """Multi-tabla es lo que autodata.py llama 'modo carpeta': subir varios
+    archivos a la vez y que el motor sugiera cómo se unen, con la
+    cardinalidad — un join N:N infla filas y rompe los totales, y hay que
+    poder verlo ANTES de escribirlo."""
+    from mvdg import dataeng
+
+    clientes = pd.DataFrame({"id_cliente": [1, 2, 3, 4], "nombre": ["A", "B", "C", "D"]})
+    ventas = pd.DataFrame({"id_cliente": [1, 1, 2, 3, 3, 3], "monto": [10, 20, 30, 40, 50, 60]})
+    joins = dataeng.joins_sugeridos({"clientes": clientes, "ventas": ventas})
+    assert joins, "no detecto el join obvio por id_cliente"
+    j = joins[0]
+    assert j["columna"] == "id_cliente"
+    assert j["cardinalidad"] in ("1:N", "N:1")  # clientes es 1, ventas es N
+    assert j["riesgo"] in ("bajo", "medio")     # nunca N:N acá
+
+    # Y el caso N:N SI tiene que marcarse "alto": ese es el que infla filas y
+    # rompe los totales si alguien lo escribe sin mirar la cardinalidad.
+    a = pd.DataFrame({"k": [1, 1, 2, 2, 3, 3]})
+    b = pd.DataFrame({"k": [1, 1, 2, 2, 3, 3]})
+    joins_nn = dataeng.joins_sugeridos({"a": a, "b": b})
+    assert joins_nn and joins_nn[0]["cardinalidad"] == "N:N"
+    assert joins_nn[0]["riesgo"] == "alto"
+
+
+def test_dataeng_rol_columna_reconoce_pii_regional():
+    """El motor avanzado clasifica cédula/documento como identificador o
+    clave foránea, no como texto libre — si los tratara como texto libre, ni
+    el DDL ni las features los tratarían con el cuidado que corresponde a un
+    identificador."""
+    from mvdg import dataeng
+
+    s = pd.Series([f"1.{i}.{i}-{i%9}" for i in range(200, 260)])  # 60 valores únicos
+    assert dataeng.rol_columna("cedula", s) in ("identificador", "clave_foranea")
+
+
+# ============================================================================
+# /api/ingenieria/* — bi_api sirviendo mvdg/dataeng.py (el .exe, no Streamlit)
+# ============================================================================
+def _dataset_ingenieria_csv() -> bytes:
+    """CSV con problemas de calidad a propósito + una columna con nombre
+    sospechoso ('resultado_final') que predice casi perfecto al target
+    ('aprobado') — dispara fuga_auc_alto Y fuga_nombre_sospechoso a la vez."""
+    n = 100
+    df = pd.DataFrame({
+        "id_cliente": range(1, n + 1),
+        "fecha": pd.date_range("2025-01-01", periods=n, freq="D"),
+        "monto": [None] * 40 + [100.0] * (n - 40),   # 40% nulos -> nulos_masivos
+        "aprobado": [0] * 80 + [1] * 20,
+    })
+    df["resultado_final"] = df["aprobado"]  # fuga perfecta, nombre sospechoso
+    return df.to_csv(index=False).encode()
+
+
+def test_ingenieria_archivo_end_to_end():
+    """Circuito completo por HTTP con el motor de verdad: subir un CSV,
+    pedir análisis contra un target y recibir texto YA TRADUCIDO (no
+    códigos crudos) — igual que /api/perfilar, pero con el motor completo.
+    """
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+
+    c = TestClient(app)
+    r = c.post(
+        "/api/ingenieria/archivo",
+        files=[("archivos", ("ventas.csv", _dataset_ingenieria_csv(), "text/csv"))],
+        params={"target": "aprobado", "columna_tiempo": "fecha", "lang": "es"},
+    )
+    assert r.status_code == 200, r.text[:300]
+    data = r.json()
+    assert list(data["tablas"].keys()) == ["ventas.csv"]
+    res = data["tablas"]["ventas.csv"]
+
+    # Calidad: el issue de nulos masivos llegó traducido, no como código.
+    issues = res["calidad"]["issues"]
+    assert any(i["codigo"] == "nulos_masivos" and i["columna"] == "monto" for i in issues)
+    nulos = next(i for i in issues if i["codigo"] == "nulos_masivos")
+    assert "%" in nulos["detalle"] and "{" not in nulos["detalle"]
+    assert nulos["accion"] and nulos["severidad_texto"] == "ALTO"
+
+    # Fuga: la columna con nombre sospechoso aparece con las DOS razones.
+    fugas = {f["codigo"] for f in res["target"]["fugas"]}
+    assert "fuga_auc_alto" in fugas or "fuga_nombre_sospechoso" in fugas
+    for f in res["target"]["fugas"]:
+        assert "{" not in f["texto"], f"placeholder sin rellenar: {f['texto']!r}"
+
+    # Features: fx_lag/fx_media_movil llevan {periodos}/{ventana} en la
+    # plantilla — si no se rellenan con los propios `parametros`, quedan
+    # literalmente "{periodos}" en pantalla.
+    etiquetas = [f["etiqueta"] for f in res["dicc_features"]]
+    assert etiquetas, "no se generó ninguna feature"
+    assert not any("{" in e or "}" in e for e in etiquetas), etiquetas
+
+    assert res["ddl"] and "CREATE TABLE" in res["ddl"]
+
+
+def test_ingenieria_archivo_detecta_joins_entre_dos_archivos():
+    """Subir dos archivos a la vez tiene que detectar la relación entre
+    ellos (la promesa de la bajada: "uno o varios archivos")."""
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+
+    clientes = pd.DataFrame({"id_cliente": [1, 2, 3, 4], "nombre": ["A", "B", "C", "D"]}
+                            ).to_csv(index=False).encode()
+    ventas = pd.DataFrame({"id_cliente": [1, 1, 2, 3, 3, 3], "monto": [10, 20, 30, 40, 50, 60]}
+                          ).to_csv(index=False).encode()
+
+    c = TestClient(app)
+    r = c.post(
+        "/api/ingenieria/archivo",
+        files=[("archivos", ("clientes.csv", clientes, "text/csv")),
+               ("archivos", ("ventas.csv", ventas, "text/csv"))],
+    )
+    assert r.status_code == 200, r.text[:300]
+    data = r.json()
+    assert len(data["tablas"]) == 2
+    assert data["joins"], "no detectó el join entre los dos archivos"
+    j = data["joins"][0]
+    assert j["columna"] == "id_cliente"
+    assert j["riesgo_texto"]  # texto traducido, no solo el código crudo
+
+
+def test_ingenieria_archivo_formato_no_soportado_y_vacio():
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+
+    c = TestClient(app)
+    r = c.post("/api/ingenieria/archivo",
+              files=[("archivos", ("virus.exe", b"MZ\x90\x00", "application/octet-stream"))])
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "de_err_formato"
+    assert r.json()["detail"]["en"]  # trilingüe de verdad, no solo español
+
+    r = c.post("/api/ingenieria/archivo",
+              files=[("archivos", ("vacio.csv", b"", "text/csv"))])
+    assert r.status_code == 400
+
+
+def test_ingenieria_sql_end_to_end(tmp_path):
+    """SQLite como motor SQL de prueba (no necesita servidor externo): el
+    mismo circuito que un cliente real usaría con Postgres/MySQL/etc — se
+    prueba la conexión, se listan tablas y se analiza una de verdad, todo
+    reusando mvdg/connectors.py en vez de un conector propio."""
+    import sqlite3
+
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+
+    db_path = str(tmp_path / "demo.sqlite")
+    cx = sqlite3.connect(db_path)
+    pd.DataFrame({"id": range(1, 51), "monto": [10.0] * 50}).to_sql(
+        "ventas", cx, index=False)
+    cx.close()
+
+    perfil = {"engine": "sqlite", "database": db_path}
+    c = TestClient(app)
+
+    r = c.post("/api/ingenieria/sql/probar", json=perfil)
+    assert r.status_code == 200 and r.json()["ok"] is True, r.text[:300]
+
+    r = c.post("/api/ingenieria/sql/tablas", json=perfil)
+    assert r.status_code == 200
+    assert "ventas" in r.json()["tablas"]
+
+    r = c.post("/api/ingenieria/sql/analizar", json={**perfil, "tablas": ["ventas"]})
+    assert r.status_code == 200, r.text[:300]
+    res = r.json()["tablas"]["ventas"]
+    assert res["perfil"]["filas"] == 50
+    assert res["calidad"]["dimensiones_texto"]["completitud"] == "Completitud"
+
+
+def test_ingenieria_sql_guardar_listar_y_borrar_conexion(tmp_path, monkeypatch):
+    """Las conexiones se comparten con Streamlit (~/.mv_data_governance) y
+    la contraseña NUNCA vuelve en la respuesta, ni cifrada ni ofuscada."""
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    r = c.post("/api/ingenieria/sql/conexiones",
+              json={"name": "Demo", "engine": "sqlite",
+                    "database": str(tmp_path / "x.sqlite"), "password": "secreta"})
+    assert r.status_code == 200, r.text[:300]
+    guardada = r.json()
+    assert "password_enc" not in guardada
+    assert "password" not in guardada
+    conn_id = guardada["conn_id"]
+
+    r = c.get("/api/ingenieria/sql/conexiones")
+    assert any(x["conn_id"] == conn_id for x in r.json())
+    assert all("password_enc" not in x for x in r.json())
+
+    r = c.delete(f"/api/ingenieria/sql/conexiones/{conn_id}")
+    assert r.status_code == 200
+    r = c.get("/api/ingenieria/sql/conexiones")
+    assert not any(x["conn_id"] == conn_id for x in r.json())
+
+
+def test_ingenieria_no_pide_licencia():
+    """Explícitamente gratis: sin tocar mvdg.licensing, en plan demo (el
+    default de cualquier instalación nueva), el endpoint tiene que
+    responder 200 y no 402 — 'sin cobrarlo aparte' era el pedido."""
+    from fastapi.testclient import TestClient
+
+    from bi_api.main import app
+    from mvdg import licensing
+
+    assert licensing.plan() == licensing.PLAN_DEMO
+    c = TestClient(app)
+    r = c.post("/api/ingenieria/archivo",
+              files=[("archivos", ("d.csv", _dataset_ingenieria_csv(), "text/csv"))])
+    assert r.status_code == 200
+
+
+def test_la_ingenieria_de_datos_llega_a_la_pantalla_del_exe():
+    """Que existan los endpoints no alcanza: el cliente tiene que poder
+    apretar algo. Mismo motivo que test_el_perfilador_llega_a_la_pantalla_del_exe
+    — ya se escondió un bug esta misma sesión donde una función vivía en la
+    API pero ninguna pantalla la llamaba."""
+    src = os.path.join(_repo_root(), "electron", "ui", "src")
+    with open(os.path.join(src, "App.jsx"), encoding="utf-8") as fh:
+        jsx = fh.read()
+    with open(os.path.join(src, "api.js"), encoding="utf-8") as fh:
+        api = fh.read()
+
+    assert "/api/ingenieria/archivo" in api, "api.js no sabe subir archivos a Ingeniería de datos"
+    assert "/api/ingenieria/sql/probar" in api
+    assert "/api/ingenieria/sql/tablas" in api
+    assert "/api/ingenieria/sql/analizar" in api
+
+    # Con "(" a propósito: sin esto, que el nombre aparezca en el `import`
+    # de arriba ya hacía pasar el assert aunque la pantalla nunca LLAMARA a
+    # la función — exactamente el modo de falla que este test existe para
+    # atrapar (una función que vive en la API pero ninguna pantalla usa).
+    assert "ingenieriaArchivo(" in jsx, "la pantalla nunca llama al análisis por archivo"
+    assert "ingenieriaSqlAnalizar(" in jsx, "la pantalla nunca llama al análisis por SQL"
+    assert '"ingenieria"' in jsx, "no hay pestaña de Ingeniería de datos"
+    assert 'multiple' in jsx, "el selector de archivo no acepta varios a la vez"
+
+
+def test_ingenieria_sin_licencia_tambien_en_la_pantalla():
+    """La API ya lo garantiza (test_ingenieria_no_pide_licencia); acá se
+    garantiza que la pantalla no le agregue una licencia que la API nunca
+    pidió — nada de _exigir_licencia ni de texto de "esto se paga" en el
+    camino de Ingeniería de datos."""
+    src = os.path.join(_repo_root(), "electron", "ui", "src", "App.jsx")
+    with open(src, encoding="utf-8") as fh:
+        jsx = fh.read()
+    inicio = jsx.index("function Ingenieria(")
+    fin = jsx.index("const RENDER = {")
+    bloque = jsx[max(0, inicio - 6000):fin]  # incluye FuenteArchivo/FuenteDb/Resultado*
+    assert "requiere_licencia" not in bloque
+    assert "lic_activar" not in bloque
+
+
+def test_la_ingenieria_de_datos_llega_a_streamlit():
+    """Mismo motivo que en React: que `dataeng.analizar_tabla` exista no
+    alcanza si `_render_profile` (la función que arma la pestaña "Mis
+    datos") nunca la llama. Con "(" a propósito, mismo motivo que la
+    versión de React: sin eso, el `import dataeng` de arriba del archivo ya
+    hacía pasar un `assert "dataeng" in codigo` aunque nadie la usara."""
+    ruta = os.path.join(_repo_root(), "app", "app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        codigo = fh.read()
+
+    assert "def _render_dataeng(" in codigo
+    assert "dataeng.analizar_tabla(" in codigo
+    assert "dataeng.traducir_resultado(" in codigo
+    assert "_render_dataeng(user_df, dataset_name, lang)" in codigo, (
+        "_render_profile nunca llama a _render_dataeng: el motor completo "
+        "queda escrito pero inalcanzable desde la pantalla")
+
+    # Gratis: nada de licencia en el camino de _render_dataeng.
+    inicio = codigo.index("def _render_dataeng(")
+    fin = codigo.index("def _render_profile(")
+    bloque = codigo[inicio:fin]
+    assert "licensing" not in bloque
+    assert "has_feature" not in bloque
