@@ -262,6 +262,10 @@ async function main() {
     });
     // ---- el aviso de "apreto Comprar" ---------------------------------
     await check("checkout: avisa por mail cuando alguien aprieta Comprar", async () => {
+      // El reset limpia TAMBIEN el deduplicador de avisos, que comparte el
+      // contador del limitador: sin esto, los clics de los checks anteriores
+      // ya "gastaron" el aviso de este plan y no sale ninguno.
+      rateLimit.resetForTests();
       const res = mockRes();
       const envToken = process.env.MP_ACCESS_TOKEN, envKey = process.env.RESEND_API_KEY;
       process.env.MP_ACCESS_TOKEN = "token-de-test";
@@ -303,6 +307,62 @@ async function main() {
       }
     });
 
+    await check("checkout: el que duda y toca cinco veces manda UN mail, no cinco", async () => {
+      // Sin esto, a la tercera vez que pasa se dejan de leer los avisos — que
+      // es peor que no tenerlos, porque el dia que llega uno de verdad ya esta
+      // en la pila de los que se ignoran.
+      rateLimit.resetForTests();
+      const envToken = process.env.MP_ACCESS_TOKEN, envKey = process.env.RESEND_API_KEY;
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      process.env.RESEND_API_KEY = "re_de_prueba";
+      let mails = 0;
+      const req = { method: "POST", headers: { "x-forwarded-for": "9.9.9.9" },
+                    body: { plan: "licencia" } };
+      try {
+        await withMockFetch(
+          async (url) => {
+            if (String(url).includes("resend.com")) {
+              mails++;
+              return { ok: true, json: async () => ({ id: "x" }) };
+            }
+            return { ok: true, json: async () => ({ init_point: "https://mp.test/x" }) };
+          },
+          async () => {
+            for (let i = 0; i < 5; i++) {
+              const res = mockRes();
+              await checkout(req, res);
+              // Cada clic tiene que seguir llevandolo a MercadoPago: el
+              // deduplicador silencia el MAIL, nunca la compra.
+              assert.strictEqual(res._status, 200, `el clic ${i + 1} no pudo comprar`);
+            }
+          }
+        );
+        assert.strictEqual(mails, 1, `mando ${mails} mails por la misma persona`);
+
+        // Otra persona (otra IP) SI tiene que avisar: si el deduplicador
+        // silenciara a todos, el segundo cliente del dia pasaria inadvertido.
+        await withMockFetch(
+          async (url) => {
+            if (String(url).includes("resend.com")) {
+              mails++;
+              return { ok: true, json: async () => ({ id: "x" }) };
+            }
+            return { ok: true, json: async () => ({ init_point: "https://mp.test/x" }) };
+          },
+          async () => {
+            const res = mockRes();
+            await checkout({ ...req, headers: { "x-forwarded-for": "8.8.4.4" } }, res);
+            assert.strictEqual(res._status, 200);
+          }
+        );
+        assert.strictEqual(mails, 2, "otra persona distinta no genero aviso");
+      } finally {
+        if (envToken !== undefined) process.env.MP_ACCESS_TOKEN = envToken; else delete process.env.MP_ACCESS_TOKEN;
+        if (envKey !== undefined) process.env.RESEND_API_KEY = envKey; else delete process.env.RESEND_API_KEY;
+        rateLimit.resetForTests();
+      }
+    });
+
     await check("checkout: si el AVISO falla, la compra sigue igual", async () => {
       // La regla de oro: perder un mail es una molestia; perder una venta por
       // un mail es absurdo. Resend caido, clave vencida, red mala — el
@@ -311,6 +371,8 @@ async function main() {
         async () => { throw new Error("resend caido"); },
         async () => ({ ok: false, json: async () => ({ error: "clave vencida" }) }),
       ]) {
+        // resetForTests limpia el deduplicador: sin esto el segundo caso
+        // quedaria silenciado por el primero y no probaria nada.
         rateLimit.resetForTests();
         const res = mockRes();
         const envToken = process.env.MP_ACCESS_TOKEN, envKey = process.env.RESEND_API_KEY;

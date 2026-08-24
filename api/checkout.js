@@ -55,7 +55,7 @@ module.exports = async (req, res) => {
     if (link) {
       await avisarIntentoDeCompra({
         plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
-        suscripcion: esRecurrente(plan), host: base,
+        suscripcion: esRecurrente(plan), host: base, ip: clientIp(req),
       });
       res.status(200).json({ url: link });
       return;
@@ -108,7 +108,7 @@ module.exports = async (req, res) => {
       // avisar() no lanza nunca — si el mail falla, la compra sigue igual.
       await avisarIntentoDeCompra({
         plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
-        email, suscripcion: true, host: base,
+        email, suscripcion: true, host: base, ip: clientIp(req),
       });
       res.status(200).json({ url: data.init_point, suscripcion: true });
       return;
@@ -136,7 +136,7 @@ module.exports = async (req, res) => {
     }
     await avisarIntentoDeCompra({
       plan, titulo: p.title, precio: p.price, moneda: CURRENCY,
-      suscripcion: false, host: base,
+      suscripcion: false, host: base, ip: clientIp(req),
     });
     res.status(200).json({ url: data.init_point });
   } catch (e) {

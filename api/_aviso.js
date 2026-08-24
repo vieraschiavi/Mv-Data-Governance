@@ -31,8 +31,33 @@
 // medio camino y el mail no sale. Cuesta ~200 ms sobre el clic de Comprar y
 // es la diferencia entre un aviso que llega y uno que llega a veces.
 
+const { rateLimited } = require("./_rate_limit");
+
 const DESTINO = (process.env.MVDG_MAIL_TO || "vieraschiavi@gmail.com").trim();
 const REMITENTE = (process.env.MVDG_MAIL_FROM || "onboarding@resend.dev").trim();
+
+// ────────────────────────────────────────────────────────────────────────────
+// Un cliente indeciso NO son cinco ventas
+// ────────────────────────────────────────────────────────────────────────────
+// Alguien que duda toca Comprar, vuelve, mira el otro plan, toca de nuevo.
+// Sin esto son cinco mails por la misma persona, y a la tercera vez que pasa
+// se dejan de leer los avisos — que es peor que no tenerlos, porque el día
+// que llega uno de verdad ya está en la pila de los que se ignoran.
+//
+// Se deduplica por (plan + IP) durante media hora reusando el limitador que
+// ya existe: `max: 1` significa "el primero pasa, el resto no".
+//
+// LÍMITE HONESTO: el contador vive en la memoria de la instancia serverless,
+// así que si dos clics caen en instancias distintas salen dos mails. Es la
+// misma limitación que ya declara _rate_limit.js para todo lo demás, y acá
+// molesta menos que en otros lados: el peor caso es un mail de más, no una
+// venta perdida ni un aviso que no llega. Con Vercel KV configurado se podría
+// hacer exacto — no vale una dependencia nueva para evitar un mail repetido.
+const DEDUP = { max: 1, windowMs: 30 * 60_000 };
+
+function yaAvisado(clave) {
+  return rateLimited(`aviso:${clave}`, DEDUP);
+}
 
 // Si Resend tarda más que esto, no vale la pena seguir esperando: el
 // comprador está mirando un botón que dice "…" mientras tanto.
@@ -84,7 +109,10 @@ async function avisar(asunto, cuerpo, opciones = {}) {
  * haya que agregarle un dato, se agrega en un lugar.
  */
 async function avisarIntentoDeCompra({ plan, titulo, precio, moneda,
-                                       email, suscripcion, host }) {
+                                       email, suscripcion, host, ip }) {
+  // El que duda y toca cinco veces manda UN mail, no cinco.
+  if (yaAvisado(`${plan}:${ip || email || "anon"}`)) return false;
+
   const cuando = new Date().toISOString().replace("T", " ").slice(0, 16);
   const cuerpo = [
     "Alguien acaba de apretar COMPRAR en MV Data Governance.",
@@ -106,4 +134,5 @@ async function avisarIntentoDeCompra({ plan, titulo, precio, moneda,
     { responderA: email || undefined });
 }
 
-module.exports = { avisar, avisarIntentoDeCompra, DESTINO, REMITENTE };
+module.exports = { avisar, avisarIntentoDeCompra, yaAvisado,
+                   DESTINO, REMITENTE };
