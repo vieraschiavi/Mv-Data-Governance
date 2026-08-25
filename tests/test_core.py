@@ -8828,3 +8828,46 @@ def test_la_ingenieria_de_datos_llega_a_streamlit():
     bloque = codigo[inicio:fin]
     assert "licensing" not in bloque
     assert "has_feature" not in bloque
+
+
+def test_streamlit_tiene_tema_oscuro_configurado():
+    """`app/app.py` pinta el fondo oscuro por CSS (`.stApp { background:
+    navy }`), pero sin `.streamlit/config.toml` Streamlit sigue coloreando
+    párrafos, etiquetas de radio/checkbox/selectbox y captions con el texto
+    casi negro (`rgb(49,51,63)`) de su tema CLARO por defecto — texto
+    invisible sobre fondo oscuro en TODA la barra lateral y en cualquier
+    párrafo del cuerpo, confirmado renderizando la app real en Chromium con
+    un escaneo de contraste real (pixel a pixel, no cascada CSS): bajó de
+    ~30-59 elementos de bajo contraste por pestaña a 0.
+
+    `mvdg_launcher.py` (el .exe) y `mvdg/server.py` (modo servidor web) ya
+    pasaban `--theme.*` por línea de comandos y no tenían este bug — pero
+    `streamlit run app/app.py`, el comando de desarrollo que documenta este
+    mismo CLAUDE.md, no pasaba nada, así que corría con el tema claro por
+    defecto. Los flags de línea de comandos siempre ganan sobre
+    config.toml, así que este archivo solo tapa ese agujero — no compite
+    con los otros dos caminos.
+    """
+    # Parseo manual y no `tomllib` a propósito: es stdlib recién desde
+    # Python 3.11, y este repo corre CI también en 3.10 (ver
+    # .github/workflows/tests.yml) — `tomllib` rompía justo ese job. El
+    # archivo es chato (una sola sección, claves = "valor"), así que una
+    # regex alcanza sin sumar una dependencia (`tomli`) solo para un test.
+    ruta = os.path.join(_repo_root(), ".streamlit", "config.toml")
+    assert os.path.isfile(ruta), (
+        ".streamlit/config.toml no existe: streamlit run app/app.py vuelve "
+        "a correr con el tema claro por defecto (texto casi negro) sobre "
+        "el fondo oscuro que pinta el CSS de app.py")
+    with open(ruta, encoding="utf-8") as fh:
+        contenido = fh.read()
+    tema = dict(re.findall(r'(?m)^(\w+)\s*=\s*"([^"]*)"', contenido))
+    assert tema.get("base") == "dark"
+
+    from mvdg import BRAND
+    # Mismos colores que ya usan mvdg_launcher.py y mvdg/server.py (y el CSS
+    # de app.py vía BRAND): un tema oscuro con paleta distinta confundiría
+    # más de lo que ayuda -- se apoyan en la MISMA fuente de verdad.
+    assert tema.get("primaryColor", "").lower() == BRAND["amber"].lower()
+    assert tema.get("backgroundColor", "").lower() == BRAND["navy"].lower()
+    assert tema.get("secondaryBackgroundColor", "").lower() == BRAND["navy2"].lower()
+    assert tema.get("textColor", "").lower() == BRAND["ink"].lower()

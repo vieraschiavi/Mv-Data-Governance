@@ -1,0 +1,25 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
+#
+# Tema oscuro REAL de Streamlit — no existía este archivo, así que el fondo
+# oscuro que pinta app/app.py por CSS (.stApp { background: navy }) convivía
+# con el tema CLARO por defecto de Streamlit, que sigue coloreando párrafos,
+# etiquetas de radio/checkbox/selectbox, expanders, dataframes y alertas con
+# su texto casi negro (rgb(49,51,63)) de fábrica. Resultado: texto oscuro
+# sobre fondo oscuro en TODA la barra lateral y en cualquier párrafo o
+# etiqueta del cuerpo — no un detalle puntual, sino cada pantalla del
+# programa (y lo mismo corre `mvdg/server.py` en modo web: es el mismo
+# app.py, así que el mismo bug).
+#
+# Con esto, Streamlit genera sus propios estilos (radios, checkboxes,
+# dataframes, alerts, sliders, code blocks) ya coherentes con el fondo
+# oscuro, en vez de necesitar un selector CSS por cada widget nativo — que
+# es exactamente lo que faltaba: la hoja de estilos de app.py solo cubría
+# h1/h2/h3, el valor/etiqueta de las métricas y el fondo de la barra
+# lateral, dejando todo lo demás en su color de tema claro por defecto.
+[theme]
+base = "dark"
+primaryColor = "#f2b441"
+backgroundColor = "#081527"
+secondaryBackgroundColor = "#0c2137"
+textColor = "#eaf1fb"
