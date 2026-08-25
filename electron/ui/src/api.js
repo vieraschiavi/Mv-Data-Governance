@@ -192,3 +192,85 @@ export async function perfilar(archivo, lang) {
   if (!r.ok) throw new ApiError("archivo_invalido", datos.detail);
   return datos;
 }
+
+/* --- Ingeniería de datos: perfil avanzado + calidad 6D + claves/joins +
+   tiempo + fuga (leakage) + features + DDL, sobre archivo o base de datos.
+   Gratis, igual que perfilar(): no requiere licencia — "sin cobrarlo aparte"
+   fue el pedido.
+
+   El texto de contenido (issues, roles, riesgos de join…) ya viene TRADUCIDO
+   desde bi_api (mismo motor de idioma que el resto de la API); acá no se
+   arma ninguna oración, solo se transportan los datos. --- */
+
+// `detail` puede ser un string (validaciones simples) o el objeto trilingüe
+// {error, es, en, pt} que arma bi_api._de_error — de ahí sale el texto.
+function detalleDe(datos) {
+  const d = datos && datos.detail;
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  return d.es || d.en || d.pt || d.detalle || JSON.stringify(d);
+}
+
+async function enviarJson(ruta, cuerpo) {
+  let r;
+  try {
+    r = await fetch(`${BASE}${ruta}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(cuerpo || {}),
+    });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError("respuesta_invalida", detalleDe(datos));
+  return datos;
+}
+
+export async function ingenieriaArchivo(archivos, { target = "", columnaTiempo = "", lang = "es" } = {}) {
+  const cuerpo = new FormData();
+  for (const a of archivos) cuerpo.append("archivos", a);
+  const qs = new URLSearchParams({ lang, target, columna_tiempo: columnaTiempo });
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/ingenieria/archivo?${qs}`, { method: "POST", body: cuerpo });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const datos = await r.json().catch(() => ({}));
+  if (r.status === 413) throw new ApiError("archivo_muy_grande", detalleDe(datos));
+  if (!r.ok) throw new ApiError("archivo_invalido", detalleDe(datos));
+  return datos;
+}
+
+export function ingenieriaSqlProbar(perfil) {
+  return enviarJson("/api/ingenieria/sql/probar", perfil);
+}
+
+export function ingenieriaSqlTablas(perfil) {
+  return enviarJson("/api/ingenieria/sql/tablas", perfil);
+}
+
+export function ingenieriaSqlAnalizar(cuerpo, lang) {
+  return enviarJson(`/api/ingenieria/sql/analizar?lang=${encodeURIComponent(lang)}`, cuerpo);
+}
+
+export function ingenieriaSqlGuardarConexion(perfil) {
+  return enviarJson("/api/ingenieria/sql/conexiones", perfil);
+}
+
+export async function ingenieriaSqlConexiones() {
+  return pedir("/api/ingenieria/sql/conexiones");
+}
+
+export async function ingenieriaSqlBorrarConexion(connId) {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/ingenieria/sql/conexiones/${encodeURIComponent(connId)}`,
+                    { method: "DELETE" });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
+  return r.json();
+}

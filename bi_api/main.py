@@ -506,6 +506,233 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
     }
 
 
+# ───────────────────────────────────────────────────────────────────────────
+# INGENIERÍA DE DATOS AUTOMÁTICA (mvdg/dataeng.py)
+# ───────────────────────────────────────────────────────────────────────────
+# La pestaña completa: perfil avanzado, calidad por 6 dimensiones, claves y
+# joins entre tablas, análisis temporal, fuga de información (leakage) contra
+# un target y feature engineering anti-leakage — sobre un archivo o una base
+# de datos SQL. Gratis, igual que /api/perfilar: no está en FUNCIONES_PAGAS.
+#
+# El motor (mvdg/dataeng.py) es language-neutral a propósito: cada issue,
+# cada motivo de fuga y cada feature llevan un CÓDIGO estable, no una
+# oración armada. La traducción pasa ACÁ, en la API — mismo lugar donde ya
+# se resuelve el idioma para el resto de /api/perfilar y de las tablas de
+# gobierno — así que ni Streamlit ni React tienen que reimplementar la
+# lógica de "qué texto le corresponde a este código".
+#
+# La fuente SQL reusa mvdg/connectors.py (9 motores, credenciales protegidas
+# con el keyring del SO) en vez de duplicar un conector acá: es el mismo
+# motor que ya usa la pestaña Perfilador de Streamlit, con las conexiones
+# guardadas compartidas entre las dos interfaces (~/.mv_data_governance).
+#
+# La traducción de los códigos language-neutral vive en `mvdg.dataeng`
+# (`traducir_resultado` y compañía), no acá: Streamlit también la necesita
+# para su propia integración de este motor, y duplicarla en bi_api hubiera
+# significado dos lugares que traducen "qi_nulos_masivos" y que pueden
+# desalinearse — el mismo tipo de bug que ya le costó caro a este proyecto
+# (ver api/checkout.js, precio y vencimiento separados en dos archivos).
+
+
+def _de_error(clave: str, status: int, **extra) -> HTTPException:
+    """Arma un HTTPException trilingüe a partir de una clave de mvdg/i18n.py."""
+    from mvdg.i18n import t
+    return HTTPException(status, {
+        "error": clave,
+        "es": t(clave, "es"), "en": t(clave, "en"), "pt": t(clave, "pt"),
+        **extra,
+    })
+
+
+# 60 MB: un poco más que /api/perfilar porque acá entran varios archivos a
+# la vez (o un .sqlite con varias tablas), no uno solo.
+_MAX_BYTES_DE = 60 * 1024 * 1024
+_ARCHIVOS = File(...)
+
+
+@app.post("/api/ingenieria/archivo", tags=["governance"])
+async def ingenieria_archivo(
+    archivos: list[UploadFile] = _ARCHIVOS,
+    lang: str = Query("es", pattern="^(es|en|pt)$"),
+    target: str = Query(""),
+    columna_tiempo: str = Query(""),
+):
+    """Analiza uno o varios archivos (CSV/TSV/Excel/Parquet/JSON/JSONL/SQLite)
+    con el motor completo de ingeniería de datos. No requiere licencia. No
+    guarda nada — igual que /api/perfilar.
+    """
+    from mvdg import dataeng
+
+    if not archivos:
+        raise _de_error("de_err_vacio", 400)
+
+    tablas: dict = {}
+    restante = _MAX_BYTES_DE
+    for arch in archivos:
+        nombre = (arch.filename or "").strip()
+        ext = os.path.splitext(nombre.lower())[1]
+        if ext not in dataeng.EXT_SOPORTADAS:
+            raise _de_error("de_err_formato", 400)
+        crudo = await arch.read(restante + 1)
+        if len(crudo) > restante:
+            raise _de_error("de_grande", 413)
+        if not crudo:
+            continue
+        restante -= len(crudo)
+        try:
+            leidas = dataeng.leer_archivo_bytes(nombre, crudo)
+        except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
+            raise _de_error("de_malo", 400, tipo=type(exc).__name__) from exc
+        stem = dataeng.slug(os.path.splitext(nombre)[0], 30)
+        for tname, tdf in leidas.items():
+            clave = tname if len(archivos) == 1 else f"{stem}__{tname}"
+            base, i = clave, 2
+            while clave in tablas:
+                clave = f"{base}_{i}"
+                i += 1
+            tablas[clave] = tdf
+
+    if not tablas:
+        raise _de_error("de_err_vacio", 400)
+
+    truncado_tablas = len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
+    if truncado_tablas:
+        tablas = dict(list(tablas.items())[:dataeng.MAX_TABLAS_MULTIPLES])
+
+    tgt = target.strip() or None
+    tcol = columna_tiempo.strip() or None
+    resultados = {
+        nombre: dataeng.traducir_resultado(
+            dataeng.analizar_tabla(nombre, df, target=tgt, columna_tiempo=tcol), lang)
+        for nombre, df in tablas.items()
+    }
+    joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
+    return {
+        "tablas": resultados,
+        "joins": dataeng.traducir_joins(joins, lang),
+        "truncado_tablas": truncado_tablas,
+    }
+
+
+def _de_resolver_conexion(cuerpo: dict) -> tuple[dict, str | None]:
+    """Arma (profile, password) a partir del cuerpo del pedido.
+
+    Si trae `conn_id`, parte de la conexión ya guardada (no hace falta
+    reescribir host/usuario cada vez) y el cuerpo puede pisar cualquier
+    campo puntual — incluida la contraseña, sin que eso la guarde.
+    """
+    from mvdg import connectors
+    cuerpo = cuerpo or {}
+    conn_id = cuerpo.get("conn_id")
+    base = {}
+    if conn_id:
+        for c in connectors.load_connections():
+            if c.get("conn_id") == conn_id:
+                base = dict(c)
+                break
+    profile = {**base, **{k: v for k, v in cuerpo.items() if v not in (None, "")}}
+    password = cuerpo.get("password") or (connectors.stored_password(base) if base else "")
+    return profile, (password or None)
+
+
+@app.get("/api/ingenieria/sql/conexiones", tags=["governance"])
+def ingenieria_sql_conexiones():
+    """Conexiones guardadas — nunca la contraseña, ni cifrada ni ofuscada."""
+    from mvdg import connectors
+    return [{k: v for k, v in c.items() if k != "password_enc"}
+            for c in connectors.load_connections()]
+
+
+@app.post("/api/ingenieria/sql/conexiones", tags=["governance"])
+def ingenieria_sql_guardar(cuerpo: dict = _CUERPO):
+    """Guarda (o actualiza, por `conn_id`) una conexión a base de datos."""
+    from mvdg import connectors
+    cuerpo = cuerpo or {}
+    if not str(cuerpo.get("name", "")).strip():
+        raise HTTPException(400, "Falta el nombre de la conexión.")
+    stored = connectors.save_connection(cuerpo, save_password=bool(cuerpo.get("save_password", True)))
+    return {k: v for k, v in stored.items() if k != "password_enc"}
+
+
+@app.delete("/api/ingenieria/sql/conexiones/{conn_id}", tags=["governance"])
+def ingenieria_sql_borrar(conn_id: str):
+    from mvdg import connectors
+    connectors.delete_connection(conn_id)
+    return {"ok": True}
+
+
+@app.post("/api/ingenieria/sql/probar", tags=["governance"])
+def ingenieria_sql_probar(cuerpo: dict = _CUERPO):
+    """Prueba una conexión SQL (ad hoc o guardada por `conn_id`)."""
+    profile, password = _de_resolver_conexion(cuerpo)
+    from mvdg import connectors
+    ok, msg = connectors.test_connection(profile, password=password)
+    return {"ok": ok, "mensaje": msg}
+
+
+@app.post("/api/ingenieria/sql/tablas", tags=["governance"])
+def ingenieria_sql_tablas(cuerpo: dict = _CUERPO):
+    """Tablas visibles en la conexión."""
+    profile, password = _de_resolver_conexion(cuerpo)
+    from mvdg import connectors
+    try:
+        tablas = connectors.list_tables(profile, password=password)
+    except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
+        raise HTTPException(502, {"error": "conexion_fallo", "tipo": type(exc).__name__,
+                                  "detalle": str(exc)}) from exc
+    return {"tablas": tablas}
+
+
+@app.post("/api/ingenieria/sql/analizar", tags=["governance"])
+def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
+                            lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Trae una o varias tablas (o el resultado de una consulta SELECT/WITH)
+    y corre el motor completo de ingeniería de datos. Gratis, sin licencia —
+    igual que /api/ingenieria/archivo, solo cambia de dónde sale el
+    DataFrame.
+    """
+    from mvdg import connectors, dataeng
+
+    profile, password = _de_resolver_conexion(cuerpo)
+    if not profile.get("engine"):
+        raise HTTPException(400, "Falta el motor de la conexión.")
+
+    try:
+        limite = max(1, min(int(cuerpo.get("limite") or dataeng.MUESTRA_SQL_DEFECTO),
+                            connectors.MAX_ROWS))
+    except (TypeError, ValueError):
+        limite = dataeng.MUESTRA_SQL_DEFECTO
+
+    query = str(cuerpo.get("query") or "").strip()
+    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES]
+
+    tablas: dict = {}
+    try:
+        if query:
+            tablas["consulta"] = connectors.run_query(profile, query, limite, password=password)
+        for nombre in nombres_tablas:
+            tablas[nombre] = connectors.load_table(profile, nombre, limite, password=password)
+    except ValueError as exc:  # consulta que no es SELECT/WITH
+        raise HTTPException(400, {"error": "consulta_no_permitida", "detalle": str(exc)}) from exc
+    except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
+        raise HTTPException(502, {"error": "conexion_fallo", "tipo": type(exc).__name__,
+                                  "detalle": str(exc)}) from exc
+
+    if not tablas:
+        raise HTTPException(400, "Indicá al menos una tabla o una consulta.")
+
+    tgt = str(cuerpo.get("target") or "").strip() or None
+    tcol = str(cuerpo.get("columna_tiempo") or "").strip() or None
+    resultados = {
+        nombre: dataeng.traducir_resultado(
+            dataeng.analizar_tabla(nombre, df, target=tgt, columna_tiempo=tcol,
+                                   muestra=dataeng.TOPE_FILAS), lang)
+        for nombre, df in tablas.items()
+    }
+    joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
+    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang)}
+
+
 @app.post("/api/bi/escanear-tenant", tags=["governance"])
 def escanear_tenant(cuerpo: dict = _CUERPO,
                     lang: str = Query("es", pattern="^(es|en|pt)$")):

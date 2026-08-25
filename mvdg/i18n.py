@@ -2101,6 +2101,474 @@ _T: dict[str, dict[str, str]] = {
         "en": "Show technical detail",
         "pt": "Ver detalhe técnico",
     },
+
+    # ========================================================================
+    # Ingeniería de datos automática (mvdg/dataeng.py) — pestaña nueva,
+    # gratuita: perfilado avanzado + calidad por 6 dimensiones + claves/joins
+    # + tiempo + target/fuga (leakage) + feature engineering + DDL sugerido,
+    # sobre un archivo o una base de datos (mvdg/connectors.py).
+    #
+    # Los mensajes con {placeholders} (qi_*, fuga_*, fx_*) los arma el
+    # backend con `.format(**valores)` usando la `lang` pedida — mismo
+    # patrón que ya usa `mvdg/profiler.py::suggest_rules`. El resto son
+    # etiquetas de interfaz (chrome), usadas por Streamlit y espejadas en
+    # `electron/ui/src/i18n.js` para el .exe.
+    # ========================================================================
+    "de_tab": {"es": "Ingeniería de datos", "en": "Data Engineering", "pt": "Engenharia de dados"},
+    "de_titulo": {"es": "Ingeniería de datos automática",
+                  "en": "Automatic data engineering",
+                  "pt": "Engenharia de dados automática"},
+    "de_bajada": {
+        "es": "Subí uno o varios archivos, o conectate a tu base de datos. En segundos: "
+              "calidad por 6 dimensiones, claves y joins sugeridos, análisis temporal, "
+              "detección de fuga contra un target y features listas para modelar.",
+        "en": "Upload one or more files, or connect to your database. In seconds: "
+              "quality across 6 dimensions, suggested keys and joins, time analysis, "
+              "leakage detection against a target, and model-ready features.",
+        "pt": "Envie um ou mais arquivos, ou conecte ao seu banco de dados. Em segundos: "
+              "qualidade em 6 dimensões, chaves e joins sugeridos, análise temporal, "
+              "detecção de vazamento contra um target e features prontas para modelar.",
+    },
+    # Streamlit reusa el DataFrame que la pestaña "Mis datos" ya cargó (no
+    # tiene su propio selector de archivo/base), así que "de_bajada" —
+    # pensada para el .exe, que SÍ tiene su propio uploader — quedaba
+    # engañosa acá adentro: prometía subir algo que esta sección no pide.
+    "de_bajada_streamlit": {
+        "es": "Motor completo sobre los mismos datos que ya cargaste arriba: calidad por "
+              "6 dimensiones, claves y joins, análisis temporal, fuga contra un target y "
+              "features listas para modelar.",
+        "en": "The full engine over the same data you already loaded above: quality "
+              "across 6 dimensions, keys and joins, time analysis, leakage detection "
+              "against a target, and model-ready features.",
+        "pt": "O motor completo sobre os mesmos dados que você já carregou acima: "
+              "qualidade em 6 dimensões, chaves e joins, análise temporal, vazamento "
+              "contra um target e features prontas para modelar.",
+    },
+    "de_privado": {
+        "es": "Los archivos no salen de tu computadora: se leen en memoria y no se guardan "
+              "en ningún lado. Una conexión a base de datos usa tus propias credenciales, "
+              "en el momento — nunca quedan guardadas salvo que vos lo pidas.",
+        "en": "Files never leave your computer: they are read in memory and stored "
+              "nowhere. A database connection uses your own credentials, on the spot — "
+              "never saved unless you ask for it.",
+        "pt": "Os arquivos não saem do seu computador: são lidos na memória e não ficam "
+              "guardados em lugar nenhum. Uma conexão de banco de dados usa suas próprias "
+              "credenciais, na hora — nunca ficam guardadas a menos que você peça.",
+    },
+
+    "de_fuente": {"es": "Fuente de datos", "en": "Data source", "pt": "Fonte de dados"},
+    "de_fuente_archivo": {"es": "Archivo", "en": "File", "pt": "Arquivo"},
+    "de_fuente_db": {"es": "Base de datos", "en": "Database", "pt": "Banco de dados"},
+
+    "de_elegir_archivos": {"es": "Elegir archivo(s)", "en": "Choose file(s)", "pt": "Escolher arquivo(s)"},
+    "de_leyendo": {"es": "Analizando…", "en": "Analyzing…", "pt": "Analisando…"},
+    "de_vacio": {"es": "Todavía no analizaste ningún dato.",
+                 "en": "You haven't analyzed any data yet.",
+                 "pt": "Você ainda não analisou nenhum dado."},
+    "de_target": {"es": "Columna objetivo (opcional)", "en": "Target column (optional)",
+                  "pt": "Coluna objetivo (opcional)"},
+    "de_target_ph": {"es": "ej: pago, churn, resultado", "en": "e.g. paid, churn, outcome",
+                     "pt": "ex: pago, churn, resultado"},
+    "de_target_ayuda": {
+        "es": "Si la indicás, se rankean las variables contra ella y se avisa si alguna "
+              "\"predice demasiado bien\" — la forma más común de fuga de información.",
+        "en": "If given, variables are ranked against it and you're warned if one "
+              "\"predicts too well\" — the most common form of information leakage.",
+        "pt": "Se informada, as variáveis são ranqueadas contra ela e avisamos se alguma "
+              "\"prevê bem demais\" — a forma mais comum de vazamento de informação.",
+    },
+    "de_tiempo_col": {"es": "Columna de fecha (opcional)", "en": "Date column (optional)",
+                      "pt": "Coluna de data (opcional)"},
+    "de_tiempo_col_ph": {"es": "se detecta sola si no la elegís",
+                         "en": "auto-detected if you don't pick one",
+                         "pt": "detectada sozinha se você não escolher"},
+    "de_analizar": {"es": "Analizar", "en": "Analyze", "pt": "Analisar"},
+    "de_grande": {"es": "El archivo pasa el tamaño máximo permitido.",
+                  "en": "The file is over the maximum allowed size.",
+                  "pt": "O arquivo passa do tamanho máximo permitido."},
+    "de_malo": {"es": "No se pudo leer alguno de los archivos.",
+                "en": "One of the files could not be read.",
+                "pt": "Não foi possível ler um dos arquivos."},
+    "de_muestreado": {
+        "es": "Se analizaron las primeras filas, no todas — el resultado es representativo "
+              "pero no exhaustivo.",
+        "en": "The first rows were analyzed, not all of them — the result is "
+              "representative but not exhaustive.",
+        "pt": "Foram analisadas as primeiras linhas, não todas — o resultado é "
+              "representativo mas não exaustivo.",
+    },
+
+    # --- Conexión a base de datos ------------------------------------------
+    "de_db_motor": {"es": "Motor", "en": "Engine", "pt": "Motor"},
+    "de_db_host": {"es": "Servidor", "en": "Host", "pt": "Servidor"},
+    "de_db_puerto": {"es": "Puerto", "en": "Port", "pt": "Porta"},
+    "de_db_base": {"es": "Base de datos", "en": "Database", "pt": "Banco de dados"},
+    "de_db_usuario": {"es": "Usuario", "en": "User", "pt": "Usuário"},
+    "de_db_clave": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
+    "de_db_ruta_sqlite": {"es": "Ruta del archivo .sqlite", "en": "Path to the .sqlite file",
+                          "pt": "Caminho do arquivo .sqlite"},
+    "de_db_extra": {"es": "Parámetros propios de este motor (JSON)",
+                    "en": "Engine-specific parameters (JSON)",
+                    "pt": "Parâmetros próprios deste motor (JSON)"},
+    "de_db_probar": {"es": "Probar conexión", "en": "Test connection", "pt": "Testar conexão"},
+    "de_db_probando": {"es": "Probando…", "en": "Testing…", "pt": "Testando…"},
+    "de_db_tabla": {"es": "Tabla", "en": "Table", "pt": "Tabela"},
+    "de_db_elegir_tabla": {"es": "Elegí una tabla…", "en": "Pick a table…", "pt": "Escolha uma tabela…"},
+    "de_db_cargar_tabla": {"es": "Analizar esta tabla", "en": "Analyze this table",
+                           "pt": "Analisar esta tabela"},
+    "de_db_o_query": {"es": "…o escribí una consulta (SELECT / WITH)",
+                      "en": "…or write a query (SELECT / WITH)",
+                      "pt": "…ou escreva uma consulta (SELECT / WITH)"},
+    "de_db_query_ph": {"es": "SELECT * FROM ventas WHERE fecha >= '2026-01-01'",
+                       "en": "SELECT * FROM sales WHERE date >= '2026-01-01'",
+                       "pt": "SELECT * FROM vendas WHERE data >= '2026-01-01'"},
+    "de_db_ejecutar_query": {"es": "Analizar el resultado de la consulta",
+                             "en": "Analyze the query result",
+                             "pt": "Analisar o resultado da consulta"},
+    "de_db_limite": {"es": "Límite de filas", "en": "Row limit", "pt": "Limite de linhas"},
+    "de_db_sin_tablas": {"es": "La conexión funciona pero no encontramos tablas visibles.",
+                         "en": "The connection works but no visible tables were found.",
+                         "pt": "A conexão funciona mas não encontramos tabelas visíveis."},
+    "de_db_conectar_primero": {"es": "Probá la conexión primero.",
+                               "en": "Test the connection first.",
+                               "pt": "Teste a conexão primeiro."},
+    "de_db_falta_driver": {
+        "es": "Este motor necesita un driver que no está instalado en el programa.",
+        "en": "This engine needs a driver that isn't installed in the program.",
+        "pt": "Este motor precisa de um driver que não está instalado no programa.",
+    },
+
+    # --- KPIs y resumen ------------------------------------------------------
+    "de_kpi_filas": {"es": "Filas", "en": "Rows", "pt": "Linhas"},
+    "de_kpi_columnas": {"es": "Columnas", "en": "Columns", "pt": "Colunas"},
+    "de_kpi_score": {"es": "Calidad", "en": "Quality", "pt": "Qualidade"},
+    "de_kpi_criticos": {"es": "Problemas críticos", "en": "Critical issues", "pt": "Problemas críticos"},
+
+    "de_dimensiones_titulo": {"es": "Calidad por dimensión", "en": "Quality by dimension",
+                              "pt": "Qualidade por dimensão"},
+    "dim_completitud": {"es": "Completitud", "en": "Completeness", "pt": "Completude"},
+    "dim_unicidad": {"es": "Unicidad", "en": "Uniqueness", "pt": "Unicidade"},
+    "dim_consistencia": {"es": "Consistencia", "en": "Consistency", "pt": "Consistência"},
+    "dim_validez": {"es": "Validez", "en": "Validity", "pt": "Validade"},
+    "dim_utilidad": {"es": "Utilidad", "en": "Usefulness", "pt": "Utilidade"},
+    "dim_integridad": {"es": "Integridad", "en": "Integrity", "pt": "Integridade"},
+
+    "de_tipos_titulo": {"es": "Tipos corregidos automáticamente",
+                        "en": "Automatically corrected types",
+                        "pt": "Tipos corrigidos automaticamente"},
+    "de_tipos_col": {"es": "Columna", "en": "Column", "pt": "Coluna"},
+    "de_tipos_de": {"es": "Venía como", "en": "Came in as", "pt": "Vinha como"},
+    "de_tipos_a": {"es": "Convertido a", "en": "Converted to", "pt": "Convertido para"},
+    "tipo_texto": {"es": "texto", "en": "text", "pt": "texto"},
+    "tipo_fecha": {"es": "fecha", "en": "date", "pt": "data"},
+    "tipo_numerico": {"es": "numérico", "en": "numeric", "pt": "numérico"},
+    "tipo_booleano": {"es": "booleano", "en": "boolean", "pt": "booleano"},
+
+    # --- Perfil de columnas ---------------------------------------------------
+    "de_perfil_titulo": {"es": "Perfil de columnas", "en": "Column profile", "pt": "Perfil de colunas"},
+    "de_perfil_rol": {"es": "Rol", "en": "Role", "pt": "Papel"},
+    "de_perfil_nulos": {"es": "Nulos %", "en": "Null %", "pt": "Nulos %"},
+    "de_perfil_unicos": {"es": "Únicos", "en": "Unique", "pt": "Únicos"},
+    "rol_fecha": {"es": "Fecha", "en": "Date", "pt": "Data"},
+    "rol_identificador": {"es": "Identificador", "en": "Identifier", "pt": "Identificador"},
+    "rol_clave_foranea": {"es": "Clave foránea", "en": "Foreign key", "pt": "Chave estrangeira"},
+    "rol_metrica": {"es": "Métrica", "en": "Metric", "pt": "Métrica"},
+    "rol_metrica_monetaria": {"es": "Métrica monetaria", "en": "Monetary metric", "pt": "Métrica monetária"},
+    "rol_flag": {"es": "Indicador (0/1)", "en": "Flag (0/1)", "pt": "Indicador (0/1)"},
+    "rol_dimension": {"es": "Dimensión", "en": "Dimension", "pt": "Dimensão"},
+    "rol_texto_libre": {"es": "Texto libre", "en": "Free text", "pt": "Texto livre"},
+
+    # --- Problemas de calidad (severidad + detalle + acción) -----------------
+    "de_issues_titulo": {"es": "Problemas de calidad", "en": "Quality issues", "pt": "Problemas de qualidade"},
+    "de_issues_sin": {"es": "Sin problemas críticos detectados.",
+                      "en": "No critical issues detected.",
+                      "pt": "Nenhum problema crítico detectado."},
+    "de_issues_columna": {"es": "Columna", "en": "Column", "pt": "Coluna"},
+    "de_issues_severidad": {"es": "Severidad", "en": "Severity", "pt": "Severidade"},
+    "de_issues_detalle": {"es": "Detalle", "en": "Detail", "pt": "Detalhe"},
+    "de_issues_accion": {"es": "Qué hacer", "en": "What to do", "pt": "O que fazer"},
+    "sev_critico": {"es": "CRÍTICO", "en": "CRITICAL", "pt": "CRÍTICO"},
+    "sev_alto": {"es": "ALTO", "en": "HIGH", "pt": "ALTO"},
+    "sev_medio": {"es": "MEDIO", "en": "MEDIUM", "pt": "MÉDIO"},
+    "sev_bajo": {"es": "BAJO", "en": "LOW", "pt": "BAIXO"},
+
+    "qi_duplicados_fila": {"es": "{duplicados} filas duplicadas ({pct}%).",
+                           "en": "{duplicados} duplicate rows ({pct}%).",
+                           "pt": "{duplicados} linhas duplicadas ({pct}%)."},
+    "qi_duplicados_fila_accion": {
+        "es": "Definir la clave de negocio y deduplicar con ROW_NUMBER() antes de cargar.",
+        "en": "Define the business key and deduplicate with ROW_NUMBER() before loading.",
+        "pt": "Definir a chave de negócio e deduplicar com ROW_NUMBER() antes de carregar.",
+    },
+    "qi_columna_vacia": {"es": "{pct}% de nulos.", "en": "{pct}% null.", "pt": "{pct}% de nulos."},
+    "qi_columna_vacia_accion": {
+        "es": "Descartarla del modelo o confirmar con el origen si dejó de poblarse.",
+        "en": "Drop it from the model or confirm with the source if it stopped being filled.",
+        "pt": "Descartar do modelo ou confirmar com a origem se deixou de ser preenchida.",
+    },
+    "qi_nulos_masivos": {"es": "{pct}% de nulos.", "en": "{pct}% null.", "pt": "{pct}% de nulos."},
+    "qi_nulos_masivos_accion": {
+        "es": "Imputar con criterio de negocio o tratar \"falta el dato\" como categoría propia.",
+        "en": "Impute using business judgment, or treat \"missing\" as its own category.",
+        "pt": "Imputar com critério de negócio ou tratar \"falta o dado\" como categoria própria.",
+    },
+    "qi_nulos": {"es": "{pct}% de nulos.", "en": "{pct}% null.", "pt": "{pct}% de nulos."},
+    "qi_nulos_accion": {
+        "es": "Documentar el default y agregar un indicador *_faltante.",
+        "en": "Document the default and add a *_missing flag.",
+        "pt": "Documentar o padrão e adicionar um indicador *_faltante.",
+    },
+    "qi_constante": {"es": "Un solo valor distinto en toda la columna.",
+                     "en": "Only one distinct value in the whole column.",
+                     "pt": "Apenas um valor distinto em toda a coluna."},
+    "qi_constante_accion": {
+        "es": "No aporta información: sacarla del modelo (ocupa espacio y confunde).",
+        "en": "Adds no information: drop it from the model (wastes space and confuses).",
+        "pt": "Não traz informação: tirar do modelo (ocupa espaço e confunde).",
+    },
+    "qi_cardinalidad_casi_unica": {"es": "{unicos} valores distintos sobre {filas} filas.",
+                                   "en": "{unicos} distinct values over {filas} rows.",
+                                   "pt": "{unicos} valores distintos em {filas} linhas."},
+    "qi_cardinalidad_casi_unica_accion": {
+        "es": "Probable identificador o texto libre: no usar como categoría en un modelo.",
+        "en": "Likely an identifier or free text: don't use it as a category in a model.",
+        "pt": "Provável identificador ou texto livre: não usar como categoria em um modelo.",
+    },
+    "qi_montos_negativos": {"es": "{negativos} valores negativos.",
+                            "en": "{negativos} negative values.",
+                            "pt": "{negativos} valores negativos."},
+    "qi_montos_negativos_accion": {
+        "es": "Confirmar si son notas de crédito/reversas; si no, es error de origen.",
+        "en": "Confirm whether they're credit notes/reversals; if not, it's a source error.",
+        "pt": "Confirmar se são notas de crédito/estornos; senão, é erro de origem.",
+    },
+    "qi_outliers": {"es": "{outliers} fuera de 1,5·IQR ({pct}%).",
+                    "en": "{outliers} beyond 1.5·IQR ({pct}%).",
+                    "pt": "{outliers} fora de 1,5·IQR ({pct}%)."},
+    "qi_outliers_accion": {
+        "es": "Winsorizar al p99 para modelos, pero NUNCA borrar filas en el reporte de negocio.",
+        "en": "Winsorize at p99 for models, but NEVER drop rows in the business report.",
+        "pt": "Winsorizar no p99 para modelos, mas NUNCA apagar linhas no relatório de negócio.",
+    },
+    "qi_asimetria": {"es": "asimetría = {valor}.", "en": "skewness = {valor}.", "pt": "assimetria = {valor}."},
+    "qi_asimetria_accion": {
+        "es": "Aplicar log1p si vas a usarla en un modelo lineal.",
+        "en": "Apply log1p if you're going to use it in a linear model.",
+        "pt": "Aplicar log1p se for usá-la em um modelo linear.",
+    },
+    "qi_casi_todo_ceros": {"es": "{pct}% en cero.", "en": "{pct}% are zero.", "pt": "{pct}% em zero."},
+    "qi_casi_todo_ceros_accion": {
+        "es": "Verificar si el cero es \"sin dato\" disfrazado.",
+        "en": "Check whether zero is really \"no data\" in disguise.",
+        "pt": "Verificar se o zero é \"sem dado\" disfarçado.",
+    },
+    "qi_nombres_no_aptos_sql": {"es": "{total} columnas con espacios, acentos o símbolos: {lista}.",
+                                "en": "{total} columns with spaces, accents or symbols: {lista}.",
+                                "pt": "{total} colunas com espaços, acentos ou símbolos: {lista}."},
+    "qi_nombres_no_aptos_sql_accion": {
+        "es": "Normalizar a snake_case sin acentos antes de escribir en la base.",
+        "en": "Normalize to snake_case without accents before writing to the database.",
+        "pt": "Normalizar para snake_case sem acentos antes de gravar no banco.",
+    },
+
+    # --- Claves y joins --------------------------------------------------------
+    "de_claves_titulo": {"es": "Claves detectadas", "en": "Detected keys", "pt": "Chaves detectadas"},
+    "de_claves_ninguna": {
+        "es": "No se detectó clave primaria. Sin clave no podés deduplicar ni hacer cargas "
+              "idempotentes: definila con negocio.",
+        "en": "No primary key detected. Without a key you can't deduplicate or do idempotent "
+              "loads: define one with the business.",
+        "pt": "Nenhuma chave primária detectada. Sem chave você não consegue deduplicar nem "
+              "fazer cargas idempotentes: defina-a com o negócio.",
+    },
+    "de_pk_columna": {"es": "Columna", "en": "Column", "pt": "Coluna"},
+    "de_pk_tipo": {"es": "Tipo", "en": "Type", "pt": "Tipo"},
+    "de_pk_confianza": {"es": "Confianza", "en": "Confidence", "pt": "Confiança"},
+    "pk_simple": {"es": "PK simple", "en": "Simple PK", "pt": "PK simples"},
+    "pk_candidata": {"es": "PK candidata", "en": "Candidate PK", "pt": "PK candidata"},
+    "pk_compuesta": {"es": "PK compuesta", "en": "Composite PK", "pt": "PK composta"},
+    "confianza_alta": {"es": "alta", "en": "high", "pt": "alta"},
+    "confianza_media": {"es": "media", "en": "medium", "pt": "média"},
+
+    "de_joins_titulo": {"es": "Relaciones detectadas entre tablas",
+                        "en": "Detected relationships between tables",
+                        "pt": "Relações detectadas entre tabelas"},
+    "de_joins_explicacion": {
+        "es": "Detectadas por coincidencia de nombre + solapamiento real de valores. Verificá "
+              "la cardinalidad antes de usarlas: un join N:N infla las filas y rompe los totales.",
+        "en": "Detected by matching column names + real value overlap. Check the cardinality "
+              "before using them: an N:N join inflates rows and breaks totals.",
+        "pt": "Detectadas por coincidência de nome + sobreposição real de valores. Verifique a "
+              "cardinalidade antes de usá-las: um join N:N infla as linhas e quebra os totais.",
+    },
+    "de_joins_izquierda": {"es": "Izquierda", "en": "Left", "pt": "Esquerda"},
+    "de_joins_derecha": {"es": "Derecha", "en": "Right", "pt": "Direita"},
+    "de_joins_columna": {"es": "Columna", "en": "Column", "pt": "Coluna"},
+    "de_joins_solape": {"es": "Solape", "en": "Overlap", "pt": "Sobreposição"},
+    "de_joins_cardinalidad": {"es": "Cardinalidad", "en": "Cardinality", "pt": "Cardinalidade"},
+    "de_joins_riesgo": {"es": "Riesgo", "en": "Risk", "pt": "Risco"},
+    "riesgo_alto": {"es": "ALTO — N:N infla filas", "en": "HIGH — N:N inflates rows",
+                    "pt": "ALTO — N:N infla linhas"},
+    "riesgo_medio": {"es": "MEDIO — validar granularidad", "en": "MEDIUM — validate granularity",
+                     "pt": "MÉDIO — validar granularidade"},
+    "riesgo_bajo": {"es": "BAJO", "en": "LOW", "pt": "BAIXO"},
+
+    # --- Tiempo ------------------------------------------------------------------
+    "de_tiempo_titulo": {"es": "Análisis temporal", "en": "Time analysis", "pt": "Análise temporal"},
+    "de_tiempo_desde": {"es": "Desde", "en": "From", "pt": "Desde"},
+    "de_tiempo_hasta": {"es": "Hasta", "en": "To", "pt": "Até"},
+    "de_tiempo_dias_cubiertos": {"es": "Días con datos", "en": "Days with data", "pt": "Dias com dados"},
+    "de_tiempo_dias_faltantes": {"es": "Días faltantes", "en": "Missing days", "pt": "Dias faltantes"},
+    "de_tiempo_frescura": {"es": "Frescura (días)", "en": "Freshness (days)", "pt": "Frescor (dias)"},
+    "de_tiempo_tendencia": {"es": "Tendencia", "en": "Trend", "pt": "Tendência"},
+    "tendencia_creciente": {"es": "creciente", "en": "growing", "pt": "crescente"},
+    "tendencia_decreciente": {"es": "decreciente", "en": "declining", "pt": "decrescente"},
+    "tendencia_estable": {"es": "estable", "en": "stable", "pt": "estável"},
+    "de_tiempo_huecos": {
+        "es": "Faltan {dias} días en la serie. Si el proceso corre solo días hábiles es "
+              "esperable; si no, hay cargas perdidas.",
+        "en": "The series is missing {dias} days. Expected if the process only runs on "
+              "business days; otherwise there are missing loads.",
+        "pt": "Faltam {dias} dias na série. Esperado se o processo roda só em dias úteis; "
+              "senão, há cargas perdidas.",
+    },
+    "de_tiempo_futuras": {
+        "es": "{futuras} fechas en el futuro. Casi siempre es error de carga o de zona horaria.",
+        "en": "{futuras} dates in the future. Almost always a load or timezone error.",
+        "pt": "{futuras} datas no futuro. Quase sempre é erro de carga ou de fuso horário.",
+    },
+
+    # --- Target y fuga (leakage) --------------------------------------------------
+    "de_target_titulo": {"es": "Variable objetivo", "en": "Target variable", "pt": "Variável objetivo"},
+    "de_target_tasa": {"es": "Tasa de positivos", "en": "Positive rate", "pt": "Taxa de positivos"},
+    "de_target_balance": {"es": "Balance", "en": "Balance", "pt": "Balanço"},
+    "balance_muy_desbalanceado": {"es": "muy desbalanceado", "en": "very imbalanced", "pt": "muito desbalanceado"},
+    "balance_desbalanceado": {"es": "desbalanceado", "en": "imbalanced", "pt": "desbalanceado"},
+    "balance_razonable": {"es": "razonable", "en": "reasonable", "pt": "razoável"},
+
+    "de_fuga_titulo": {"es": "Sospecha de fuga de información (leakage)",
+                       "en": "Suspected information leakage",
+                       "pt": "Suspeita de vazamento de informação"},
+    "de_fuga_explicacion": {
+        "es": "Estas variables predicen el target demasiado bien, o describen algo posterior "
+              "al hecho. Si entrenás con ellas, el modelo va a lucir excelente en test y "
+              "fallar en producción.",
+        "en": "These variables predict the target too well, or describe something that "
+              "happens after the fact. If you train with them, the model will look great "
+              "in testing and fail in production.",
+        "pt": "Essas variáveis preveem o target bem demais, ou descrevem algo posterior ao "
+              "fato. Se você treinar com elas, o modelo vai parecer ótimo no teste e falhar "
+              "em produção.",
+    },
+    "fuga_auc_alto": {"es": "AUC = {auc} — casi perfecta.", "en": "AUC = {auc} — near-perfect.",
+                      "pt": "AUC = {auc} — quase perfeita."},
+    "fuga_correlacion_alta": {"es": "correlación {corr} con el target.",
+                              "en": "{corr} correlation with the target.",
+                              "pt": "correlação {corr} com o target."},
+    "fuga_mi_alta": {"es": "información mutua {mi} — determina el target.",
+                     "en": "mutual information {mi} — determines the target.",
+                     "pt": "informação mútua {mi} — determina o target."},
+    "fuga_nombre_sospechoso": {
+        "es": "el nombre sugiere información posterior al hecho a predecir.",
+        "en": "the name suggests information from after the event being predicted.",
+        "pt": "o nome sugere informação posterior ao fato a prever.",
+    },
+    "de_ranking_titulo": {"es": "Variables más asociadas al target",
+                          "en": "Variables most associated with the target",
+                          "pt": "Variáveis mais associadas ao target"},
+    "de_ranking_variable": {"es": "Variable", "en": "Variable", "pt": "Variável"},
+    "de_ranking_metrica": {"es": "Métrica", "en": "Metric", "pt": "Métrica"},
+    "de_ranking_valor": {"es": "Valor", "en": "Value", "pt": "Valor"},
+    "de_ranking_fuerza": {"es": "Fuerza", "en": "Strength", "pt": "Força"},
+
+    # --- Features generadas ---------------------------------------------------------
+    "de_features_titulo": {"es": "Features generadas", "en": "Generated features",
+                           "pt": "Features geradas"},
+    "de_features_feature": {"es": "Feature", "en": "Feature", "pt": "Feature"},
+    "de_features_origen": {"es": "Origen", "en": "Source", "pt": "Origem"},
+    "de_features_calculo": {"es": "Cálculo", "en": "Calculation", "pt": "Cálculo"},
+    "de_features_apto": {"es": "Apta para series temporales", "en": "Safe for time series",
+                         "pt": "Apta para séries temporais"},
+    "apto_si": {"es": "Sí", "en": "Yes", "pt": "Sim"},
+    "apto_cuidado": {"es": "Con cuidado", "en": "With care", "pt": "Com cuidado"},
+
+    "fx_anio": {"es": "Año", "en": "Year", "pt": "Ano"},
+    "fx_mes": {"es": "Mes (1-12)", "en": "Month (1-12)", "pt": "Mês (1-12)"},
+    "fx_trimestre": {"es": "Trimestre", "en": "Quarter", "pt": "Trimestre"},
+    "fx_dia_semana": {"es": "Día de la semana (0 = lunes)", "en": "Day of week (0 = Monday)",
+                      "pt": "Dia da semana (0 = segunda)"},
+    "fx_es_finde": {"es": "Es sábado o domingo", "en": "Is Saturday or Sunday",
+                    "pt": "É sábado ou domingo"},
+    "fx_dia_mes": {"es": "Día del mes", "en": "Day of month", "pt": "Dia do mês"},
+    "fx_fin_de_mes": {"es": "Es el último día del mes", "en": "Is the last day of the month",
+                      "pt": "É o último dia do mês"},
+    "fx_mes_seno": {"es": "Codificación cíclica del mes (seno)",
+                    "en": "Cyclical month encoding (sine)",
+                    "pt": "Codificação cíclica do mês (seno)"},
+    "fx_mes_coseno": {"es": "Codificación cíclica del mes (coseno)",
+                      "en": "Cyclical month encoding (cosine)",
+                      "pt": "Codificação cíclica do mês (cosseno)"},
+    "fx_dias_desde_max": {"es": "Días hasta la fecha máxima del dataset",
+                          "en": "Days until the dataset's latest date",
+                          "pt": "Dias até a data máxima do dataset"},
+    "fx_dias_desde_max_cuidado": {
+        "es": "recalcular con la fecha de corte real en producción, no con el máximo del dataset.",
+        "en": "recompute using the real cutoff date in production, not the dataset's maximum.",
+        "pt": "recalcular com a data de corte real em produção, não com o máximo do dataset.",
+    },
+    "fx_log1p": {"es": "log(1+x), corrige asimetría", "en": "log(1+x), corrects skewness",
+                "pt": "log(1+x), corrige assimetria"},
+    "fx_flag_faltante": {"es": "1 si el dato falta", "en": "1 if the value is missing",
+                         "pt": "1 se o dado falta"},
+    "fx_flag_cero": {"es": "1 si vale cero", "en": "1 if it's zero", "pt": "1 se vale zero"},
+    "fx_winsorizado": {"es": "Winsorizado entre p1 y p99", "en": "Winsorized between p1 and p99",
+                       "pt": "Winsorizado entre p1 e p99"},
+    "fx_quintil": {"es": "Quintil (1-5) dentro del dataset", "en": "Quintile (1-5) within the dataset",
+                  "pt": "Quintil (1-5) dentro do dataset"},
+    "fx_quintil_cuidado": {
+        "es": "el corte se calcula con TODO el dataset — recalcularlo solo con train.",
+        "en": "the cutoff is computed over the WHOLE dataset — recompute it using train only.",
+        "pt": "o corte é calculado com TODO o dataset — recalcular apenas com o train.",
+    },
+    "fx_ratio": {"es": "Ratio entre dos montos", "en": "Ratio between two amounts",
+                "pt": "Razão entre dois valores"},
+    "fx_frecuencia_categoria": {"es": "Frecuencia relativa de la categoría",
+                                "en": "Relative frequency of the category",
+                                "pt": "Frequência relativa da categoria"},
+    "fx_frecuencia_categoria_cuidado": {
+        "es": "calcular la frecuencia SOLO con los datos de entrenamiento.",
+        "en": "compute the frequency using TRAINING data only.",
+        "pt": "calcular a frequência SOMENTE com os dados de treinamento.",
+    },
+    "fx_categoria_rara": {"es": "1 si la categoría tiene menos de 1% de los casos",
+                          "en": "1 if the category has under 1% of the cases",
+                          "pt": "1 se a categoria tem menos de 1% dos casos"},
+    "fx_largo_texto": {"es": "Cantidad de caracteres", "en": "Character count", "pt": "Quantidade de caracteres"},
+    "fx_cant_palabras": {"es": "Cantidad de palabras", "en": "Word count", "pt": "Quantidade de palavras"},
+    "fx_lag": {"es": "Valor de {periodos} período(s) atrás", "en": "Value from {periodos} period(s) ago",
+              "pt": "Valor de {periodos} período(s) atrás"},
+    "fx_media_movil": {
+        "es": "Media de los últimos {ventana} períodos (con shift, nunca incluye el actual)",
+        "en": "Average of the last {ventana} periods (shifted, never includes the current one)",
+        "pt": "Média dos últimos {ventana} períodos (com shift, nunca inclui o atual)",
+    },
+    "fx_variacion_pct": {"es": "Variación % contra el período anterior",
+                         "en": "% change vs. the previous period",
+                         "pt": "Variação % contra o período anterior"},
+
+    "de_ddl_titulo": {"es": "DDL sugerido", "en": "Suggested DDL", "pt": "DDL sugerido"},
+
+    "de_err_formato": {
+        "es": "Formato no soportado. Se aceptan CSV, TSV, Excel, Parquet, JSON, JSONL y SQLite.",
+        "en": "Unsupported format. CSV, TSV, Excel, Parquet, JSON, JSONL and SQLite are accepted.",
+        "pt": "Formato não suportado. Aceitam-se CSV, TSV, Excel, Parquet, JSON, JSONL e SQLite.",
+    },
+    "de_err_vacio": {"es": "El archivo está vacío.", "en": "The file is empty.",
+                     "pt": "O arquivo está vazio."},
+    "de_err_roto": {"es": "No se pudo leer el archivo. ¿Está completo y bien formado?",
+                    "en": "The file could not be read. Is it complete and well formed?",
+                    "pt": "Não foi possível ler o arquivo. Está completo e bem formado?"},
+
 }
 
 

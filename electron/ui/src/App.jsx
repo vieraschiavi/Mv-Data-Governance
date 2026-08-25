@@ -14,11 +14,16 @@
  * bundle de un instalador que ya pesa cientos de MB.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { activarLicencia, conectores, desactivarLicencia, escanearTenant, licencia, migrar, perfilar, renovarLicencia, todo } from "./api";
+import {
+  activarLicencia, conectores, desactivarLicencia, escanearTenant,
+  ingenieriaArchivo, ingenieriaSqlAnalizar, ingenieriaSqlBorrarConexion,
+  ingenieriaSqlConexiones, ingenieriaSqlGuardarConexion, ingenieriaSqlProbar,
+  ingenieriaSqlTablas, licencia, migrar, perfilar, renovarLicencia, todo,
+} from "./api";
 import { t } from "./i18n";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
-                "politicas", "misdatos", "licencia"];
+                "politicas", "misdatos", "ingenieria", "licencia"];
 
 /* ------------------------------------------------------------- helpers */
 
@@ -612,9 +617,498 @@ function MisDatos({ lang }) {
   );
 }
 
+/* --- Ingeniería de datos: el motor completo (mvdg/dataeng.py) sobre un
+   archivo o una base de datos SQL. Gratis, igual que Mis datos: es la
+   versión avanzada del mismo perfilador — calidad por 6 dimensiones,
+   claves y joins entre tablas, análisis temporal, fuga de información
+   contra un target y features listas para modelar, más DDL sugerido.
+
+   El texto de contenido (detalle de issues, rol de columna, riesgo de
+   join, motivo de fuga) llega YA TRADUCIDO desde bi_api — el mismo motor
+   de idioma que resuelve el resto de la API. Acá no se arma ninguna
+   oración, solo se muestra lo que llegó. --- */
+
+const MOTORES_SQL = [
+  ["postgresql", "PostgreSQL"], ["mysql", "MySQL / MariaDB"], ["sqlserver", "SQL Server"],
+  ["oracle", "Oracle"], ["sqlite", "SQLite (archivo)"], ["synapse", "Azure Synapse"],
+  ["snowflake", "Snowflake"], ["bigquery", "Google BigQuery"], ["databricks", "Databricks"],
+];
+
+function DimensionesBarras({ dimensiones, dimensionesTexto, lang }) {
+  const filas = Object.entries(dimensiones || {}).map(([dim, quality_index]) => ({ dim, quality_index }));
+  return <Barras filas={filas} clave="dim" lang={lang}
+                 traducirNombre={(k) => (dimensionesTexto || {})[k] || k} />;
+}
+
+function ResultadoTabla({ nombre, res, lang }) {
+  const cal = res.calidad;
+  const criticos = (cal.issues || []).filter((i) => i.severidad === "critico").length;
+
+  return (
+    <div className="panel">
+      <h3><code>{nombre}</code></h3>
+      {res.muestreado ? <p className="sub">{t("de_muestreado", lang)}</p> : null}
+
+      <div className="md-cifras">
+        <div><b>{res.perfil.filas}</b><span>{t("de_kpi_filas", lang)}</span></div>
+        <div><b>{res.perfil.columnas}</b><span>{t("de_kpi_columnas", lang)}</span></div>
+        <div><b>{cal.score}</b><span>{t("de_kpi_score", lang)}</span></div>
+        <div><b>{criticos}</b><span>{t("de_kpi_criticos", lang)}</span></div>
+      </div>
+
+      <h4>{t("de_dimensiones_titulo", lang)}</h4>
+      <DimensionesBarras dimensiones={cal.dimensiones} dimensionesTexto={cal.dimensiones_texto} lang={lang} />
+
+      {res.cambios_tipo && res.cambios_tipo.length ? (
+        <>
+          <h4>{t("de_tipos_titulo", lang)}</h4>
+          <Tabla lang={lang} filas={res.cambios_tipo} columnas={[
+            { clave: "columna", etiqueta: t("de_tipos_col", lang), render: (f) => <code>{f.columna}</code> },
+            { clave: "de", etiqueta: t("de_tipos_de", lang) },
+            { clave: "a", etiqueta: t("de_tipos_a", lang) },
+          ]} />
+        </>
+      ) : null}
+
+      <h4>{t("de_perfil_titulo", lang)}</h4>
+      <Tabla lang={lang} filas={res.perfil.detalle || []} columnas={[
+        { clave: "columna", etiqueta: t("col_column", lang), render: (f) => <code>{f.columna}</code> },
+        { clave: "dtype", etiqueta: t("col_type", lang) },
+        { clave: "rol_texto", etiqueta: t("de_perfil_rol", lang) },
+        { clave: "nulos_pct", etiqueta: t("de_perfil_nulos", lang), tipo: "num" },
+        { clave: "unicos", etiqueta: t("de_perfil_unicos", lang), tipo: "num" },
+      ]} />
+
+      <h4>{t("de_issues_titulo", lang)}</h4>
+      {cal.issues && cal.issues.length ? (
+        <Tabla lang={lang} filas={cal.issues} columnas={[
+          { clave: "severidad_texto", etiqueta: "·",
+            render: (f) => <span className={`pill sev-${f.severidad}`}>{f.severidad_texto}</span> },
+          { clave: "columna", etiqueta: t("de_issues_columna", lang),
+            render: (f) => (f.columna ? <code>{f.columna}</code> : "—") },
+          { clave: "detalle", etiqueta: t("de_issues_detalle", lang) },
+          { clave: "accion", etiqueta: t("de_issues_accion", lang) },
+        ]} />
+      ) : <p className="sub">{t("de_issues_sin", lang)}</p>}
+
+      <h4>{t("de_claves_titulo", lang)}</h4>
+      {res.claves.pk && res.claves.pk.length ? (
+        <Tabla lang={lang} filas={res.claves.pk} columnas={[
+          { clave: "columna", etiqueta: t("de_pk_columna", lang), render: (f) => <code>{f.columna}</code> },
+          { clave: "tipo_texto", etiqueta: t("de_pk_tipo", lang) },
+          { clave: "confianza_texto", etiqueta: t("de_pk_confianza", lang) },
+        ]} />
+      ) : <p className="sub">{t("de_claves_ninguna", lang)}</p>}
+
+      {res.tiempo ? (
+        <>
+          <h4>{t("de_tiempo_titulo", lang)}</h4>
+          <div className="md-cifras">
+            <div><b>{res.tiempo.desde && res.tiempo.desde.slice(0, 10)}</b><span>{t("de_tiempo_desde", lang)}</span></div>
+            <div><b>{res.tiempo.hasta && res.tiempo.hasta.slice(0, 10)}</b><span>{t("de_tiempo_hasta", lang)}</span></div>
+            <div><b>{res.tiempo.dias_cubiertos}</b><span>{t("de_tiempo_dias_cubiertos", lang)}</span></div>
+            <div><b>{res.tiempo.dias_faltantes}</b><span>{t("de_tiempo_dias_faltantes", lang)}</span></div>
+            <div><b>{res.tiempo.frescura_dias}</b><span>{t("de_tiempo_frescura", lang)}</span></div>
+            {res.tiempo.tendencia_texto ? (
+              <div><b>{res.tiempo.tendencia_texto}</b><span>{t("de_tiempo_tendencia", lang)}</span></div>
+            ) : null}
+          </div>
+          {res.tiempo.huecos_texto ? <p className="sub">{res.tiempo.huecos_texto}</p> : null}
+          {res.tiempo.futuras_texto ? <p className="malo">{res.tiempo.futuras_texto}</p> : null}
+        </>
+      ) : null}
+
+      {res.target ? (
+        <>
+          <h4>{t("de_target_titulo", lang)}</h4>
+          <div className="md-cifras">
+            {res.target.tasa_positivos_pct !== undefined ? (
+              <div><b>{res.target.tasa_positivos_pct}%</b><span>{t("de_target_tasa", lang)}</span></div>
+            ) : null}
+            {res.target.balance_texto ? (
+              <div><b>{res.target.balance_texto}</b><span>{t("de_target_balance", lang)}</span></div>
+            ) : null}
+          </div>
+
+          {res.target.fugas && res.target.fugas.length ? (
+            <>
+              <h4 className="malo">{t("de_fuga_titulo", lang)}</h4>
+              <ul>
+                {res.target.fugas.map((f, i) => <li key={i}><code>{f.variable}</code> — {f.texto}</li>)}
+              </ul>
+            </>
+          ) : null}
+
+          {res.target.ranking && res.target.ranking.length ? (
+            <>
+              <h4>{t("de_ranking_titulo", lang)}</h4>
+              <Tabla lang={lang} filas={res.target.ranking} columnas={[
+                { clave: "variable", etiqueta: t("de_ranking_variable", lang), render: (f) => <code>{f.variable}</code> },
+                { clave: "metrica", etiqueta: t("de_ranking_metrica", lang) },
+                { clave: "valor", etiqueta: t("de_ranking_valor", lang), tipo: "num" },
+                { clave: "fuerza", etiqueta: t("de_ranking_fuerza", lang), tipo: "num" },
+              ]} />
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {res.dicc_features && res.dicc_features.length ? (
+        <>
+          <h4>{t("de_features_titulo", lang)}</h4>
+          <Tabla lang={lang} filas={res.dicc_features} columnas={[
+            { clave: "feature", etiqueta: t("de_features_feature", lang), render: (f) => <code>{f.feature}</code> },
+            { clave: "origen", etiqueta: t("de_features_origen", lang) },
+            { clave: "etiqueta", etiqueta: t("de_features_calculo", lang),
+              render: (f) => (
+                <>
+                  {f.etiqueta}
+                  {f.cuidado_texto ? <em className="sub"> · {f.cuidado_texto}</em> : null}
+                </>
+              ) },
+            { clave: "apto_series_temporales", etiqueta: t("de_features_apto", lang),
+              render: (f) => t(f.apto_series_temporales === "cuidado" ? "apto_cuidado" : "apto_si", lang) },
+          ]} />
+        </>
+      ) : null}
+
+      {res.ddl ? (
+        <>
+          <h4>{t("de_ddl_titulo", lang)}</h4>
+          <pre className="fn-salida">{res.ddl}</pre>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ResultadoAnalisis({ resultado, lang }) {
+  if (!resultado) return null;
+  const nombres = Object.keys(resultado.tablas || {});
+  return (
+    <>
+      {resultado.truncado_tablas ? <p className="sub">{t("de_truncado_tablas", lang)}</p> : null}
+      {resultado.joins && resultado.joins.length ? (
+        <div className="panel">
+          <h3>{t("de_joins_titulo", lang)}</h3>
+          <p className="sub">{t("de_joins_explicacion", lang)}</p>
+          <Tabla lang={lang} filas={resultado.joins} columnas={[
+            { clave: "izquierda", etiqueta: t("de_joins_izquierda", lang), render: (f) => <code>{f.izquierda}</code> },
+            { clave: "derecha", etiqueta: t("de_joins_derecha", lang), render: (f) => <code>{f.derecha}</code> },
+            { clave: "columna", etiqueta: t("de_joins_columna", lang), render: (f) => <code>{f.columna}</code> },
+            { clave: "solape_pct", etiqueta: t("de_joins_solape", lang), tipo: "num", render: (f) => `${f.solape_pct}%` },
+            { clave: "cardinalidad", etiqueta: t("de_joins_cardinalidad", lang) },
+            { clave: "riesgo_texto", etiqueta: t("de_joins_riesgo", lang) },
+          ]} />
+        </div>
+      ) : null}
+      {nombres.map((n) => <ResultadoTabla key={n} nombre={n} res={resultado.tablas[n]} lang={lang} />)}
+    </>
+  );
+}
+
+function FuenteArchivo({ lang, onAnalizado, target, setTarget, columnaTiempo, setColumnaTiempo }) {
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function elegidos(ev) {
+    const archivos = Array.from(ev.target.files || []);
+    if (!archivos.length) return;
+    setCargando(true);
+    setError(null);
+    try {
+      onAnalizado(await ingenieriaArchivo(archivos, { target, columnaTiempo, lang }));
+    } catch (e) {
+      setError(e.detalle || e.message);
+    } finally {
+      setCargando(false);
+      // mismo motivo que en Mis datos: sin esto, reintentar con el mismo
+      // nombre de archivo no dispara el evento onChange.
+      ev.target.value = "";
+    }
+  }
+
+  return (
+    <>
+      <div className="fila">
+        <div>
+          <label htmlFor="de-target">{t("de_target", lang)}</label>
+          <input id="de-target" value={target} placeholder={t("de_target_ph", lang)}
+                 onChange={(e) => setTarget(e.target.value)} />
+        </div>
+        <div>
+          <label htmlFor="de-tcol">{t("de_tiempo_col", lang)}</label>
+          <input id="de-tcol" value={columnaTiempo} placeholder={t("de_tiempo_col_ph", lang)}
+                 onChange={(e) => setColumnaTiempo(e.target.value)} />
+        </div>
+      </div>
+      <label className="btn md-elegir">
+        {cargando ? t("de_leyendo", lang) : t("de_elegir_archivos", lang)}
+        <input type="file" multiple
+               accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,.parquet,.json,.jsonl,.ndjson,.db,.sqlite,.sqlite3,.db3"
+               onChange={elegidos} disabled={cargando} hidden />
+      </label>
+      {error ? <p className="malo" role="status">{error}</p> : null}
+    </>
+  );
+}
+
+function FuenteDb({ lang, onAnalizado, target, setTarget, columnaTiempo, setColumnaTiempo }) {
+  const [conexiones, setConexiones] = useState([]);
+  const [connId, setConnId] = useState("");
+  const [motor, setMotor] = useState("postgresql");
+  const [nombre, setNombre] = useState("");
+  const [host, setHost] = useState("");
+  const [puerto, setPuerto] = useState("");
+  const [base, setBase] = useState("");
+  const [usuario, setUsuario] = useState("");
+  const [clave, setClave] = useState("");
+  const [probando, setProbando] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [tablasDisponibles, setTablasDisponibles] = useState([]);
+  const [tablasElegidas, setTablasElegidas] = useState([]);
+  const [query, setQuery] = useState("");
+  const [limite, setLimite] = useState(10000);
+  const [analizando, setAnalizando] = useState(false);
+
+  const esSqlite = motor === "sqlite";
+
+  useEffect(() => {
+    ingenieriaSqlConexiones().then(setConexiones).catch(() => setConexiones([]));
+  }, []);
+
+  function perfilActual() {
+    return {
+      conn_id: connId || undefined, name: nombre, engine: motor,
+      host: esSqlite ? "" : host, port: esSqlite ? null : (puerto || null),
+      database: base, user: esSqlite ? "" : usuario, password: esSqlite ? "" : clave,
+    };
+  }
+
+  function elegirGuardada(id) {
+    setConnId(id);
+    setTablasDisponibles([]);
+    setTablasElegidas([]);
+    setMsg(null);
+    const c = conexiones.find((x) => x.conn_id === id);
+    if (!c) return;
+    setMotor(c.engine || "postgresql");
+    setNombre(c.name || "");
+    setHost(c.host || "");
+    setPuerto(c.port ? String(c.port) : "");
+    setBase(c.database || "");
+    setUsuario(c.user || "");
+    setClave("");
+  }
+
+  async function probar() {
+    setProbando(true);
+    setMsg(null);
+    setTablasDisponibles([]);
+    try {
+      const r = await ingenieriaSqlProbar(perfilActual());
+      setMsg({ mal: !r.ok, txt: r.mensaje });
+      if (r.ok) {
+        const rt = await ingenieriaSqlTablas(perfilActual());
+        setTablasDisponibles(rt.tablas || []);
+      }
+    } catch (e) {
+      setMsg({ mal: true, txt: e.detalle || e.message });
+    } finally {
+      setProbando(false);
+    }
+  }
+
+  async function guardar() {
+    try {
+      const guardada = await ingenieriaSqlGuardarConexion({ ...perfilActual(), save_password: true });
+      setConnId(guardada.conn_id);
+      setMsg({ mal: false, txt: t("de_db_guardada", lang) });
+      setConexiones(await ingenieriaSqlConexiones());
+    } catch (e) {
+      setMsg({ mal: true, txt: e.detalle || e.message });
+    }
+  }
+
+  async function borrar(id) {
+    await ingenieriaSqlBorrarConexion(id).catch(() => {});
+    if (id === connId) setConnId("");
+    setConexiones(await ingenieriaSqlConexiones().catch(() => []));
+  }
+
+  function alternarTabla(tabla) {
+    setTablasElegidas((prev) => (prev.includes(tabla) ? prev.filter((x) => x !== tabla) : [...prev, tabla]));
+  }
+
+  async function analizar() {
+    setAnalizando(true);
+    setMsg(null);
+    try {
+      const cuerpo = {
+        ...perfilActual(), tablas: tablasElegidas, query: query.trim(),
+        limite: Number(limite) || undefined, target, columna_tiempo: columnaTiempo,
+      };
+      onAnalizado(await ingenieriaSqlAnalizar(cuerpo, lang));
+    } catch (e) {
+      setMsg({ mal: true, txt: e.detalle || e.message });
+    } finally {
+      setAnalizando(false);
+    }
+  }
+
+  return (
+    <>
+      {conexiones.length ? (
+        <div className="fila">
+          <div>
+            <label htmlFor="de-conn">{t("de_db_guardadas", lang)}</label>
+            <select id="de-conn" value={connId} onChange={(e) => elegirGuardada(e.target.value)}>
+              <option value="">{t("de_db_nueva", lang)}</option>
+              {conexiones.map((c) => (
+                <option key={c.conn_id} value={c.conn_id}>
+                  {c.name || c.host || c.conn_id} ({c.engine})
+                </option>
+              ))}
+            </select>
+          </div>
+          {connId ? (
+            <button type="button" className="btn btn-sec" onClick={() => borrar(connId)}>
+              {t("de_db_borrar", lang)}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="fila">
+        <div>
+          <label htmlFor="de-motor">{t("de_db_motor", lang)}</label>
+          <select id="de-motor" value={motor} onChange={(e) => setMotor(e.target.value)}>
+            {MOTORES_SQL.map(([k, etq]) => <option key={k} value={k}>{etq}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="de-nombre">{t("de_db_nombre", lang)}</label>
+          <input id="de-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        </div>
+      </div>
+
+      {esSqlite ? (
+        <div className="fila">
+          <div>
+            <label htmlFor="de-base">{t("de_db_ruta_sqlite", lang)}</label>
+            <input id="de-base" value={base} onChange={(e) => setBase(e.target.value)} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="fila">
+            <div><label htmlFor="de-host">{t("de_db_host", lang)}</label>
+              <input id="de-host" value={host} onChange={(e) => setHost(e.target.value)} /></div>
+            <div><label htmlFor="de-puerto">{t("de_db_puerto", lang)}</label>
+              <input id="de-puerto" value={puerto} onChange={(e) => setPuerto(e.target.value)} /></div>
+            <div><label htmlFor="de-base2">{t("de_db_base", lang)}</label>
+              <input id="de-base2" value={base} onChange={(e) => setBase(e.target.value)} /></div>
+          </div>
+          <div className="fila">
+            <div><label htmlFor="de-user">{t("de_db_usuario", lang)}</label>
+              <input id="de-user" value={usuario} onChange={(e) => setUsuario(e.target.value)} /></div>
+            <div><label htmlFor="de-pass">{t("de_db_clave", lang)}</label>
+              <input id="de-pass" type="password" value={clave} onChange={(e) => setClave(e.target.value)} /></div>
+          </div>
+        </>
+      )}
+
+      <div className="fila">
+        <button type="button" className="btn" disabled={probando} onClick={probar}>
+          {probando ? t("de_db_probando", lang) : t("de_db_probar", lang)}
+        </button>
+        <button type="button" className="btn btn-sec" onClick={guardar}>
+          {t("de_db_guardar", lang)}
+        </button>
+      </div>
+      {msg ? <p className={msg.mal ? "malo" : "bueno"} role="status">{msg.txt}</p> : null}
+
+      {tablasDisponibles.length ? (
+        <>
+          <p className="sub">{t("de_db_elegir_tablas", lang)}</p>
+          <div className="de-tablas-check">
+            {tablasDisponibles.map((tb) => (
+              <label key={tb}>
+                <input type="checkbox" checked={tablasElegidas.includes(tb)}
+                       onChange={() => alternarTabla(tb)} /> {tb}
+              </label>
+            ))}
+          </div>
+        </>
+      ) : (msg && !msg.mal ? <p className="sub">{t("de_db_sin_tablas", lang)}</p> : null)}
+
+      <div className="fila">
+        <div className="ancho">
+          <label htmlFor="de-query">{t("de_db_o_query", lang)}</label>
+          <textarea id="de-query" rows={2} placeholder={t("de_db_query_ph", lang)}
+                    value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      </div>
+      <div className="fila">
+        <div><label htmlFor="de-target-db">{t("de_target", lang)}</label>
+          <input id="de-target-db" value={target} placeholder={t("de_target_ph", lang)}
+                 onChange={(e) => setTarget(e.target.value)} /></div>
+        <div><label htmlFor="de-tcol-db">{t("de_tiempo_col", lang)}</label>
+          <input id="de-tcol-db" value={columnaTiempo} placeholder={t("de_tiempo_col_ph", lang)}
+                 onChange={(e) => setColumnaTiempo(e.target.value)} /></div>
+        <div><label htmlFor="de-limite">{t("de_db_limite", lang)}</label>
+          <input id="de-limite" type="number" min="1" value={limite}
+                 onChange={(e) => setLimite(e.target.value)} /></div>
+      </div>
+
+      <button type="button" className="btn" disabled={analizando || (!tablasElegidas.length && !query.trim())}
+              onClick={analizar}>
+        {analizando ? t("de_leyendo", lang) : t("de_analizar", lang)}
+      </button>
+    </>
+  );
+}
+
+function Ingenieria({ lang }) {
+  const [fuente, setFuente] = useState("archivo");
+  const [target, setTarget] = useState("");
+  const [columnaTiempo, setColumnaTiempo] = useState("");
+  const [resultado, setResultado] = useState(null);
+
+  return (
+    <section>
+      <h2>{t("de_titulo", lang)}</h2>
+      <p className="sub">{t("de_bajada", lang)}</p>
+      <p className="sub">{t("de_privado", lang)}</p>
+
+      <div className="idiomas" role="group" aria-label={t("de_fuente", lang)}>
+        <button className={fuente === "archivo" ? "on" : ""} onClick={() => setFuente("archivo")}>
+          {t("de_fuente_archivo", lang)}
+        </button>
+        <button className={fuente === "db" ? "on" : ""} onClick={() => setFuente("db")}>
+          {t("de_fuente_db", lang)}
+        </button>
+      </div>
+
+      {fuente === "archivo" ? (
+        <FuenteArchivo lang={lang} onAnalizado={setResultado}
+                       target={target} setTarget={setTarget}
+                       columnaTiempo={columnaTiempo} setColumnaTiempo={setColumnaTiempo} />
+      ) : (
+        <FuenteDb lang={lang} onAnalizado={setResultado}
+                  target={target} setTarget={setTarget}
+                  columnaTiempo={columnaTiempo} setColumnaTiempo={setColumnaTiempo} />
+      )}
+
+      {!resultado ? <p className="sub md-vacio">{t("de_vacio", lang)}</p> : null}
+      <ResultadoAnalisis resultado={resultado} lang={lang} />
+    </section>
+  );
+}
+
 const RENDER = { panorama: Panorama, catalogo: Catalogo, calidad: Calidad,
                  linaje: Linaje, glosario: Glosario, politicas: Politicas,
-                 misdatos: MisDatos, licencia: Licencia };
+                 misdatos: MisDatos, ingenieria: Ingenieria, licencia: Licencia };
 
 /* ----------------------------------------------------------------- app */
 

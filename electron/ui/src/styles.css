@@ -163,3 +163,33 @@ code { font-family: var(--mono); font-size: 12px; color: #cfe3ff; }
 .md-cifras span { font-size: 12px; color: var(--suave); }
 .md-reglas { margin: 10px 0 0; padding-left: 20px; }
 .md-reglas li { padding: 3px 0; }
+
+/* Formularios en fila: la clave de licencia ya la usaba sin estilo propio
+   (labels e inputs pegados, sin foco visible); Ingeniería de datos la usa
+   mucho más seguido, así que el hueco se nota acá primero. */
+.fila { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin: 14px 0; }
+.fila > div, .fila > .ancho { display: flex; flex-direction: column; gap: 6px; }
+.fila > div { flex: 1 1 160px; }
+.fila > .ancho { flex: 1 1 100%; }
+.fila label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.fila input, .fila select, .fila textarea {
+  background: rgba(255,255,255,.05); border: 1px solid var(--line2); border-radius: 9px;
+  color: var(--ink); font: inherit; font-size: 13px; padding: 8px 12px;
+}
+.fila input::placeholder, .fila textarea::placeholder { color: var(--faint); }
+.fila input:focus, .fila select:focus, .fila textarea:focus { outline: none; border-color: var(--amber); }
+.fila textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
+
+.btn-sec { background: transparent; border: 1px solid var(--line2); color: var(--ink); }
+.btn-sec:hover { border-color: var(--amber); background: rgba(255,255,255,.04); }
+.btn:disabled, .btn-sec:disabled { opacity: .5; cursor: not-allowed; }
+
+.malo { color: var(--red); }
+.bueno { color: var(--green); }
+
+/* Ingeniería de datos: elegir tablas de una conexión SQL, severidad de issues. */
+.de-tablas-check { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0 4px; font-size: 13px; }
+.de-tablas-check label { display: flex; align-items: center; gap: 6px; font-weight: 400; color: var(--ink); }
+.pill.sev-critico, .pill.sev-alto { background: rgba(224,92,92,.16); color: var(--red); }
+.pill.sev-medio { background: rgba(242,180,65,.16); color: var(--amber); }
+.pill.sev-bajo { background: rgba(255,255,255,.08); color: var(--faint); }
