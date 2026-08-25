@@ -8848,17 +8848,19 @@ def test_streamlit_tiene_tema_oscuro_configurado():
     config.toml, así que este archivo solo tapa ese agujero — no compite
     con los otros dos caminos.
     """
-    import tomllib
-
+    # Parseo manual y no `tomllib` a propósito: es stdlib recién desde
+    # Python 3.11, y este repo corre CI también en 3.10 (ver
+    # .github/workflows/tests.yml) — `tomllib` rompía justo ese job. El
+    # archivo es chato (una sola sección, claves = "valor"), así que una
+    # regex alcanza sin sumar una dependencia (`tomli`) solo para un test.
     ruta = os.path.join(_repo_root(), ".streamlit", "config.toml")
     assert os.path.isfile(ruta), (
         ".streamlit/config.toml no existe: streamlit run app/app.py vuelve "
         "a correr con el tema claro por defecto (texto casi negro) sobre "
         "el fondo oscuro que pinta el CSS de app.py")
-    with open(ruta, "rb") as fh:
-        cfg = tomllib.load(fh)
-
-    tema = cfg.get("theme", {})
+    with open(ruta, encoding="utf-8") as fh:
+        contenido = fh.read()
+    tema = dict(re.findall(r'(?m)^(\w+)\s*=\s*"([^"]*)"', contenido))
     assert tema.get("base") == "dark"
 
     from mvdg import BRAND
