@@ -192,11 +192,23 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
   border:1px solid rgba(242,180,65,.25);border-radius:8px;padding:8px 10px;margin-bottom:14px;overflow-x:auto;white-space:nowrap}
 
 /* SHOTS (capturas reales) */
-.shgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+/* align-items:start a propósito: sin esto, la grilla estira cada tarjeta a
+   la altura de la más alta de su fila (comportamiento por defecto), y con
+   capturas de 1300px al lado de una de 4800px (BI & API creció mucho desde
+   que se sacaron estas capturas) la más chica queda con un colchón vacío
+   enorme abajo — no es texto tapado, pero tampoco es "el marco ajustado al
+   contenido" que se pidió. */
+.shgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px;align-items:start}
 @media(max-width:760px){.shgrid{grid-template-columns:1fr}}
 .shot{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;overflow:hidden;margin:0}
-.shot a{display:block;max-height:340px;overflow:hidden}
-.shot img{width:100%;display:block;border-bottom:1px solid var(--line-d);transition:transform .25s}
+/* Antes esto recortaba la captura a 340px con overflow:hidden — una altura
+   fija sobre capturas que van de 990px a 1640px de alto. Según cuál fuera
+   la pestaña, el recorte cortaba la mitad del contenido a mitad de un
+   gráfico, sin ningún indicio visual de que faltaba algo debajo. El marco
+   ahora se ajusta a la imagen entera (ancho fijo por la grilla, alto
+   natural) en vez de al revés. */
+.shot a{display:block}
+.shot img{width:100%;display:block;height:auto;border-bottom:1px solid var(--line-d);transition:transform .25s}
 .shot a:hover img{transform:scale(1.02)}
 .shot figcaption{padding:12px 16px;font-size:13.5px;color:var(--muted-d);font-weight:600}
 
@@ -423,13 +435,13 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   <p class="lead-d" data-i="sh_lead">Capturas reales del programa — no maquetas. Esto es lo que ve
     tu equipo desde el primer día, en el navegador o en el programa de escritorio.</p>
   <div class="shgrid">
-    <figure class="shot"><a href="img/tab_panorama.jpg" data-shot="tab_panorama" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" data-shot="tab_panorama" loading="lazy" decoding="async" width="1100" height="1460" alt="Pestaña Panorama: KPIs de gobierno, índice de calidad y estado de los datasets"></a>
+    <figure class="shot"><a href="img/tab_panorama.jpg" data-shot="tab_panorama" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" data-shot="tab_panorama" loading="lazy" decoding="async" width="1100" height="1942" alt="Pestaña Panorama: KPIs de gobierno, índice de calidad y estado de los datasets"></a>
       <figcaption data-i="sh_c1">📊 Panorama ejecutivo: KPIs de gobierno, calidad por dominio y evolución de 12 meses</figcaption></figure>
-    <figure class="shot"><a href="img/tab_calidad.jpg" data-shot="tab_calidad" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" data-shot="tab_calidad" loading="lazy" decoding="async" width="1100" height="1640" alt="Pestaña Calidad: reglas por dimensión con umbral, resultado y filas afectadas"></a>
+    <figure class="shot"><a href="img/tab_calidad.jpg" data-shot="tab_calidad" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" data-shot="tab_calidad" loading="lazy" decoding="async" width="1100" height="2742" alt="Pestaña Calidad: reglas por dimensión con umbral, resultado y filas afectadas"></a>
       <figcaption data-i="sh_c2">✅ Motor de calidad: 44 reglas con estados, umbrales y sugerencias de corrección con IA</figcaption></figure>
-    <figure class="shot"><a href="img/tab_linaje.jpg" data-shot="tab_linaje" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" data-shot="tab_linaje" loading="lazy" decoding="async" width="1100" height="990" alt="Pestaña Linaje: grafo de origen a BI, de la tabla fuente al informe"></a>
+    <figure class="shot"><a href="img/tab_linaje.jpg" data-shot="tab_linaje" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" data-shot="tab_linaje" loading="lazy" decoding="async" width="1100" height="1315" alt="Pestaña Linaje: grafo de origen a BI, de la tabla fuente al informe"></a>
       <figcaption data-i="sh_c3">🧬 Linaje interactivo: de la fuente al tablero de BI, aguas arriba y aguas abajo</figcaption></figure>
-    <figure class="shot"><a href="img/tab_bi.jpg" data-shot="tab_bi" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" data-shot="tab_bi" loading="lazy" decoding="async" width="1100" height="1480" alt="Pestaña BI y API: tablas de gobierno publicadas para Power BI y Tableau"></a>
+    <figure class="shot"><a href="img/tab_bi.jpg" data-shot="tab_bi" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" data-shot="tab_bi" loading="lazy" decoding="async" width="1100" height="4805" alt="Pestaña BI y API: tablas de gobierno publicadas para Power BI y Tableau"></a>
       <figcaption data-i="sh_c4">📤 Exportación y API: CSV, Excel, JSON, Parquet y endpoints para tu BI en un clic</figcaption></figure>
   </div>
 </div></section>
