@@ -36,6 +36,7 @@ test-py: install
 test-js:
 	@if command -v $(NODE) >/dev/null 2>&1; then \
 		$(NODE) api/payments.test.js && $(NODE) api/pago_a_licencia.test.js \
+			&& $(NODE) api/estado.test.js \
 			&& $(NODE) landing/security.test.js \
 			&& $(NODE) electron/lib/navegacion.test.js \
 			&& $(NODE) electron/lib/instalador.test.js; \
