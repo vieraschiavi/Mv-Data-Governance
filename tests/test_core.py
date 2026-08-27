@@ -3564,6 +3564,47 @@ def test_landing_og_image_existe_y_mide_1200x630():
     assert Image.open(ruta).size == (1200, 630)
 
 
+def test_landing_capturas_no_recortan_el_contenido_con_alto_fijo():
+    """`.shot a` tenía `max-height:340px;overflow:hidden` — un recorte fijo
+    sobre capturas de 990px a 1640px de alto, así que según la pestaña se
+    cortaba la mitad del contenido a mitad de un gráfico, sin ningún indicio
+    visual de que faltaba algo debajo. El marco tiene que ajustarse a la
+    imagen entera, no al revés."""
+    html = _landing("index.html")
+    m = re.search(r"\.shot a\{([^}]*)\}", html)
+    assert m, "no encontré la regla .shot a en el CSS de index.html"
+    regla = m.group(1)
+    assert "max-height" not in regla
+    assert "overflow" not in regla
+
+
+def test_landing_capturas_width_height_coinciden_con_el_archivo_real():
+    """`width`/`height` en el `<img>` son para reservar el espacio ANTES de
+    que la imagen cargue (evita el salto de layout) — si no coinciden con
+    el archivo real, el navegador escala mal mientras carga o el hueco
+    reservado queda con un tamaño incorrecto. Se rompió una vez: las
+    capturas se regeneraron con el motor de calidad/linaje corregido
+    (contraste + etiquetas superpuestas) y quedaron más altas que las
+    viejas, pero el HTML seguía con el tamaño de las capturas anteriores."""
+    try:
+        from PIL import Image
+    except ImportError:
+        pytest.skip("Pillow no disponible")
+    html = _landing("index.html")
+    img_dir = os.path.join(_repo_root(), "landing", "img")
+    for base in ("tab_panorama", "tab_calidad", "tab_linaje", "tab_bi"):
+        m = re.search(rf'src="img/{base}\.jpg"[^>]*\bwidth="(\d+)" height="(\d+)"', html)
+        assert m, f"no encontré el <img> de {base} (o le falta width/height) en index.html"
+        w_html, h_html = int(m.group(1)), int(m.group(2))
+        for suf in ("", "_en", "_pt"):
+            ruta = os.path.join(img_dir, f"{base}{suf}.jpg")
+            assert os.path.isfile(ruta), f"falta {ruta}"
+            w_real, h_real = Image.open(ruta).size
+            assert (w_real, h_real) == (w_html, h_html), (
+                f"{base}{suf}.jpg mide {w_real}x{h_real} pero el HTML declara "
+                f"{w_html}x{h_html} — desalineado, va a saltar el layout al cargar")
+
+
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)
 def test_landing_viewport_favicon_y_lang(archivo):
     html = _landing(archivo)
@@ -6850,6 +6891,61 @@ def test_scope_combined_lineage_links_each_sample_source_to_bi():
         assert (key, "bi_dashboard") in edges
     # el grafo demo sigue intacto adentro
     assert "mart_sales" in ids and ("mart_sales", "bi_dashboard") in edges
+
+
+def test_lineage_figure_no_solapa_etiquetas_largas():
+    """La cita real de una fuente ('Reglamento Bromatológico Nacional de
+    Alimentos (Uruguay, 2026); ...') es mucho más larga que las etiquetas
+    de demo ('CRM', 'raw.customers'). Sin recortar, Plotly la dibuja tan
+    ancha como haga falta y se solapa con el nodo vecino — se vio
+    literalmente en landing/img/tab_linaje.jpg ('rawWNAEV, Decreto
+    466/009)' = dos etiquetas de nodos distintos superpuestas).
+
+    El texto completo no se pierde: sigue entero en el hover."""
+    from mvdg import samples, scope
+    from mvdg.lineage import lineage_figure
+
+    nodes, edges = scope.combined_lineage("es")
+    cita_larga = next(n for n in nodes if n["id"] == f"src_{samples.sample_keys()[0]}")
+    assert len(cita_larga["label"]) > 30, "el fixture ya no prueba nada: la cita es corta"
+
+    fig = lineage_figure(nodes=nodes, edges=edges)
+    trazo = next(t for t in fig.data if t.mode == "markers+text")
+    for texto_mostrado, texto_completo in zip(trazo.text, trazo.hovertext, strict=True):
+        assert len(texto_mostrado) <= 22, (
+            f"etiqueta sin recortar en el grafo: {texto_mostrado!r} — puede "
+            f"solaparse con el nodo vecino")
+        if len(texto_completo) > 22:
+            assert texto_mostrado.endswith("…")
+        else:
+            assert texto_mostrado == texto_completo  # las cortas no se tocan
+        assert texto_completo in [n["label"] for n in nodes]  # nada se perdió, solo se acorta lo mostrado
+
+
+def test_lineage_figure_no_recorta_nodos_de_capas_largas():
+    """Con los casos reales de 'Mis datos' activos, combined_lineage() suma
+    una fuente por dataset — hasta 8 nodos en la capa 'source', más de los
+    4 que trae el grafo demo. La figura tenía el alto y el rango de y FIJOS
+    (460px / [-2.9, 2.7]) sin importar cuántos nodos hubiera: el último
+    quedaba literalmente afuera del área visible, cortado por el borde —
+    se vio en landing/img/tab_linaje.jpg (una fila entera de nodos sin
+    ninguna etiqueta, recortada a la mitad justo arriba de "Aristas de
+    linaje"). El caso demo (chico) no tiene que agrandarse por esto."""
+    from mvdg import scope
+    from mvdg.lineage import _positions, lineage_figure
+
+    fig_demo = lineage_figure()
+    assert fig_demo.layout.height == 460
+    assert tuple(fig_demo.layout.yaxis.range) == (-2.9, 2.7)
+
+    nodes, edges = scope.combined_lineage("es")
+    fig = lineage_figure(nodes=nodes, edges=edges)
+    y_min_real = min(y for _, y in _positions(nodes).values())
+    y_min_visible, y_max_visible = fig.layout.yaxis.range
+    assert y_min_visible <= y_min_real, (
+        "el nodo más bajo de la capa más larga queda fuera del rango "
+        "visible del eje y — se corta en el borde de la figura")
+    assert fig.layout.height > 460, "más nodos por capa tienen que dar más alto, no el mismo de siempre"
 
 
 def test_policies_evaluate_combined_universe():

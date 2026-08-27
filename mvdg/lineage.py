@@ -150,16 +150,27 @@ def lineage_figure(focus: str | None = None,
     layer_color = {"source": "#6c7f99", "raw": BRAND["blue"],
                    "curated": BRAND["green"], "mart": BRAND["amber"],
                    "bi": "#c479e8"}
-    xs, ys, texts, colors, opac = [], [], [], [], []
+    # Las etiquetas de demo son cortas a propósito ("CRM", "raw.customers"),
+    # pero combined_lineage() (mvdg/scope.py) mete ahí la CITA REAL de cada
+    # fuente de los casos de Mis datos — a veces una frase entera de
+    # reglamento. Sin recortar, Plotly la dibuja tan ancha como haga falta
+    # y se solapa con la etiqueta del nodo vecino (más nodos por capa =
+    # menos aire vertical entre ellos). El texto completo no se pierde:
+    # sigue disponible entero al pasar el mouse (hovertext).
+    _LARGO_ETIQUETA = 22
+    xs, ys, texts, hover, colors, opac = [], [], [], [], [], []
     for n in nodes:
         x, y = pos[n["id"]]
         xs.append(x)
         ys.append(y)
-        texts.append(n["label"])
+        etiqueta = n["label"]
+        texts.append(etiqueta if len(etiqueta) <= _LARGO_ETIQUETA
+                     else etiqueta[:_LARGO_ETIQUETA - 1].rstrip() + "…")
+        hover.append(etiqueta)
         colors.append(layer_color.get(n["layer"], "#6c7f99"))
         opac.append(1.0 if (hi is None or n["id"] in hi) else 0.25)
     fig.add_trace(go.Scatter(
-        x=xs, y=ys, mode="markers+text", text=texts,
+        x=xs, y=ys, mode="markers+text", text=texts, hovertext=hover,
         textposition="bottom center", hoverinfo="text", showlegend=False,
         textfont={"size": 11, "color": BRAND["ink"]},
         marker={"size": 20, "color": colors, "opacity": opac,
@@ -171,10 +182,21 @@ def lineage_figure(focus: str | None = None,
         fig.add_annotation(x=lx, y=2.35, text=f"<b>{titles.get(layer, layer)}</b>",
                            showarrow=False, font={"size": 12, "color": BRAND["muted"]})
 
+    # Alto FIJO en 460px/[-2.9,2.7] de sobra para el grafo demo (4 nodos por
+    # capa como mucho), pero con los casos reales de "Mis datos" activos
+    # combined_lineage() suma una fuente por dataset — hasta 8 nodos en la
+    # capa "source" — y el último quedaba directamente afuera del área
+    # visible, cortado por el borde de la figura. El rango y el alto ahora
+    # se estiran según cuántos nodos haya de verdad en la capa más ancha,
+    # con el caso demo como piso (nunca se achica).
+    y_vals = [y for _, y in pos.values()] or [0.0]
+    rango_y = [min(min(y_vals) - 0.55, -2.9), 2.7]
+    alto = max(460, round((rango_y[1] - rango_y[0]) * 82))
+
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        margin={"l": 10, "r": 10, "t": 30, "b": 10}, height=460,
+        margin={"l": 10, "r": 10, "t": 30, "b": 10}, height=alto,
         xaxis={"visible": False, "range": [-0.5, max(len(order), 1) - 0.4]},
-        yaxis={"visible": False, "range": [-2.9, 2.7]},
+        yaxis={"visible": False, "range": rango_y},
     )
     return fig
