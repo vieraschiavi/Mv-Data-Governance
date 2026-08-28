@@ -7979,6 +7979,46 @@ def test_el_instalador_instala_deps_antes_de_usarlas():
         f"`npm run` esta en el paso {i_run + 1} y `npm ci` en el {i_ci + 1}: "
         f"se usan las dependencias antes de instalarlas")
 
+def test_la_url_de_cada_release_apunta_al_archivo_que_se_sube():
+    """El workflow imprime, en el resumen de la corrida, la URL exacta que hay
+    que pegar en Vercel (MVDG_INSTALLER_URL / MVDG_INSTALLER_URL_OWNER). Si ese
+    nombre no coincide con el del asset que realmente se subio, la URL da 404 y
+    /api/descargar contesta que no encuentra el instalador.
+
+    Paso exactamente eso con el owner: el asset se sube como
+    MVDataGovernance_OWNER_Setup_$v.exe y la URL decia
+    MVDataGovernance_Setup_$v.exe (sin el OWNER_). El bloque que existe para no
+    tener que armar la URL a mano era el que la armaba mal.
+
+    Se comparan los dos lados por RELEASE (cliente-latest / owner-latest), que
+    es lo unico que ata un asset con su link.
+    """
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
+    with open(ruta, encoding="utf-8") as fh:
+        wf = fh.read()
+
+    # Nombre de archivo que se sube, por release: sale del `exe=` que despues
+    # se le pasa a `gh release upload <tag>`.
+    subidos = dict(re.findall(
+        r'exe="[^"]*/(MVDataGovernance[A-Za-z_]*_Setup_\$v\.exe)"'
+        r'(?:.|\n)*?gh release upload (\S+)', wf))
+    # …y la URL que se imprime para pegar en Vercel, por release.
+    publicados = {tag: nombre for tag, nombre in re.findall(
+        r'releases/download/(\S+?)/(MVDataGovernance[A-Za-z_]*_Setup_\$v\.exe)', wf)}
+
+    assert len(publicados) >= 2, (
+        "no se encontraron las URLs de descarga de cliente y owner: "
+        f"{publicados}")
+
+    for nombre_subido, tag in subidos.items():
+        assert tag in publicados, f"se sube un asset a {tag} pero no se publica su URL"
+        assert publicados[tag] == nombre_subido, (
+            f"release {tag}: se sube '{nombre_subido}' pero la URL que el "
+            f"workflow manda a pegar en Vercel apunta a "
+            f"'{publicados[tag]}' — eso es un 404")
+
+
 def test_cada_merge_produce_al_menos_el_instalador_del_cliente():
     """Un build que termina en verde sin dejar nada es peor que uno en rojo.
 
