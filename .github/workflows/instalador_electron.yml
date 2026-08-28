@@ -461,7 +461,14 @@ jobs:
           # cargada responde 503 en vez de entregarte el build del cliente.
           # Sin esta linea habia que armar la URL a mano y era el paso donde
           # se erraba.
-          url="https://github.com/${{ github.repository }}/releases/download/owner-latest/MVDataGovernance_Setup_$v.exe"
+          # OJO con el nombre: el asset del owner se sube como
+          # MVDataGovernance_OWNER_Setup_$v.exe (ver el paso "Empaquetar
+          # INSTALADOR/ (owner)"). Esta linea decia MVDataGovernance_Setup_$v.exe
+          # —sin el OWNER_—, asi que la URL que el resumen mandaba a pegar en
+          # Vercel apuntaba a un archivo que NO existe en esa release: 404, y
+          # /api/descargar respondiendo que no encuentra el instalador del
+          # owner. Justo el paso que este bloque existe para no errar.
+          url="https://github.com/${{ github.repository }}/releases/download/owner-latest/MVDataGovernance_OWNER_Setup_$v.exe"
           {
             echo "## Instalador OWNER publicado"
             echo
