@@ -82,6 +82,10 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px;max-width:1000px}
 .h2{font-size:clamp(23px,3.3vw,34px);font-weight:850;color:var(--ink-d);margin:10px 0 16px}
 .dark .h2{color:#fff}
 .lead{color:var(--muted-d);font-size:16.5px;max-width:70ch}
+/* Rutas de archivo y comandos son una sola "palabra" para el navegador: en
+   un teléfono angosto estiraban el párrafo y sacaban toda la página del
+   marco. Se parten donde haga falta en vez de desbordar. */
+.lead b,.lead code,.proof{overflow-wrap:anywhere}
 .dark .lead{color:var(--muted)}
 .prose p{color:var(--muted-d);font-size:15.5px;margin:0 0 14px;max-width:74ch}
 .prose b{color:var(--ink-d)}
@@ -192,7 +196,9 @@ footer{padding:30px 0 16px;color:var(--faint);font-size:12.5px;text-align:center
 </div></section>
 
 <!-- CASO -->
-<section class="panel dark"><div class="wrap">
+<!-- El id existe porque el video de antes/después enlaza acá: es donde se
+     explica cómo se miden esos mismos números y cómo reproducirlos. -->
+<section class="panel dark" id="caso"><div class="wrap">
   <div class="eyebrow" style="color:var(--amber)" data-i="c_eye">Caso de ejemplo · impacto medido</div>
   <h2 class="h2" data-i="c_h2">Un proyecto de gobierno, de principio a fin</h2>
   <p class="lead" data-i="c_lead">Distribuidora ficticia con datos sintéticos. El antes y el después están medidos por el mismo motor de reglas del programa — reproducible con <b>docs/caso_ejemplo/medir_impacto.py</b>.</p>

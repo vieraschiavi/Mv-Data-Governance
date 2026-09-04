@@ -3605,6 +3605,85 @@ def test_landing_capturas_width_height_coinciden_con_el_archivo_real():
                 f"{w_html}x{h_html} — desalineado, va a saltar el layout al cargar")
 
 
+def test_video_antes_despues_existe_en_los_tres_idiomas_y_con_audio():
+    """El video de antes/después es lo primero que ve el que decide la compra.
+    Tiene que existir en los 3 idiomas y CON narración: un mp4 mudo pasa
+    desapercibido en el repo (el archivo está, la landing lo carga, se ve) y
+    solo se descubre cuando alguien lo mira. Se verifica la pista de audio en
+    el contenedor, no el tamaño del archivo."""
+    video_dir = os.path.join(_repo_root(), "landing", "video")
+    for lang in ("es", "en", "pt"):
+        ruta = os.path.join(video_dir, f"MVDataGovernance_AntesDespues_{lang}.mp4")
+        assert os.path.isfile(ruta), (
+            f"falta {os.path.basename(ruta)} — regeneralo con "
+            "python assets/video/build_antes_despues.py")
+        with open(ruta, "rb") as fh:
+            crudo = fh.read()
+        # El índice del MP4 (átomo 'moov') describe las pistas. Acá NO está al
+        # principio: ffmpeg lo escribe al final salvo que se pida faststart, así
+        # que hay que buscarlo en todo el archivo, no en la cabecera. Dentro de
+        # él, 'mp4a' es la entrada de la pista de audio AAC.
+        i_moov = crudo.rfind(b"moov")
+        assert i_moov > 0, f"{os.path.basename(ruta)} no parece un MP4 válido"
+        assert b"mp4a" in crudo[i_moov:], (
+            f"{os.path.basename(ruta)} no tiene pista de audio: se generó sin "
+            "los modelos de voz (MVDG_VOICE_ONNX_ES/EN/PT)")
+
+
+def test_video_antes_despues_no_hardcodea_las_cifras():
+    """Las cifras del video salen del motor (`lab_measure`) al generarlo, no
+    escritas a mano. Si alguien las pega como texto, el video sigue prometiendo
+    un resultado que el producto ya no da — y es justo lo que un gerente
+    verifica cuando corre el caso en su PC."""
+    ruta = os.path.join(_repo_root(), "assets", "video", "build_antes_despues.py")
+    src = open(ruta, encoding="utf-8").read()
+    assert "lab_measure" in src, "el guion del video no consulta el motor"
+    from mvdg.lab_case import lab_measure
+    m = lab_measure()
+    cifras = {str(m["summary_before"]["indice"]), str(m["summary_after"]["indice"]),
+              str(m["summary_before"]["filas_afectadas"]),
+              str(m["summary_after"]["filas_afectadas"])}
+    # Se busca en el código MENOS los f-strings que interpolan la medición:
+    # ahí las cifras aparecen como expresión, no como literal.
+    for cifra in cifras:
+        assert f'"{cifra}"' not in src and f"'{cifra}'" not in src, (
+            f"la cifra {cifra} está escrita a mano en el guion del video; "
+            "tiene que venir de lab_measure()")
+
+
+def test_landing_ofrece_el_antes_y_despues_antes_que_la_demo():
+    """El orden es el argumento: la demo muestra qué hace el producto, el
+    antes/después muestra qué cambia. Si la demo queda primero, el que decide
+    la compra ve funcionalidad antes que resultado. Además el video tiene que
+    poder cambiar de idioma como el otro (data-vbase) y tener su propio panel
+    de error (data-errbox): sin eso, un 404 deja un recuadro negro mudo."""
+    html = _landing("index.html")
+    i_ad = html.find('id="antes-despues"')
+    i_demo = html.find('<section class="vsec" id="video"')
+    assert i_ad > 0, "falta la sección del video antes/después en la landing"
+    assert i_demo > 0, "falta la sección del video de demo en la landing"
+    assert i_ad < i_demo, "el antes/después tiene que ir ANTES de la demo narrada"
+    assert 'data-vbase="MVDataGovernance_AntesDespues"' in html
+    assert 'data-errbox="adVideoError"' in html and 'id="adVideoError"' in html
+    # El enlace "cómo se mide" tiene que llegar a algún lado real.
+    assert 'href="guia.html#caso"' in html
+    assert 'id="caso"' in _landing("guia.html"), "guia.html no tiene el ancla #caso"
+
+
+def test_landing_paridad_de_textos_del_antes_y_despues():
+    """Cada clave nueva de la sección tiene que estar en los 3 idiomas: si
+    falta una, el visitante en inglés o portugués ve la frase en español en el
+    medio de la página, que es peor que no tenerla."""
+    html = _landing("index.html")
+    claves = ("ad_eye", "ad_h2", "ad_lead", "ad_err_d", "ad_err_cta",
+              "ad_repro", "ad_repro_link")
+    for clave in claves:
+        assert f'data-i="{clave}"' in html, f"la clave {clave} no se usa en el HTML"
+        # Dos diccionarios de traducción (EN y PT) más el texto en el markup.
+        assert len(re.findall(rf"\b{clave}:", html)) >= 2, (
+            f"{clave} no está en los diccionarios EN y PT")
+
+
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)
 def test_landing_viewport_favicon_y_lang(archivo):
     html = _landing(archivo)

@@ -59,14 +59,33 @@ nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filte
 /* El nav es sticky (60px): sin esto, al entrar por un ancla del menú el título
    de la sección queda debajo del nav y no se lee. Afecta a todas las secciones. */
 section[id]{scroll-margin-top:76px}
-nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap}
-@media(max-width:640px){.brand small{display:none}}
+/* La barra usa más ancho que la columna de contenido: con 12 enlaces, el
+   menú no entra en 1120px y se salía del marco (barra horizontal en toda
+   la página, y el botón Descargar empujado fuera de la pantalla). */
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px;max-width:1400px}
+/* `min-width:0` + recorte: en un teléfono angosto el nombre de la marca no
+   se parte (nowrap) y, sin esto, empujaba el selector de idioma fuera de la
+   pantalla en vez de ceder ancho él mismo. Ahora cede la marca —que el logo
+   ya identifica— y los controles quedan siempre dentro del marco. */
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap;min-width:0}
+.brand span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.right{flex:none}
+/* El subtítulo de la marca cede el ancho antes que los enlaces: repite lo
+   que ya dice el logo, y los enlaces no. */
+@media(max-width:1180px){.brand small{display:none}}
 .mk{width:30px;height:30px;border-radius:8px;display:block}
 .brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
 .nlinks{display:flex;gap:4px;margin-left:14px}
 .nlinks a{color:var(--muted);font-size:13.5px;font-weight:600;padding:7px 11px;border-radius:8px}
 .nlinks a:hover{color:#fff;background:rgba(255,255,255,.06)}
+/* Menú por niveles. Los 12 enlaces no entran en una pantalla normal: en vez
+   de dejar que se desborden (que es lo que pasaba), los secundarios se
+   retiran a medida que falta lugar, del menos al más importante para quien
+   está evaluando comprar. Ninguna sección queda inalcanzable: todas siguen
+   en la página y en el pie. */
+@media(max-width:1900px){.nlinks a.n4{display:none}}
+@media(max-width:1720px){.nlinks a.n3{display:none}}
+@media(max-width:1300px){.nlinks a.n2{display:none}}
 @media(max-width:900px){.nlinks{display:none}}
 .right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
@@ -215,7 +234,12 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 /* STATS (franja oscura de resultados) */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:30px}
 @media(max-width:860px){.stats{grid-template-columns:1fr 1fr}}
-.stat{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:22px;text-align:center}
+/* Una sola columna en pantallas muy angostas: a dos columnas, el padding y
+   el gap dejan menos de 120px por tarjeta y la frase más larga desbordaba. */
+@media(max-width:400px){.stats{grid-template-columns:1fr}}
+/* `1fr` no baja del ancho mínimo de su contenido salvo que se le diga: sin
+   esto, una palabra larga estira la columna y saca la grilla del marco. */
+.stat{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:22px;text-align:center;min-width:0;overflow-wrap:anywhere}
 .stat .v{font-size:34px;font-weight:850;color:var(--amber);letter-spacing:-.01em}
 .stat .l{color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.45}
 
@@ -335,14 +359,14 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </a>
   <div class="nlinks">
     <a href="guia.html" data-i="nav_guide">¿Qué es?</a>
-    <a href="#resenas" data-i="nav_reviews">Reseñas</a>
-    <a href="#video" data-i="nav_video">Video</a>
+    <a class="n3" href="#resenas" data-i="nav_reviews">Reseñas</a>
+    <a class="n3" href="#video" data-i="nav_video">Video</a>
     <a href="#tableros" data-i="nav_shots">Tableros</a>
-    <a href="#plataforma" data-i="nav_platform">Plataforma</a>
-    <a href="#enterprise" data-i="nav_enterprise">Enterprise</a>
-    <a href="#bi" data-i="nav_bi">BI</a>
-    <a href="#implementacion" data-i="nav_impl">Implementación</a>
-    <a href="#descargas" data-i="nav_downloads">Descargas</a>
+    <a class="n2" href="#plataforma" data-i="nav_platform">Plataforma</a>
+    <a class="n4" href="#enterprise" data-i="nav_enterprise">Enterprise</a>
+    <a class="n4" href="#bi" data-i="nav_bi">BI</a>
+    <a class="n4" href="#implementacion" data-i="nav_impl">Implementación</a>
+    <a class="n2" href="#descargas" data-i="nav_downloads">Descargas</a>
     <a href="#honesta" data-i="nav_honest">Comparativa</a>
     <a href="#precios" data-i="nav_pricing">Precios</a>
     <a href="#contacto" data-i="nav_contact">Contacto</a>
@@ -364,7 +388,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <p class="lead" data-i="lead">Catálogo, calidad, linaje, glosario y políticas en una sola plataforma —
       con exportación directa a Power BI, Tableau, Looker, MicroStrategy y cualquier otra herramienta de BI.</p>
     <div class="hcta">
-      <a class="btn btn-a" href="#video" data-i="cta_video">▶ Ver la demo</a>
+      <!-- El botón primario apunta al antes/después, no a la demo: el que
+           decide la compra quiere ver qué cambia antes que qué botones hay.
+           La demo narrada queda a un scroll (es la sección siguiente) y en
+           el menú, así que no se pierde. -->
+      <a class="btn btn-a" href="#antes-despues" data-i="cta_video">▶ Ver el antes y después</a>
       <a class="btn btn-o" href="descargas.html" data-i="cta_dl">Pedir acceso a la demo</a>
     </div>
     <p class="hnote" data-i="h_ownfile">
@@ -398,6 +426,37 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </div>
 </div></section>
 
+<!-- VIDEO ANTES / DESPUÉS -->
+<!-- Va ANTES de la demo a propósito: la demo muestra qué hace el producto,
+     y esto muestra qué cambia. Un gerente decide con lo segundo. Las cifras
+     no están escritas en el video: las calcula el motor de reglas al
+     generarlo (assets/video/build_antes_despues.py), del mismo caso que
+     publica la guía. -->
+<section class="vsec vsec-ad" id="antes-despues"><div class="wrap">
+  <div class="eyebrow" data-i="ad_eye">Caso medido · 40 segundos · ES / EN / PT</div>
+  <h2 class="h2 h2w" data-i="ad_h2">Antes y después, con números</h2>
+  <p class="lead-w" data-i="ad_lead">La misma cartera de datos, sin gobernar y gobernada.
+    Índice de calidad, reglas en verde y filas con problemas — medido por el mismo motor
+    que va a correr en tu PC, no por una presentación.</p>
+  <div class="vbox">
+    <video id="adVideo" data-vbase="MVDataGovernance_AntesDespues" data-errbox="adVideoError"
+           controls preload="metadata" playsinline>
+      <source src="video/MVDataGovernance_AntesDespues_es.mp4" type="video/mp4">
+      <source src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_AntesDespues_es.mp4" type="video/mp4">
+      <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
+    </video>
+    <div id="adVideoError" class="vfail" hidden role="status">
+      <b data-i="v_err_t">No pudimos cargar el video</b>
+      <span data-i="ad_err_d">Puede ser tu conexión o un bloqueador. Los mismos números están medidos y explicados en la guía.</span>
+      <a class="btn btn-a" href="guia.html#caso" data-i="ad_err_cta">Ver el caso medido</a>
+    </div>
+  </div>
+  <p class="v-real">
+    <span data-i="ad_repro">Reproducible en tu PC: </span>
+    <a href="guia.html#caso" data-i="ad_repro_link">cómo se mide este antes y después</a>
+  </p>
+</div></section>
+
 <!-- VIDEO -->
 <section class="vsec" id="video"><div class="wrap">
   <div class="eyebrow" data-i="v_eye">Demo narrada · 1 minuto · ES / EN / PT</div>
@@ -407,7 +466,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   <div class="vbox">
     <!-- poster="" era una referencia vacía: algunos navegadores intentan
          cargarla y pintan un primer cuadro roto. Sin atributo, no hay poster. -->
-    <video id="demoVideo" controls preload="metadata" playsinline>
+    <video id="demoVideo" data-vbase="MVDataGovernance_Demo" data-errbox="videoError"
+           controls preload="metadata" playsinline>
       <source id="demoSrc" src="video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
       <source id="demoSrcCdn" src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
       <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
@@ -827,13 +887,18 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   kick:"100% Web + Desktop app · ES / EN / PT",
   h1_a:"Your data, governed.\nYour decisions, trustworthy.",
   lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
-  cta_video:"▶ Watch the demo",cta_dl:"Request demo access",
+  cta_video:"▶ See the before and after",cta_dl:"Request demo access",
   h_ownfile:"🔎 BI consultant? In the 1:1 demo we load your own CSV or Excel and you get an audited quality catalog in minutes.",
   m1:"quality dimensions measured",m2:"languages: Spanish · English · Portuguese",
   m3:"compatible BI tools",m4:"web + desktop, no APK",
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
   mb1:"Completeness",mb2:"Uniqueness",mb3:"Validity",mb4:"Consistency",mb5:"Timeliness",mb6:"Accuracy",
   mock_foot:"✓ Catalog up to date · 2 quality alerts assigned to the steward",
+  ad_eye:"Measured case · 40 seconds · ES / EN / PT",ad_h2:"Before and after, with numbers",
+  ad_lead:"The same data portfolio, ungoverned and governed. Quality index, rules passing and rows with problems — measured by the same engine that will run on your PC, not by a slide deck.",
+  ad_err_d:"It may be your connection or a blocker. The same numbers are measured and explained in the guide.",
+  ad_err_cta:"See the measured case",
+  ad_repro:"Reproducible on your PC: ",ad_repro_link:"how this before and after is measured",
   v_eye:"Narrated demo · 1 minute · ES / EN / PT",v_h2:"Watch MV Data Governance in action",
   v_lead:"One minute, with voice-over in your language (Spanish, English or Portuguese): from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
   v_fallback:"Your browser does not support HTML5 video playback.",
@@ -1003,13 +1068,18 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   kick:"100% Web + Programa PC · ES / EN / PT",
   h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
   lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
-  cta_video:"▶ Ver a demo",cta_dl:"Pedir acesso à demo",
+  cta_video:"▶ Ver o antes e depois",cta_dl:"Pedir acesso à demo",
   h_ownfile:"🔎 Consultor de BI? Na demo 1 a 1 carregamos seu próprio CSV ou Excel e você tem um catálogo de qualidade auditado em minutos.",
   m1:"dimensões de qualidade medidas",m2:"idiomas: espanhol · inglês · português",
   m3:"ferramentas de BI compatíveis",m4:"web + desktop, sem APK",
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
   mb1:"Completude",mb2:"Unicidade",mb3:"Validade",mb4:"Consistência",mb5:"Pontualidade",mb6:"Exatidão",
   mock_foot:"✓ Catálogo atualizado · 2 alertas de qualidade atribuídos ao steward",
+  ad_eye:"Caso medido · 40 segundos · ES / EN / PT",ad_h2:"Antes e depois, com números",
+  ad_lead:"A mesma carteira de dados, sem governança e governada. Índice de qualidade, regras em verde e linhas com problemas — medido pelo mesmo motor que vai rodar no seu PC, não por uma apresentação.",
+  ad_err_d:"Pode ser a sua conexão ou um bloqueador. Os mesmos números estão medidos e explicados no guia.",
+  ad_err_cta:"Ver o caso medido",
+  ad_repro:"Reproduzível no seu PC: ",ad_repro_link:"como se mede este antes e depois",
   v_eye:"Demo narrada · 1 minuto · ES / EN / PT",v_h2:"Veja o MV Data Governance em ação",
   v_lead:"Um minuto, com narração no seu idioma (espanhol, inglês ou português): do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
   v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
@@ -1246,7 +1316,14 @@ function setShots(lang){
    NO cubre un 404 ni la red caída. Escuchamos el error real y mostramos un
    panel con salida, en vez de dejar un recuadro negro sin explicación. */
 function watchVideo(){
-  var vid=document.getElementById('demoVideo'),box=document.getElementById('videoError');
+  /* Cada <video> dice cuál es su panel de error con data-errbox. Antes esto
+     miraba un único id: al agregar un segundo video, ese quedaba sin red de
+     contención y un 404 volvía a ser un recuadro negro mudo. */
+  document.querySelectorAll('video[data-errbox]').forEach(function(vid){
+    vigilarUnVideo(vid,document.getElementById(vid.getAttribute('data-errbox')));
+  });
+}
+function vigilarUnVideo(vid,box){
   if(!vid||!box)return;
   function fail(){box.hidden=false;vid.style.display='none';}
   function ok(){box.hidden=true;vid.style.display='';}
@@ -1265,17 +1342,23 @@ function watchVideo(){
   vid.addEventListener('loadeddata',ok);
   vid.addEventListener('loadedmetadata',ok);
 }
-/* La demo narrada se sirve en el idioma elegido (voz en off ES/EN/PT). */
+/* Los videos narrados se sirven en el idioma elegido (voz en off ES/EN/PT).
+   Cada <video> declara su nombre base en data-vbase; el sufijo de idioma y
+   las dos fuentes (archivo local + CDN de respaldo) se arman acá. Así agregar
+   un video es agregar markup, no tocar este código. */
+var CDN_VIDEO='https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/';
 function setVideoLang(lang){
-  var vid=document.getElementById('demoVideo');if(!vid)return;
-  var s1=document.getElementById('demoSrc'),s2=document.getElementById('demoSrcCdn');
-  var file='MVDataGovernance_Demo_'+lang+'.mp4';
-  if(s1&&s1.getAttribute('src').indexOf(file)!==-1)return; // ya es el idioma actual
-  var wasPlaying=!vid.paused&&!vid.ended;
-  if(s1)s1.src='video/'+file;
-  if(s2)s2.src='https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/'+file;
-  vid.load();
-  if(wasPlaying){var pr=vid.play();if(pr&&pr.catch)pr.catch(function(){});}
+  document.querySelectorAll('video[data-vbase]').forEach(function(vid){
+    var file=vid.getAttribute('data-vbase')+'_'+lang+'.mp4';
+    var fuentes=vid.querySelectorAll('source');
+    if(!fuentes.length)return;
+    if(fuentes[0].getAttribute('src').indexOf(file)!==-1)return; // ya está en ese idioma
+    var sonaba=!vid.paused&&!vid.ended;
+    fuentes[0].src='video/'+file;
+    if(fuentes[1])fuentes[1].src=CDN_VIDEO+file;
+    vid.load();
+    if(sonaba){var pr=vid.play();if(pr&&pr.catch)pr.catch(function(){});}
+  });
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 
