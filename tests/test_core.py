@@ -2680,25 +2680,23 @@ def test_bat_de_activacion_del_owner_es_de_un_clic():
     assert '.venv\\Scripts\\python.exe' in bat and "py -3" in bat
 
 
-def test_workflow_owner_no_publica_release_y_exige_binding():
-    """Los dos candados del build del owner, fijados:
-    1. Se publica como ARTEFACTO, nunca como Release — un asset de Release
-       queda pegado al repo para siempre y quedaría expuesto el día que el
-       repo pase a público.
-    2. Exige que la licencia esté atada a una máquina, porque el candado 1
-       se rompe en cuanto alguien reenvía el archivo por mail."""
-    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador_owner.yml")
-    assert os.path.exists(ruta), "falta el workflow del instalador owner"
-    with open(ruta, encoding="utf-8") as fh:
-        wf = fh.read()
-    assert "workflow_dispatch" in wf and "tags:" not in wf, (
-        "el build del owner no debe dispararse solo")
-    assert "action-gh-release" not in wf and "softprops" not in wf, (
-        "el build del owner NO se publica como Release")
-    assert "contents: read" in wf, "no necesita permiso de escritura"
-    assert "MVDG_OWNER_TOKEN" in wf
-    assert "falta 'mid'" in wf, "no exige que la licencia este atada"
-    assert "retention-days: 7" in wf
+def test_el_build_del_owner_exige_licencia_atada_a_la_maquina():
+    """El instalador del owner se publica en una Release (decisión explícita:
+    que siempre haya uno descargable), así que el único candado que queda de
+    pie es que la licencia esté ATADA A LA MÁQUINA del dueño — campo `mid`,
+    ver mvdg/machine.py. Sin eso, un .exe reenviado por mail abre
+    desbloqueado en cualquier PC y el producto se regala solo.
+
+    También tiene que saltearse limpio cuando falta el secreto: un build sin
+    MVDG_OWNER_TOKEN que termine en VERDE sin producir instalador es un
+    verde que no significa nada."""
+    _, wf = _yaml_workflow("instalador_electron.yml")
+    assert "MVDG_OWNER_TOKEN" in wf, "el owner ya no recibe su licencia"
+    assert "mid" in wf, "no se verifica que la licencia esté atada a la máquina"
+    assert "::warning title=Instalador owner sin atar" in wf, (
+        "un .exe owner sin atar se construiría en silencio")
+    assert "steps.owner.outputs.hay == 'true'" in wf, (
+        "sin el secreto, los pasos del owner tienen que saltearse, no fallar")
 
 
 def test_todo_lo_que_importa_la_suite_esta_declarado():
@@ -2769,10 +2767,16 @@ def test_todo_lo_que_importa_la_suite_esta_declarado():
 
 
 def _yaml_workflow(nombre):
+    """Devuelve (yaml parseado, texto crudo) de un workflow.
+
+    Antes el segundo elemento era el descriptor del archivo — ya cerrado, así
+    que cualquiera que lo usara se llevaba "I/O operation on closed file".
+    Nadie lo usaba, y por eso nadie lo notó."""
     import yaml
     ruta = os.path.join(_repo_root(), ".github", "workflows", nombre)
     with open(ruta, encoding="utf-8") as fh:
-        return yaml.safe_load(fh), fh
+        texto = fh.read()
+    return yaml.safe_load(texto), texto
 
 
 def test_la_ui_de_escritorio_no_usa_streamlit():
@@ -3027,22 +3031,30 @@ def test_automerge_solo_toca_ramas_de_trabajo_y_tiene_salida_de_emergencia():
         "github.event.workflow_run.conclusion == 'success'")
 
 
-def test_instalador_se_reconstruye_solo_cuando_cambia_el_programa():
-    """"Que se dispare solo cuando sea necesario": al mergear a main algo
-    que toca el programa. Los paths son el punto — construir 200 MB por un
-    typo en un .md o un cambio de la landing sería quemar minutos al pedo."""
-    datos, _ = _yaml_workflow("instalador.yml")
+def test_hay_un_solo_instalador_y_hace_las_dos_ediciones():
+    """Un solo camino de instalador en GitHub: Electron + NSIS.
+
+    Convivían tres workflows que producían .exe: dos de PyInstaller + Inno
+    (`instalador.yml` y `instalador_owner.yml`) y el de Electron. Tres
+    superficies para lo mismo son dos de más — y las de PyInstaller estaban
+    muertas: la última corrida de `instalador.yml` fue 26 merges antes de
+    borrarlo, sin que nada lo dijera, porque "no corrió" no falla.
+
+    Queda el de Electron, que hace las DOS ediciones desde el mismo binario:
+    cliente (arranca en demo, se desbloquea con la licencia comprada) y
+    owner (licencia adentro, atada a la máquina del dueño)."""
+    wf_dir = os.path.join(_repo_root(), ".github", "workflows")
+    for muerto in ("instalador.yml", "instalador_owner.yml"):
+        assert not os.path.exists(os.path.join(wf_dir, muerto)), (
+            f"{muerto} volvió: duplica lo que ya hace instalador_electron.yml")
+    datos, crudo = _yaml_workflow("instalador_electron.yml")
     on = datos[True] if True in datos else datos["on"]
-    push = on["push"]
-    assert push["tags"] == ["v*"], "se pierde la publicacion por tag"
-    assert push["branches"] == ["main"]
-    paths = push["paths"]
-    for necesario in ("mvdg/**", "app/**", "packaging/**", "requirements.txt"):
-        assert necesario in paths, f"un cambio en {necesario} no reconstruiria"
-    # y NO se dispara por cosas que no afectan al .exe
-    for irrelevante in ("landing/**", "docs/**", "**.md", "api/**"):
-        assert irrelevante not in paths, f"{irrelevante} no cambia el instalador"
-    assert "concurrency" in datos, "sin concurrency, dos merges = dos builds de 10 min"
+    opciones = on["workflow_dispatch"]["inputs"]["version"]["options"]
+    for edicion in ("cliente", "owner", "ambas"):
+        assert edicion in opciones, f"el instalador ya no ofrece «{edicion}»"
+    # El del cliente NO puede llevar licencia adentro: se desbloquea pagando.
+    assert "licencia_owner.txt" in crudo, "el owner ya no recibe su licencia"
+    assert "concurrency" in datos, "sin concurrency, dos merges = dos builds largos"
 
 
 def test_tests_no_corren_dos_veces_por_pr():
@@ -3060,22 +3072,24 @@ def test_workflow_del_instalador_publica_y_verifica():
     """El .exe no puede vivir en el repo (GitHub rechaza >100 MB), así que
     se construye en un runner Windows y se publica como Release. El
     workflow tiene que verificar que el .exe es real antes de publicarlo:
-    un Inno que falla a medias deja un stub de pocos KB."""
-    ruta = os.path.join(_repo_root(), ".github", "workflows", "instalador.yml")
+    un build que falla a medias deja un stub de pocos KB, y publicarlo es
+    peor que no publicar nada — el cliente baja algo que no abre."""
+    ruta = os.path.join(_repo_root(), ".github", "workflows",
+                        "instalador_electron.yml")
     assert os.path.exists(ruta), "falta el workflow del instalador"
     with open(ruta, encoding="utf-8") as fh:
         wf = fh.read()
     assert "windows-latest" in wf, "no se construye en Windows"
-    assert "pyinstaller packaging/mvdg.spec" in wf
-    assert "instalador.iss" in wf
+    assert "electron-builder" in wf, "no se construye con electron-builder"
     assert "contents: write" in wf, "sin permiso para crear la Release"
-    assert 'tags: ["v*"]' in wf, "no se dispara al taggear una versión"
-    assert "-lt 20" in wf, "no verifica que el instalador no sea un stub"
+    assert "gh release" in wf, "no publica ninguna Release"
+    assert re.search(r"-lt\s+\d+", wf), (
+        "no verifica el tamaño del instalador: un build a medias deja un stub")
     # y el LEEME manda a las Releases, no a una carpeta del repo
     leeme = os.path.join(_repo_root(), "distribucion",
                          "opcion_A_instalador_exe", "LEEME.md")
     with open(leeme, encoding="utf-8") as fh:
-        assert "releases/latest" in fh.read()
+        assert "releases" in fh.read()
 
 
 def test_launcher_abre_ventana_de_programa_no_pestana():
@@ -8252,10 +8266,20 @@ def test_el_automerge_dispara_los_instaladores():
         "sin permiso actions:write el automerge no puede disparar nada")
 
     assert "createWorkflowDispatch" in crudo, (
-        "el automerge no dispara ningun workflow despues de mergear: los "
-        "instaladores no se van a construir solos")
+        "el automerge no dispara ningun workflow despues de mergear: el "
+        "instalador no se va a construir solo")
+    # Los dos workflows de PyInstaller se eliminaron: pedirlos por
+    # createWorkflowDispatch fallaría en cada merge, y el fallo se reporta
+    # como warning — o sea, en silencio.
+    # Se busca la forma en que aparecen en la lista de dispatch
+    # (`{archivo: 'instalador.yml'`), no el nombre suelto: el comentario que
+    # explica por qué se eliminaron los menciona, y con razón.
+    for muerto in ("instalador.yml", "instalador_owner.yml"):
+        assert f"'{muerto}'" not in crudo, (
+            f"el automerge sigue disparando {muerto}, que ya no existe: la "
+            "llamada falla en cada merge y el fallo se reporta como warning")
 
-    for archivo in ("instalador_electron.yml", "instalador.yml"):
+    for archivo in ("instalador_electron.yml",):
         assert archivo in crudo, f"el automerge no dispara {archivo}"
         # y ese workflow tiene que ACEPTAR ser disparado
         wf = os.path.join(_repo_root(), ".github", "workflows", archivo)

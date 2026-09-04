@@ -66,18 +66,22 @@ lugar que GitHub provee para binarios grandes son las **Releases** (hasta
 👉 **https://github.com/vieraschiavi/Mv-Data-Governance/releases/latest**
 
 Ahí está `MVDataGovernance_Setup_v{versión}.exe`, construido automáticamente
-por [`.github/workflows/instalador.yml`](../../.github/workflows/instalador.yml)
-en un runner **Windows real** cada vez que se publica una versión. Ese link
-es el que se le pasa a un comprador.
+por [`.github/workflows/instalador_electron.yml`](../../.github/workflows/instalador_electron.yml)
+en un runner **Windows real** cada vez que se mergea algo que cambia el
+programa. Ese link es el que se le pasa a un comprador.
 
-**Publicar una versión nueva** (crea la Release y adjunta el `.exe` solo):
+> **Un solo instalador, dos ediciones.** El mismo workflow arma la edición
+> **cliente** (esta) y la **owner**. Convivían además dos workflows de
+> PyInstaller + Inno Setup que hacían lo mismo; se eliminaron porque tres
+> caminos para el mismo `.exe` son dos de más — y los de PyInstaller ya
+> estaban muertos sin que nada lo dijera.
 
-```bash
-git tag v1.1.0 && git push origin v1.1.0
-```
+**Reconstruirlo a mano:** pestaña *Actions* → **Instalador Escritorio
+(Electron)** → *Run workflow* → `version: cliente`.
 
-**Probar un build sin publicar nada:** pestaña *Actions* → *Instalador
-Windows* → *Run workflow*. Deja el `.exe` como artefacto descargable 90 días.
+Este `.exe` **no lleva licencia adentro**: arranca en plan demo y se
+desbloquea cuando el cliente pega la clave que recibió al pagar. Es el mismo
+binario en los dos casos — no hay una "versión paga" distinta que descargar.
 
 > El workflow verifica que el `.exe` generado pese más de 20 MB antes de
 > publicarlo: un Inno Setup que falla a medias puede dejar un stub de pocos

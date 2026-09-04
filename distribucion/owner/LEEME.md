@@ -66,24 +66,29 @@ python packaging/licencias.py firmar --plan owner \
 
 ### Cada vez que quieras el instalador
 
-*Actions* → **Instalador Owner** → *Run workflow* → bajás el artefacto
+*Actions* → **Instalador Escritorio (Electron)** → *Run workflow* →
+`version: owner`. Queda publicado en la Release `owner-latest` como
 `MVDataGovernance_OWNER_Setup_v{versión}.exe`.
+
+Es el **mismo workflow** que arma el instalador del cliente: un solo binario
+que se audita, se testea y se firma, y lo único que cambia entre las dos
+ediciones es un `.txt` con la licencia. (Antes había además dos workflows de
+PyInstaller + Inno Setup haciendo lo mismo; se eliminaron.)
 
 ### Por qué no lo pueden usar los clientes
 
-Dos candados, y el segundo es el que importa:
+**La licencia va atada a tu máquina** (`mvdg/machine.py`): en cualquier otra
+PC el id no coincide, `licensing.verify()` la descarta y el programa abre en
+**plan demo**. Verificado con el binario real — mismo `.exe`, `owner` en tu
+PC y `demo` en otra.
 
-1. **Dónde queda.** Se publica como **artefacto** de la corrida, nunca como
-   Release. Un asset de Release queda pegado al repo para siempre: el día que
-   este repo pase de privado a público, *todas* las releases históricas
-   quedarían expuestas de golpe. Un artefacto vence solo (7 días) y se baja
-   desde Actions con tu cuenta.
-2. **Que no sirva si se filtra.** El candado 1 se rompe en cuanto alguien
-   reenvía el archivo por mail. Por eso la licencia va **atada a tu máquina**
-   (`mvdg/machine.py`): en cualquier otra PC el id no coincide,
-   `licensing.verify()` la descarta y el programa abre en **plan demo**.
-   Verificado con el binario real — mismo `.exe`, `owner` en tu PC y `demo`
-   en otra.
+> **Ojo con dónde queda.** Este `.exe` se publica en una Release, no como
+> artefacto que vence: fue una decisión explícita para que siempre haya un
+> instalador owner descargable. Un asset de Release queda pegado al repo
+> para siempre, así que **mientras el repo sea público ese archivo lo puede
+> bajar cualquiera**. No sirve en otra PC por lo de arriba, pero el único
+> candado que queda de pie es ése. Pasar el repo a privado es lo que
+> restaura el segundo.
 
 > **Límite honesto:** esto no es DRM. El id de máquina se calcula de datos
 > que alguien decidido puede falsificar, y un binario siempre se puede
