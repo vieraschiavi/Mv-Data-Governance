@@ -395,6 +395,194 @@ def read_pbip(folder: str) -> PowerBIModel:
     return model
 
 
+# ------------------------------------------- camino A2: .pbit / .pbix (zip)
+# Un .pbit (plantilla) y un .pbix (reporte) son archivos ZIP. Adentro, el
+# modelo puede venir de dos formas muy distintas:
+#
+#   DataModelSchema -> JSON (TMSL) con tablas, columnas, medidas y
+#                      relaciones. Es lo que trae SIEMPRE un .pbit, y es
+#                      perfectamente legible.
+#   DataModel       -> respaldo binario de Analysis Services. Es lo que trae
+#                      un .pbix con datos adentro. NO se puede leer sin las
+#                      librerías de Analysis Services, que son de Windows y
+#                      pesan cientos de megas.
+#
+# Por eso el .pbit anda siempre y el .pbix anda solo si además trae el
+# schema. Cuando no lo trae, se dice exactamente qué hacer en vez de fallar
+# con un error de zip que no le sirve a nadie.
+_PBIT_SCHEMA = ("datamodelschema", "datamodelschema.json")
+_PBIT_BINARIO = ("datamodel", "datamodel.xml")
+
+
+def _texto_del_zip(crudo: bytes) -> str:
+    """El DataModelSchema viene en UTF-16-LE con BOM. No siempre: algunos
+    exports y herramientas de terceros lo escriben en UTF-8, así que se
+    prueban las dos en vez de asumir."""
+    for enc in ("utf-16", "utf-16-le", "utf-8-sig", "utf-8"):
+        try:
+            texto = crudo.decode(enc)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+        if texto.lstrip().startswith("{"):
+            return texto
+    raise ValueError("El DataModelSchema no está en una codificación conocida.")
+
+
+def _tmsl_columnas(tabla: dict, nombre_tabla: str) -> list[Column]:
+    cols = []
+    for c in tabla.get("columns") or []:
+        if not isinstance(c, dict) or c.get("isHidden") and c.get("type") == "rowNumber":
+            continue
+        expr = c.get("expression")
+        if isinstance(expr, list):
+            expr = "\n".join(str(x) for x in expr)
+        cols.append(Column(
+            table=nombre_tabla, name=str(c.get("name", "")),
+            data_type=str(c.get("dataType", "")),
+            source_column=str(c.get("sourceColumn", "")),
+            is_calculated=c.get("type") == "calculated",
+            dax=str(expr or "")))
+    return cols
+
+
+def _tmsl_medidas(tabla: dict, nombre_tabla: str) -> list[Measure]:
+    medidas = []
+    for m in tabla.get("measures") or []:
+        if not isinstance(m, dict):
+            continue
+        expr = m.get("expression")
+        if isinstance(expr, list):
+            expr = "\n".join(str(x) for x in expr)
+        medidas.append(Measure(
+            table=nombre_tabla, name=str(m.get("name", "")), dax=str(expr or ""),
+            display_folder=str(m.get("displayFolder", "")),
+            description=str(m.get("description", ""))))
+    return medidas
+
+
+def _tmsl_fuente(tabla: dict) -> str | None:
+    """El origen real de la tabla, desde la expresión M de su partición —
+    mismo criterio que usa el camino TMDL, para que un mismo modelo dé la
+    misma respuesta venga de .pbip o de .pbit."""
+    for p in tabla.get("partitions") or []:
+        if not isinstance(p, dict):
+            continue
+        src = p.get("source") or {}
+        expr = src.get("expression")
+        if isinstance(expr, list):
+            expr = "\n".join(str(x) for x in expr)
+        etiqueta = _source_label_from_mquery(str(expr or ""))
+        if etiqueta:
+            return etiqueta
+    return None
+
+
+def _tmsl_relaciones(modelo: dict) -> list[Relationship]:
+    rels = []
+    for r in modelo.get("relationships") or []:
+        if not isinstance(r, dict):
+            continue
+        rels.append(Relationship(
+            from_table=str(r.get("fromTable", "")), from_column=str(r.get("fromColumn", "")),
+            to_table=str(r.get("toTable", "")), to_column=str(r.get("toColumn", "")),
+            both_directions=r.get("crossFilteringBehavior") == "bothDirections"))
+    return rels
+
+
+def _schema_del_zip(path: str) -> dict:
+    """Saca el TMSL del .pbit/.pbix, o explica por qué no se puede."""
+    import zipfile
+
+    from .errors import ErrorTraducible
+
+    with zipfile.ZipFile(path) as zf:
+        por_nombre = {n.rsplit("/", 1)[-1].lower(): n for n in zf.namelist()}
+        entrada = next((por_nombre[n] for n in _PBIT_SCHEMA if n in por_nombre), None)
+        if entrada is None:
+            if any(n in por_nombre for n in _PBIT_BINARIO):
+                raise ErrorTraducible(
+                    "err_pbix_binario",
+                    "El archivo trae DataModel (respaldo binario de Analysis "
+                    "Services), no DataModelSchema.")
+            raise ErrorTraducible(
+                "err_pbi_sin_modelo",
+                f"Entradas del archivo: {sorted(por_nombre)[:12]}")
+        return json.loads(_texto_del_zip(zf.read(entrada)))
+
+
+def read_pbit(path: str) -> PowerBIModel:
+    """Lee un .pbit (o un .pbix que traiga el schema) y devuelve el modelo.
+
+    Misma salida que ``read_pbip``: de acá para arriba, al resto del programa
+    le da igual de qué formato vino."""
+    schema = _schema_del_zip(path)
+    modelo = schema.get("model") or {}
+    ext = os.path.splitext(path)[1].lstrip(".").upper() or "PBIT"
+    m = PowerBIModel(source=f"{ext} (offline)")
+    m.name = str(schema.get("name") or os.path.splitext(os.path.basename(path))[0]
+                 or "SemanticModel")
+
+    for tabla in modelo.get("tables") or []:
+        if not isinstance(tabla, dict):
+            continue
+        nombre = str(tabla.get("name", ""))
+        if not nombre:
+            continue
+        m.tables.append(nombre)
+        m.columns.extend(_tmsl_columnas(tabla, nombre))
+        m.measures.extend(_tmsl_medidas(tabla, nombre))
+        fuente = _tmsl_fuente(tabla)
+        if fuente:
+            m.table_sources[nombre] = fuente
+
+    m.relationships = _tmsl_relaciones(modelo)
+    m.roles = [str(r.get("name", "")) for r in modelo.get("roles") or []
+               if isinstance(r, dict) and r.get("name")]
+    # El .pbit lleva el reporte adentro, no como carpeta hermana: el reporte
+    # es el archivo mismo.
+    m.reports = [os.path.splitext(os.path.basename(path))[0]]
+    return m
+
+
+def ingest_pbit(path: str, lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Atajo: lee un .pbit/.pbix y devuelve las tablas normalizadas."""
+    return _normalizar(read_pbit(path), lang)
+
+
+# Lo que el usuario tiene a mano, sin pedirle que sepa la diferencia.
+EXT_POWERBI = (".pbit", ".pbix", ".pbip", ".zip")
+
+
+def ingest_powerbi_file(path: str, lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Un solo punto de entrada para cualquier archivo de Power BI.
+
+    El usuario no tiene por qué saber que .pbip es una carpeta y .pbit un
+    zip: elige su archivo y esto decide cómo leerlo. Antes la pestaña solo
+    aceptaba la carpeta .pbip, así que pasarle el .pbit —que es lo que la
+    mayoría tiene— fallaba sin explicar que el formato no era ese.
+    """
+    from .errors import ErrorTraducible
+
+    if os.path.isdir(path):
+        return ingest_pbip(path, lang)
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".pbit", ".pbix"):
+        return ingest_pbit(path, lang)
+    if ext == ".zip":
+        # Un zip puede ser el .pbip comprimido (carpeta TMDL) o un .pbit
+        # renombrado. Se prueba el TMDL y, si no está, el schema.
+        import tempfile
+        import zipfile
+        tmp = tempfile.mkdtemp(prefix="mvdg_pbi_")
+        with zipfile.ZipFile(path) as zf:
+            zf.extractall(tmp)
+        try:
+            return ingest_pbip(tmp, lang)
+        except FileNotFoundError:
+            return ingest_pbit(path, lang)
+    raise ErrorTraducible("err_pbi_extension", f"Extensión recibida: {ext or '(ninguna)'}")
+
+
 # ----------------------------------------------------- camino B: Scanner API
 _PBI_ENV = ("POWERBI_TENANT_ID", "POWERBI_CLIENT_ID", "POWERBI_CLIENT_SECRET")
 _ADMIN_BASE = "https://api.powerbi.com/v1.0/myorg/admin"
@@ -722,9 +910,12 @@ def to_quality(model: PowerBIModel, lang: str = "es") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def ingest_pbip(folder: str, lang: str = "es") -> dict[str, pd.DataFrame]:
-    """Atajo: lee un .pbip y devuelve las tablas normalizadas listas para el motor."""
-    model = read_pbip(folder)
+def _normalizar(model: PowerBIModel, lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Las tablas de gobierno de un modelo, sea de donde sea que se leyó.
+
+    Estaba copiado en cada ``ingest_*``; con .pbit sumándose como tercer
+    origen, una copia más era una copia de más — y la que se olvidara de
+    actualizar iba a dar tablas distintas para el mismo modelo."""
     return {
         "catalog": to_catalog(model, lang),
         "dictionary": to_dictionary(model),
@@ -734,6 +925,11 @@ def ingest_pbip(folder: str, lang: str = "es") -> dict[str, pd.DataFrame]:
         "sources": to_sources(model),
         "_model": model,
     }
+
+
+def ingest_pbip(folder: str, lang: str = "es") -> dict[str, pd.DataFrame]:
+    """Atajo: lee un .pbip y devuelve las tablas normalizadas listas para el motor."""
+    return _normalizar(read_pbip(folder), lang)
 
 
 # ------------------------------------------------- ejemplo incluido (real)

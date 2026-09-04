@@ -4961,6 +4961,13 @@ def _repo_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _app_source() -> str:
+    """El código de `app/app.py` como texto, para los tests que verifican
+    que la UI y el motor no se contradicen."""
+    with open(os.path.join(_repo_root(), "app", "app.py"), encoding="utf-8") as fh:
+        return fh.read()
+
+
 def test_vercel_rewrites_serve_all_landing_files():
     """Regresión: vercel.json solo re-escribía /, /mv_icon.png y /video/* hacia
     landing/ — todo lo demás que la página referencia con rutas relativas
@@ -6970,6 +6977,358 @@ def test_scope_combined_lineage_links_each_sample_source_to_bi():
         assert (key, "bi_dashboard") in edges
     # el grafo demo sigue intacto adentro
     assert "mart_sales" in ids and ("mart_sales", "bi_dashboard") in edges
+
+
+# ───────────────── Power BI: .pbit y .pbix, no solo la carpeta .pbip ─────────
+# El agujero que cierran: la pestaña solo aceptaba la CARPETA de un proyecto
+# .pbip. Quien tiene un .pbit o un .pbix —que es la mayoría— escribía la ruta
+# de su archivo y recibía un error de "no encontré la carpeta definition".
+
+def _pbit_de_prueba(destino: str) -> str:
+    """Un .pbit con la forma REAL que exporta Power BI Desktop: zip con el
+    DataModelSchema en UTF-16 y TMSL adentro."""
+    import json as _json
+    import zipfile
+    schema = {"name": "ModeloDePrueba", "compatibilityLevel": 1550, "model": {
+        "tables": [
+            {"name": "Ventas",
+             "columns": [
+                 {"name": "Importe", "dataType": "double", "sourceColumn": "Importe"},
+                 {"name": "Margen", "dataType": "double", "type": "calculated",
+                  "expression": ["Ventas[Importe]*0.3"]},
+                 {"name": "RowNumber", "dataType": "int64", "type": "rowNumber",
+                  "isHidden": True}],
+             "measures": [{"name": "Total Ventas", "expression": ["SUM(Ventas[Importe])"],
+                           "displayFolder": "KPIs", "description": "Suma del importe"}],
+             "partitions": [{"name": "p", "source": {"type": "m", "expression": [
+                 'let O = Sql.Database("srv01", "DWH") in O']}}]},
+            {"name": "Producto",
+             "columns": [{"name": "SKU", "dataType": "string", "sourceColumn": "SKU"}]},
+        ],
+        "relationships": [{"name": "r1", "fromTable": "Ventas", "fromColumn": "SKU",
+                           "toTable": "Producto", "toColumn": "SKU",
+                           "crossFilteringBehavior": "bothDirections"}],
+        "roles": [{"name": "Solo LATAM"}]}}
+    with zipfile.ZipFile(destino, "w") as z:
+        z.writestr("DataModelSchema", _json.dumps(schema).encode("utf-16"))
+        z.writestr("Report/Layout", b"{}")
+    return destino
+
+
+def test_powerbi_lee_un_pbit_completo(tmp_path):
+    """Un .pbit trae el modelo entero en JSON: tablas, columnas (con las
+    calculadas), medidas con su DAX, relaciones, roles RLS y el origen real
+    de cada tabla."""
+    from mvdg import powerbi_meta as pbi
+    m = pbi.read_pbit(_pbit_de_prueba(str(tmp_path / "modelo.pbit")))
+    assert m.tables == ["Ventas", "Producto"]
+    # La columna interna RowNumber que agrega Power BI no es del usuario.
+    assert [c.name for c in m.columns] == ["Importe", "Margen", "SKU"]
+    assert next(c for c in m.columns if c.name == "Margen").is_calculated
+    assert len(m.measures) == 1 and m.measures[0].dax == "SUM(Ventas[Importe])"
+    assert m.measures[0].display_folder == "KPIs"
+    assert len(m.relationships) == 1 and m.relationships[0].both_directions
+    assert m.roles == ["Solo LATAM"]
+    # El origen sale de la expresión M, igual que por el camino TMDL.
+    assert "SQL Server" in m.table_sources["Ventas"]
+
+
+def test_powerbi_un_pbit_da_las_mismas_tablas_de_gobierno_que_un_pbip(tmp_path):
+    """De la lectura para arriba, al programa le tiene que dar igual de qué
+    formato vino el modelo."""
+    from mvdg import powerbi_meta as pbi
+    salida = pbi.ingest_powerbi_file(_pbit_de_prueba(str(tmp_path / "m.pbit")), "es")
+    ejemplo = pbi.ingest_example("es")
+    assert set(salida) == set(ejemplo)
+    for k in ("catalog", "dictionary", "glossary", "lineage", "quality", "sources"):
+        assert list(salida[k].columns) == list(ejemplo[k].columns), f"difieren en {k}"
+        assert not salida[k].empty, f"{k} vino vacía desde el .pbit"
+
+
+def test_powerbi_un_pbix_binario_explica_que_hacer_en_los_tres_idiomas(tmp_path):
+    """Un .pbix guarda el modelo como respaldo binario de Analysis Services:
+    no hay forma de leerlo sin librerías de Microsoft. Lo que NO puede pasar
+    es que el usuario reciba "no se pudo leer el archivo" — necesita que le
+    digan que lo guarde como .pbit, y en su idioma."""
+    import zipfile
+    from mvdg import powerbi_meta as pbi
+    from mvdg.errors import friendly_error
+    ruta = str(tmp_path / "reporte.pbix")
+    with zipfile.ZipFile(ruta, "w") as z:
+        z.writestr("DataModel", b"\x00\x01respaldo-binario")
+        z.writestr("Report/Layout", b"{}")
+    with pytest.raises(Exception) as exc:
+        pbi.ingest_powerbi_file(ruta, "es")
+    for lang, aguja in (("es", ".pbit"), ("en", ".pbit"), ("pt", ".pbit")):
+        mensaje, _ = friendly_error(exc.value, lang, "archivo")
+        assert aguja in mensaje, f"[{lang}] el mensaje no dice qué hacer: {mensaje}"
+        assert "Analysis Services" in mensaje
+
+
+def test_error_traducible_gana_sobre_el_mapeo_por_tipo():
+    """`friendly_error` mapea por tipo de excepción; sin esto, el mensaje
+    específico del motor se perdía y salía el genérico de archivo."""
+    from mvdg.errors import ErrorTraducible, friendly_error
+    from mvdg.i18n import t
+    exc = ErrorTraducible("err_pbix_binario", "detalle técnico")
+    mensaje, detalle = friendly_error(exc, "es", "archivo")
+    assert mensaje == t("err_pbix_binario", "es")
+    assert mensaje != t("err_archivo_generico", "es")
+    assert "detalle técnico" in detalle
+
+
+def test_ningun_origen_de_archivo_pide_solo_escribir_una_ruta():
+    """Escribir una ruta a mano solo funciona si el archivo está en la misma
+    máquina que corre el programa. No es el caso en modo servidor, ni cuando
+    el cliente prueba la demo desde otra computadora, ni en la versión web:
+    ahí la ruta que escriba nunca va a existir del otro lado. Todo lugar que
+    acepte una ruta tiene que aceptar además subir el archivo.
+
+    Se verifica por par (clave de la ruta -> uploader que la acompaña),
+    porque el fallo real es que ALGUNO quede sin par, no que falten
+    uploaders en general."""
+    src = _app_source()
+    pares = {
+        'key="pbi_path"': 'key="pbi_zip"',        # Power BI
+        'key="tab_path"': 'key="tab_upload"',     # Tableau
+        't("db_sqlite_path"': 'key="db_sqlite_up"',  # SQLite
+    }
+    for ruta, uploader in pares.items():
+        assert ruta in src, f"desapareció el campo de ruta {ruta} (¿se renombró?)"
+        assert uploader in src, (
+            f"{ruta} sigue existiendo pero no hay uploader ({uploader}) que lo "
+            "acompañe: en modo servidor esa pantalla no tiene salida")
+    # Y el uploader tiene que ir ANTES: es el camino que funciona siempre.
+    assert src.index('key="pbi_zip"') < src.index('key="pbi_path"')
+    assert src.index('key="tab_upload"') < src.index('key="tab_path"')
+    assert src.index('key="db_sqlite_up"') < src.index('t("db_sqlite_path"')
+
+
+def test_powerbi_acepta_los_formatos_que_la_ui_ofrece():
+    """La lista de extensiones del uploader y la que el motor sabe leer
+    tienen que ser la misma: ofrecer en pantalla un formato que después
+    rebota es peor que no ofrecerlo."""
+    from mvdg import powerbi_meta as pbi
+    ui = re.search(r'type=\["pbit", "pbix", "zip"\]', _app_source())
+    assert ui, "el uploader de Power BI ya no ofrece pbit/pbix/zip"
+    assert set(pbi.EXT_POWERBI) == {".pbit", ".pbix", ".pbip", ".zip"}
+
+
+# ─────────── Los datasets que carga el usuario, en TODO el programa ───────────
+# El agujero que cierran: el usuario subía su Excel en "Mis datos", lo veía
+# perfilado ahí, y las otras 19 pestañas seguían mostrando la demo. Para
+# alguien evaluando el producto con sus propios datos eso lo convierte en una
+# demo bonita en vez de una herramienta.
+
+def _df_usuario():
+    """Un dataset con PII y con defectos, como el que sube un cliente."""
+    return pd.DataFrame({
+        "cliente_id": [1, 2, 3, 4, 5],
+        "email": ["a@x.com", "b@x.com", None, "d@x.com", "e@x.com"],
+        "documento": ["1.234.567-8", "2.345.678-9", "3.456.789-0",
+                      "4.567.890-1", "5.678.901-2"],
+        "monto": [100, 200, 300, 400, 500],
+    })
+
+
+def test_el_dataset_cargado_aparece_en_todo_el_dashboard(monkeypatch, tmp_path):
+    """LA prueba del reporte: cargar un dataset y que TODAS las pestañas lo
+    tomen, no solo la que lo cargó.
+
+    Se hace con AppTest y no con el navegador a propósito: Streamlit dibuja
+    las tablas en un canvas virtualizado, así que leer el DOM no ve el
+    contenido de las celdas — un test por texto pasaría o fallaría por
+    motivos que no tienen nada que ver con el dato. AppTest da los
+    DataFrames que la app realmente renderizó.
+    """
+    from streamlit.testing.v1 import AppTest
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    at = AppTest.from_file(os.path.join(_repo_root(), "app", "app.py"),
+                           default_timeout=400)
+    at.session_state["mvdg_user_datasets"] = {"clientes_crm": _df_usuario()}
+    at.run()
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+
+    # Pestaña por pestaña, identificada por las columnas de su tabla: que
+    # aparezca en "alguna" no sirve — el reporte fue justamente que aparecía
+    # en una y en las demás no.
+    # Se devuelven TODAS las que calzan porque el mismo esquema aparece más
+    # de una vez: la pestaña Laboratorio repite las tablas de catálogo y de
+    # políticas como tutorial guiado sobre la demo, y ésa no tiene que
+    # cambiar con lo que cargue el usuario. Alcanza con que alguna de las
+    # tablas de ese esquema lo incluya; con el cableado roto no lo incluye
+    # ninguna (verificado rompiéndolo a propósito).
+    def _tablas_con(*columnas):
+        return [d.value for d in at.dataframe
+                if set(columnas) <= set(map(str, d.value.columns))]
+
+    pendientes = {
+        "Catálogo": _tablas_con("Dataset", "Descripción", "Dueño", "Steward"),
+        "Calidad": _tablas_con("Dataset", "Dimensión", "Regla"),
+        "Linaje": _tablas_con("source_id", "target_id"),
+        "Políticas": _tablas_con("Política", "Evidencia"),
+    }
+    for pestania, tablas in pendientes.items():
+        assert tablas, f"no encontré ninguna tabla de {pestania}"
+        assert any("clientes_crm" in tb.to_csv(index=False) for tb in tablas), (
+            f"{pestania} no muestra el dataset cargado por el usuario")
+
+    # Y donde se ELIGE sobre qué dataset trabajar: si no está en el selector,
+    # la pestaña se ve pero no se puede usar con los datos propios.
+    mdm = next((w for w in at.selectbox if w.key == "mdm_pick_dataset"), None)
+    assert mdm is not None and any("clientes_crm" in str(o) for o in mdm.options), (
+        "MDM no deja elegir el dataset del usuario: deduplicar el archivo "
+        "propio es justo lo que viene a probar un cliente")
+    assert any("clientes_crm" in (w.options or []) for w in at.selectbox), (
+        "el dataset no es elegible en el detalle del Catálogo")
+
+    # La política de dueño/steward tiene que NOTAR que el dataset nuevo no
+    # tiene responsables, en vez de seguir diciendo que está todo asignado.
+    reaccionaron = [tb for tb in pendientes["Políticas"]
+                    if tb["Evidencia"].astype(str).str.contains("clientes_crm").any()]
+    assert reaccionaron, "ninguna política reaccionó al dataset del usuario"
+
+
+def test_el_selfcheck_no_deja_sucio_el_contexto_de_streamlit():
+    """Importar `app/app.py` lo EJECUTA (es un script de Streamlit). Fuera de
+    un servidor, `st.form` estampa su id sobre el contenedor raíz y no lo
+    limpia, así que TODO lo que use Streamlit después en el mismo proceso lo
+    hereda: un `st.button` de la barra lateral se cree adentro de un
+    formulario y revienta con "st.button() can't be used in an st.form()".
+
+    Se vio de verdad: la suite entera se ponía en rojo mientras cada test
+    pasaba solo. Un fallo así cuesta horas de bisección, y vuelve solo si
+    alguien toca el chequeo — por eso se fija acá."""
+    from streamlit.delta_generator_singletons import context_dg_stack
+    from mvdg import selfcheck
+    antes = [(dg, getattr(dg, "_form_data", None)) for dg in context_dg_stack.get()]
+    selfcheck._check_46()
+    for dg, previo in antes:
+        assert getattr(dg, "_form_data", None) == previo, (
+            "el chequeo dejó un formulario abierto en el contexto global de "
+            "Streamlit: lo que corra después en este proceso va a fallar")
+
+
+def test_cargar_un_dataset_refresca_el_resto_del_programa():
+    """Streamlit ejecuta el script de arriba abajo: cuando "Mis datos"
+    registra el archivo, el sidebar y las demás pestañas YA se dibujaron.
+    Sin un rerun, el dataset queda guardado y nadie lo ve hasta la próxima
+    interacción — el síntoma exacto que se reportó. El rerun tiene que
+    dispararse UNA vez por archivo, o es un bucle infinito."""
+    src = _app_source()
+    reg = src[src.index("def _registrar_dataset"):]
+    reg = reg[:reg.index("\ndef ", 1)]
+    assert "st.rerun()" in reg, (
+        "_registrar_dataset no vuelve a correr el script: las otras pestañas "
+        "se quedan con lo de antes")
+    assert "_mvdg_user_vistos" in reg, (
+        "sin registro de ya-vistos, el rerun se dispara en cada pasada y la "
+        "app entra en bucle")
+
+
+def test_scope_usuario_produce_las_mismas_columnas_que_la_demo():
+    """Si las columnas no coinciden, concatenar rompe o —peor— mete columnas
+    fantasma que la UI muestra vacías."""
+    from mvdg.catalog import catalog_df, dictionary_df
+    from mvdg.quality import run_rules
+    from mvdg import scope
+    ud = {"clientes_crm": _df_usuario()}
+    base_cat = catalog_df("es")
+    assert list(scope.user_catalog(ud, "es", columnas=base_cat.columns).columns) == \
+        list(base_cat.columns)
+    assert list(scope.user_dictionary(ud, "es").columns) == list(dictionary_df("es").columns)
+    assert list(scope.user_results(ud, "es").columns) == list(run_rules(lang="es").columns)
+
+
+def test_scope_usuario_corre_reglas_de_verdad_contra_los_datos():
+    """No alcanza con listar el dataset: las reglas tienen que EVALUARSE. Un
+    catálogo que dice "todo bien" sin haber mirado los datos es peor que no
+    tener catálogo."""
+    from mvdg import scope
+    res = scope.user_results({"clientes_crm": _df_usuario()}, "es")
+    assert not res.empty
+    # La columna email tiene 1 nulo de 5 -> 80% de completitud, y eso no
+    # puede dar 100 ni puede dar pass con umbral alto.
+    email = res[res["column"] == "email"]
+    assert not email.empty, "no se generó ninguna regla para la columna con nulos"
+    assert float(email.iloc[0]["score"]) == 80.0
+    assert (res["score"] <= 100).all() and (res["score"] >= 0).all()
+
+
+def test_scope_usuario_clasifica_pii_con_el_token_que_el_motor_compara():
+    """`classification` es un token literal, no texto para mostrar: policies.py
+    busca exactamente "PII". Traducirlo rompía la política de clasificación en
+    silencio — el dataset aparecía con PII en el diccionario y la política
+    seguía diciendo que estaba todo en orden."""
+    from mvdg import scope
+    ud = {"clientes_crm": _df_usuario()}
+    for lang in ("es", "en", "pt"):
+        fila = scope.user_catalog(ud, lang).iloc[0]
+        assert fila["classification"] == "PII", (
+            f"en {lang} la clasificación es {fila['classification']!r}, "
+            "y policies.py compara contra el literal 'PII'")
+
+
+def test_scope_usuario_no_inventa_dueno_ni_steward():
+    """Poner "N/D" en un campo de gobierno es peor que dejarlo vacío: la
+    política de dueño/steward lo contaría como asignado."""
+    from mvdg import scope
+    fila = scope.user_catalog({"clientes_crm": _df_usuario()}, "es").iloc[0]
+    assert fila["owner"] == "" and fila["steward"] == ""
+
+
+def test_scope_usuario_vacio_no_rompe_nada():
+    """Sin datasets cargados —el caso normal— todo tiene que seguir igual."""
+    from mvdg import scope
+    for entrada in (None, {}, {"x": pd.DataFrame()}):
+        assert scope.user_catalog(entrada, "es").empty
+        assert scope.user_dictionary(entrada, "es").empty
+        assert scope.user_results(entrada, "es").empty
+
+
+def test_governance_tables_suma_lo_del_usuario_sin_pisar_lo_demas():
+    """El bug que esto fija: al sumar el linaje del usuario, la primera
+    versión REEMPLAZABA el de los casos de ejemplo (23 filas -> 17) porque
+    partía del grafo de demo en vez del combinado. El cliente exportaba a BI
+    y se llevaba menos linaje del que tenía antes de cargar su archivo."""
+    from mvdg.exporters import governance_tables
+    ud = {"clientes_crm": _df_usuario()}
+    base = governance_tables("es", include_samples=True)
+    con = governance_tables("es", include_samples=True, user_datasets=ud)
+    for tabla in ("catalog", "dictionary", "quality_results", "lineage"):
+        assert len(con[tabla]) > len(base[tabla]), (
+            f"{tabla} no creció al sumar el dataset del usuario")
+    # y lo de antes sigue estando
+    assert "cafe_sales_kaggle" in set(con["lineage"]["target"])
+    assert "clientes_crm" in set(con["lineage"]["target"])
+    assert "clientes_crm" in set(con["catalog"]["dataset"])
+
+
+def test_governance_tables_sin_usuario_no_cambia():
+    """Compatibilidad: la API y los tests existentes no pueden ver ninguna
+    diferencia si nadie cargó nada."""
+    from mvdg.exporters import governance_tables
+    a = governance_tables("es", include_samples=True)
+    b = governance_tables("es", include_samples=True, user_datasets={})
+    for k in a:
+        assert a[k].equals(b[k]), f"la tabla {k} cambió sin datasets del usuario"
+
+
+def test_politica_de_dueno_no_se_contradice_con_su_evidencia():
+    """POL-01 decía "partial" y su evidencia decía "N/N asignados" — o sea,
+    cumplimiento total. Lo que se exporta y lo que lee un auditor es la
+    evidencia, así que afirmaba justo lo contrario de lo detectado. No se
+    veía porque hasta ahora todo el universo traía dueño y steward."""
+    from mvdg.exporters import governance_tables
+    con = governance_tables("es", include_samples=True,
+                            user_datasets={"clientes_crm": _df_usuario()})
+    pol = con["policies"].set_index("policy_id")
+    assert pol.loc["POL-01", "status"] == "partial"
+    evidencia = pol.loc["POL-01", "evidence"]
+    total = len(con["catalog"])
+    assert f"{total}/{total}" not in evidencia, (
+        f"la evidencia dice cumplimiento total pero el estado es parcial: {evidencia}")
+    assert "clientes_crm" in evidencia, "la evidencia no dice cuál dataset falta"
 
 
 def test_lineage_figure_no_solapa_etiquetas_largas():
