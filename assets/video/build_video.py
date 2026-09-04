@@ -417,9 +417,10 @@ VOICE_LEAD = 0.4  # la voz entra apenas después del corte de escena
 VOICE_TAIL = 0.9  # aire después de cada frase
 
 
-def _synth_narrations(tmpdir: str, lang: str) -> list[str] | None:
+def _synth_narrations(tmpdir: str, lang: str, scenes=None) -> list[str] | None:
     """Genera un WAV por escena con Piper en el idioma dado. None si no hay
     modelo de voz configurado para ese idioma."""
+    scenes = SCENES if scenes is None else scenes
     model = _voice_model(lang)
     if not model:
         return None
@@ -429,7 +430,7 @@ def _synth_narrations(tmpdir: str, lang: str) -> list[str] | None:
         return None
     voice = PiperVoice.load(model)
     paths = []
-    for i, (_, _, narration) in enumerate(SCENES):
+    for i, (_, _, narration) in enumerate(scenes):
         text = narration[lang]
         path = os.path.join(tmpdir, f"nar_{lang}_{i}.wav")
         with wave.open(path, "wb") as w:
@@ -443,10 +444,11 @@ def _wav_duration(path: str) -> float:
         return w.getnframes() / w.getframerate()
 
 
-def _scene_seconds(narrations: list[str] | None) -> list[float]:
+def _scene_seconds(narrations: list[str] | None, scenes=None) -> list[float]:
     """Duración final de cada escena: la visual mínima o la narración + aire."""
+    scenes = SCENES if scenes is None else scenes
     secs = []
-    for i, (_, min_secs, _) in enumerate(SCENES):
+    for i, (_, min_secs, _) in enumerate(scenes):
         if narrations:
             secs.append(max(min_secs,
                             VOICE_LEAD + _wav_duration(narrations[i]) + VOICE_TAIL))
@@ -476,18 +478,24 @@ def _mix_audio_track(narrations: list[str], secs: list[float],
         w.writeframes(total.tobytes())
 
 
-def build_one(lang: str, tmpdir: str) -> tuple[str, bool]:
-    """Genera el video de un idioma. Devuelve (ruta, tiene_voz)."""
-    out = os.path.join(VIDEO_DIR, f"MVDataGovernance_Demo_{lang}.mp4")
-    narrations = _synth_narrations(tmpdir, lang)
-    secs_list = _scene_seconds(narrations)
+def build_one(lang: str, tmpdir: str, scenes=None, nombre: str = "Demo") -> tuple[str, bool]:
+    """Genera el video de un idioma. Devuelve (ruta, tiene_voz).
 
-    video_only = os.path.join(tmpdir, f"video_{lang}.mp4") if narrations else out
+    `scenes` y `nombre` existen para que otro guion pueda reusar todo este
+    pipeline (render, narración por escena, mezcla y mux) sin copiarlo: el
+    video de antes/después es exactamente el mismo motor con otras escenas.
+    """
+    scenes = SCENES if scenes is None else scenes
+    out = os.path.join(VIDEO_DIR, f"MVDataGovernance_{nombre}_{lang}.mp4")
+    narrations = _synth_narrations(tmpdir, lang, scenes)
+    secs_list = _scene_seconds(narrations, scenes)
+
+    video_only = os.path.join(tmpdir, f"video_{nombre}_{lang}.mp4") if narrations else out
     writer = imageio.get_writer(video_only, fps=FPS, codec="libx264",
                                 quality=7, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
     black = Image.new("RGB", (W, H), (0, 0, 0))
-    for (scene, _, _), secs in zip(SCENES, secs_list, strict=True):
+    for (scene, _, _), secs in zip(scenes, secs_list, strict=True):
         n = int(round(secs * FPS))
         for f_i in range(n):
             p = f_i / max(1, n - 1)

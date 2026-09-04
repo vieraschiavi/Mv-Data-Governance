@@ -37,7 +37,21 @@ Tableau, Purview y Collibra (en las dos direcciones).
 | Gate completo (lint + tests) | `make check` |
 | Un test puntual | `pytest tests/test_core.py::<nombre> -v` |
 | Servir la landing local | `cd landing && python -m http.server 8080` |
+| Verificación end-to-end (servicios reales + Chromium) | `python scripts/e2e_demo.py` (`--api` para saltear el navegador) |
 | Regenerar el video demo | `python assets/video/build_video.py` |
+| Regenerar el video antes/después | `python assets/video/build_antes_despues.py` |
+
+> El E2E (`scripts/e2e_demo.py`) NO corre dentro de pytest: levanta `bi_api`,
+> Streamlit y la landing de verdad y los recorre con Chromium. Cubre lo que
+> pytest no puede ver — una excepción renderizada en una pestaña, un error de
+> JavaScript, una página que desborda a lo ancho. Correlo antes de declarar
+> una versión lista para producción.
+>
+> Los dos guiones de video necesitan `imageio`/`imageio-ffmpeg` y, para la
+> narración, `piper-tts` con `MVDG_VOICE_ONNX_ES/EN/PT` apuntando a los
+> modelos. No están en `requirements`: son herramientas de generación, no
+> dependencias del producto. Los `.mp4` de `assets/video/` están ignorados
+> por git; los que se publican viven en `landing/video/`.
 
 > Linter: **ruff**, configurado en `pyproject.toml` (`make lint`). No hay
 > formateador automático a propósito: reformatear masivamente destruiría el
