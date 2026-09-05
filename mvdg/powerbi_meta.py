@@ -105,6 +105,11 @@ class PowerBIModel:
     workspace: str = ""    # workspace de origen — solo se completa en el camino tenant (Scanner API)
     dataset_id: str = ""   # id del dataset en el Scanner API — solo para linkear reportes al escanear
     source: str = "PBIP (offline)"
+    # Lo que declara el programa que generó el archivo, cuando dejó rastro.
+    # Vacío para cualquier modelo hecho a mano en Desktop, que es el caso
+    # normal: nada de acá abajo puede ser obligatorio.
+    generator: str = ""
+    table_rows: dict[str, int] = field(default_factory=dict)  # tabla -> filas declaradas
 
 
 # ------------------------------------------------------- helpers de parseo TMDL
@@ -510,6 +515,51 @@ def _schema_del_zip(path: str) -> dict:
         return json.loads(_texto_del_zip(zf.read(entrada)))
 
 
+# ------------------------------------------- el traspaso desde el generador
+# Un generador de modelos sabe cosas que el TMSL no cuenta: cuántas filas
+# trae cada tabla —van comprimidas dentro del Power Query—, qué papel juega
+# cada una, y por qué cada medida está escrita como está. Cuando el archivo
+# lo dejó anotado, se lee. Cuando no —un .pbit hecho a mano en Desktop, que
+# es el caso normal— no pasa nada: el resto del programa funciona igual y
+# los campos quedan como estaban. Ningún archivo puede quedar peor por no
+# traer esto.
+ANOTACION_TRASPASO = "MVDaxLab_Gobernanza"
+FORMATO_TRASPASO = 1
+
+
+def _traspaso(modelo: dict) -> dict | None:
+    """El manifiesto del generador, o None si no está o no se entiende."""
+    for a in modelo.get("annotations") or []:
+        if not isinstance(a, dict) or a.get("name") != ANOTACION_TRASPASO:
+            continue
+        try:
+            datos = json.loads(a.get("value") or "")
+        except (ValueError, TypeError):
+            return None
+        if isinstance(datos, dict) and datos.get("formato") == FORMATO_TRASPASO:
+            return datos
+        return None
+    return None
+
+
+def _aplicar_traspaso(m: PowerBIModel, modelo: dict) -> None:
+    """Completa el modelo leído con lo que el generador dejó declarado."""
+    datos = _traspaso(modelo)
+    if not datos:
+        return
+    m.generator = str(datos.get("generador") or "")
+    for t in datos.get("tablas") or []:
+        if isinstance(t, dict) and isinstance(t.get("filas"), int):
+            m.table_rows[str(t.get("nombre", ""))] = int(t["filas"])
+    # La definición de negocio de cada medida. No pisa una descripción que
+    # el modelo ya traiga: lo que escribió una persona gana siempre.
+    porques = {(str(x.get("tabla", "")), str(x.get("nombre", ""))): str(x.get("porque", ""))
+               for x in datos.get("medidas") or [] if isinstance(x, dict)}
+    for med in m.measures:
+        if not med.description:
+            med.description = porques.get((med.table, med.name), "")
+
+
 def read_pbit(path: str) -> PowerBIModel:
     """Lee un .pbit (o un .pbix que traiga el schema) y devuelve el modelo.
 
@@ -538,6 +588,7 @@ def read_pbit(path: str) -> PowerBIModel:
     m.relationships = _tmsl_relaciones(modelo)
     m.roles = [str(r.get("name", "")) for r in modelo.get("roles") or []
                if isinstance(r, dict) and r.get("name")]
+    _aplicar_traspaso(m, modelo)
     # El .pbit lleva el reporte adentro, no como carpeta hermana: el reporte
     # es el archivo mismo.
     m.reports = [os.path.splitext(os.path.basename(path))[0]]
@@ -786,11 +837,19 @@ def ingest_tenant(lang: str = "es", **kwargs) -> dict[str, pd.DataFrame | list]:
 # ---------------------------------------------------- normalización a MVDG
 def to_catalog(model: PowerBIModel, lang: str = "es") -> pd.DataFrame:
     """Una fila por MODELO (dataset semántico), con las columnas de catalog_df."""
+    # `rows` era 0 fijo con el comentario «metadata, sin filas», y para un
+    # modelo leído del TMSL es cierto. Pero un .pbit que trae los datos
+    # empotrados SÍ tiene filas, y el generador las declara: decir 0 cuando
+    # el archivo dice 3694 no es prudencia, es un dato mal. Sin declaración
+    # sigue siendo 0, que es lo honesto ahí.
+    descripcion = (f"Modelo semántico Power BI · {len(model.tables)} tablas, "
+                   f"{len(model.measures)} medidas")
+    if model.generator:
+        descripcion += f" · generado con {model.generator}"
     return pd.DataFrame([{
         "dataset": model.name,
         "domain": f"BI / Power BI · {model.workspace}" if model.workspace else "BI / Power BI",
-        "description": f"Modelo semántico Power BI · {len(model.tables)} tablas, "
-                       f"{len(model.measures)} medidas",
+        "description": descripcion,
         "owner": "—",
         "steward": "—",
         "classification": "PII?" if any(
@@ -798,7 +857,7 @@ def to_catalog(model: PowerBIModel, lang: str = "es") -> pd.DataFrame:
             for k in ("doc", "cedula", "email", "nombre", "telefono")) else "Interno",
         "source": model.source,
         "refresh": "—",
-        "rows": 0,                       # metadata, sin filas
+        "rows": sum(model.table_rows.values()),
         "columns": len(model.columns),
         "last_updated": pd.Timestamp.today().date().isoformat(),
     }])
