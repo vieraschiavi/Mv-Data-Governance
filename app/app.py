@@ -47,7 +47,9 @@ from mvdg import insights
 from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
+from mvdg import doc_export
 from mvdg import mdm
+from mvdg import pipeline_doc
 from mvdg import glossary_auto
 from mvdg import purview_export
 from mvdg import purview_pull
@@ -291,12 +293,13 @@ tables = dict(_tables())
 tables.update(_mis_datasets())
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
- tab_p, tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+ tab_p, tab_pr, tab_bi, tab_tz, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_contracts", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
-    t("tab_bi", lang), t("tab_deliverable", lang), t("tab_pbi", lang), t("tab_tableau", lang),
+    t("tab_bi", lang), t("tab_trace", lang), t("tab_deliverable", lang),
+    t("tab_pbi", lang), t("tab_tableau", lang),
     t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
 ])
 
@@ -2418,6 +2421,61 @@ with tab_h:
             st.markdown(item["a"])
 
 # ---------------------------------------------------------- Entregable final
+with tab_tz:
+    # El recorrido completo del dato, contado dos veces: en criollo para quien
+    # firma la compra y en técnico para quien mantiene el código. La evidencia
+    # de cada etapa sale de ESTA corrida — con lo que el usuario tenga cargado
+    # en este momento, no con números de folleto.
+    st.info(t("tz_intro", lang))
+    _tz_gov = governance_tables(lang, include_samples=incl_samples,
+                                user_datasets=_mis_datasets())
+    _tz_ctx = dict(
+        datasets=_mis_datasets(),
+        catalog=_tz_gov["catalog"], dictionary=_tz_gov["dictionary"],
+        results=_tz_gov["quality_results"], lineage=_tz_gov["lineage"],
+        glossary=_tz_gov["glossary"], policies=_tz_gov["policies"],
+        indice=overall_index(results), tablas_bi=sorted(_tz_gov),
+    )
+    _TZ_VISTAS = {"ambos": t("tz_view_both", lang),
+                  "criollo": t("tz_view_plain", lang),
+                  "tecnico": t("tz_view_tech", lang)}
+    _tz_vista = st.radio(t("tz_view", lang), list(_TZ_VISTAS),
+                         format_func=lambda k: _TZ_VISTAS[k], horizontal=True)
+    _tz_campos = {"ambos": ("criollo", "tecnico", "porque", "impacto"),
+                  "criollo": ("criollo", "impacto"),
+                  "tecnico": ("tecnico", "porque")}[_tz_vista]
+
+    _tz_etapas = pipeline_doc.documentar(lang, **_tz_ctx)
+    _tz_rot = pipeline_doc.etiquetas(lang)
+    _tz_medidas = sum(1 for e in _tz_etapas if e["evidencia"])
+    z1, z2, z3 = st.columns(3)
+    z1.metric(t("tz_kpi_stages", lang), len(_tz_etapas))
+    z2.metric(t("tz_kpi_measured", lang), f"{_tz_medidas} / {len(_tz_etapas)}")
+    z3.metric(t("kpi_quality", lang), f"{_tz_ctx['indice']} / 100")
+
+    for _tz_e in _tz_etapas:
+        st.markdown(f"##### {_tz_e['n']}. {_tz_e['titulo']}")
+        st.caption(f"`{_tz_e['modulo']}`")
+        for _tz_campo in _tz_campos:
+            st.markdown(f"**{_tz_rot[_tz_campo]}** — {_tz_e[_tz_campo]}")
+        if _tz_e["evidencia"]:
+            st.success(f"**{_tz_rot['evidencia']}** · {_tz_e['evidencia']}")
+        st.divider()
+
+    st.subheader(t("tz_export", lang))
+    st.caption(t("tz_export_note", lang))
+    _tz_doc = pipeline_doc.documento(lang, **_tz_ctx)
+    _tz_nombre = f"mvdg_pipeline_{lang}"
+    e1, e2, e3 = st.columns(3)
+    e1.download_button(t("tz_dl_html", lang), doc_export.a_html(_tz_doc).encode("utf-8"),
+                       f"{_tz_nombre}.html", "text/html", width="stretch")
+    e2.download_button(
+        t("tz_dl_docx", lang), doc_export.a_docx(_tz_doc), f"{_tz_nombre}.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        width="stretch")
+    e3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_tz_doc),
+                       f"{_tz_nombre}.pdf", "application/pdf", width="stretch")
+
 with tab_del:
     st.info(t("del_intro", lang))
     _del_keys = case_deliverable.case_keys()

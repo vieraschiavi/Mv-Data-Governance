@@ -9727,3 +9727,191 @@ def test_streamlit_tiene_tema_oscuro_configurado():
     assert tema.get("backgroundColor", "").lower() == BRAND["navy"].lower()
     assert tema.get("secondaryBackgroundColor", "").lower() == BRAND["navy2"].lower()
     assert tema.get("textColor", "").lower() == BRAND["ink"].lower()
+
+
+# ===========================================================================
+# Trazabilidad del pipeline: qué se le hizo al dato, en criollo y en técnico
+# ===========================================================================
+
+def _pipeline_contexto():
+    """El contexto real que la pestaña le pasa al documentador."""
+    from mvdg.exporters import governance_tables
+    gov = governance_tables("es", include_samples=True)
+    return dict(catalog=gov["catalog"], dictionary=gov["dictionary"],
+                results=gov["quality_results"], lineage=gov["lineage"],
+                glossary=gov["glossary"], policies=gov["policies"],
+                indice=87, tablas_bi=sorted(gov))
+
+
+def test_pipeline_doc_cuenta_las_etapas_en_orden():
+    """El número de etapa no es decorativo: es el orden en que pasan.
+
+    Si alguien agrega una etapa en el medio y se olvida de renumerar, el
+    documento que lee el gerente cuenta el pipeline en un orden que no
+    ocurre. Es peor que no tenerlo: es una explicación que miente.
+    """
+    from mvdg import pipeline_doc
+    etapas = pipeline_doc.documentar("es")
+    assert [e["n"] for e in etapas] == list(range(1, len(etapas) + 1))
+    assert len({e["key"] for e in etapas}) == len(etapas), "claves repetidas"
+    # La primera es leer el dato y la última publicarlo: si eso se da vuelta,
+    # el recorrido dejó de ser un pipeline.
+    assert etapas[0]["key"] == "ingesta"
+    assert etapas[-1]["key"] == "publicacion"
+
+
+def test_pipeline_doc_esta_en_los_tres_idiomas():
+    from mvdg import pipeline_doc
+    campos = ("titulo", "criollo", "tecnico", "porque", "impacto")
+    por_idioma = {lg: pipeline_doc.documentar(lg) for lg in ("es", "en", "pt")}
+    assert len({len(v) for v in por_idioma.values()}) == 1
+    for i in range(len(por_idioma["es"])):
+        for campo in campos:
+            textos = {lg: por_idioma[lg][i][campo] for lg in por_idioma}
+            for lg, texto in textos.items():
+                assert texto.strip(), f"etapa {i + 1} sin {campo} en {lg}"
+            # Traducido de verdad, no copiado: si EN y PT son el texto en
+            # español, la paridad de claves pasa y el cliente igual lee
+            # español en la pantalla en inglés.
+            assert textos["en"] != textos["es"], f"etapa {i + 1}: {campo} EN sin traducir"
+            assert textos["pt"] != textos["es"], f"etapa {i + 1}: {campo} PT sin traducir"
+
+
+def test_pipeline_doc_sin_datos_no_inventa_evidencia():
+    """Sin nada cargado, cada etapa se explica pero no reporta números.
+
+    Un "0 datasets catalogados" escrito como si fuera un resultado es peor
+    que el silencio: parece una medición y es la ausencia de una.
+    """
+    from mvdg import pipeline_doc
+    etapas = pipeline_doc.documentar("es")
+    assert all(e["evidencia"] == "" for e in etapas)
+
+
+def test_pipeline_doc_mide_la_corrida_de_verdad():
+    from mvdg import pipeline_doc
+    ctx = _pipeline_contexto()
+    etapas = pipeline_doc.documentar("es", **ctx)
+    con_evidencia = {e["key"]: e["evidencia"] for e in etapas if e["evidencia"]}
+    # Las etapas que la app siempre tiene calculadas deben medirse.
+    for clave in ("catalogo", "diccionario", "reglas", "politicas", "glosario"):
+        assert clave in con_evidencia, f"{clave} sin evidencia con datos reales"
+    # Y los números tienen que ser los de las tablas, no constantes.
+    assert str(len(ctx["catalog"])) in con_evidencia["catalogo"]
+    assert str(len(ctx["results"])) in con_evidencia["reglas"]
+
+
+def test_pipeline_doc_documento_arma_las_secciones():
+    from mvdg import pipeline_doc
+    doc = pipeline_doc.documento("es", **_pipeline_contexto())
+    assert doc["titulo"] and doc["subtitulo"] and doc["pie"]
+    assert len(doc["secciones"]) == len(pipeline_doc.documentar("es"))
+    for sec in doc["secciones"]:
+        assert sec["titulo"] and sec["modulo"]
+        assert len(sec["bloques"]) == 4
+        assert all(rotulo and texto for rotulo, texto in sec["bloques"])
+    # El origen de los datos no puede decir "sin datos" cuando hay catálogo:
+    # el gerente que lee el PDF necesita saber sobre qué se midió.
+    origen = dict(doc["meta"])["Origen de los datos"]
+    assert "Sin datos" not in origen, origen
+    assert "clientes" in origen or "customers" in origen, origen
+
+
+def test_doc_export_html_se_cierra_y_escapa():
+    """HTML bien formado y sin inyección: el nombre del dataset lo pone el usuario."""
+    from html.parser import HTMLParser
+    from mvdg import doc_export
+
+    doc = {"titulo": "T", "subtitulo": "S", "lang": "es", "meta": [("a", "b")],
+           "pie": "pie", "secciones": [{
+               "n": 1, "titulo": "<script>alert(1)</script>", "modulo": "m",
+               "bloques": [("et", "texto & más")], "evidencia": "e",
+               "evidencia_etiqueta": "Evidencia"}]}
+    salida = doc_export.a_html(doc)
+    assert "<script>alert(1)</script>" not in salida
+    assert "&lt;script&gt;" in salida and "&amp;" in salida
+
+    vacias = {"meta", "br", "hr", "img", "link", "input"}
+
+    class _Balance(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.pila, self.mal = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in vacias:
+                self.pila.append(tag)
+
+        def handle_endtag(self, tag):
+            if self.pila and self.pila[-1] == tag:
+                self.pila.pop()
+            else:
+                self.mal.append(tag)
+
+    p = _Balance()
+    p.feed(salida)
+    p.close()
+    assert not p.mal and not p.pila, (p.mal, p.pila)
+
+
+def test_doc_export_docx_es_un_word_de_verdad():
+    """Un .docx es un zip OOXML. Si le faltan partes, Word no lo abre."""
+    import io
+    import zipfile
+    from xml.etree import ElementTree as ET
+    from mvdg import doc_export, pipeline_doc
+
+    doc = pipeline_doc.documento("es", **_pipeline_contexto())
+    crudo = doc_export.a_docx(doc)
+    z = zipfile.ZipFile(io.BytesIO(crudo))
+    assert z.testzip() is None
+    faltan = {"[Content_Types].xml", "_rels/.rels", "word/document.xml",
+              "word/_rels/document.xml.rels"} - set(z.namelist())
+    assert not faltan, f"al .docx le faltan partes: {faltan}"
+
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    raiz = ET.fromstring(z.read("word/document.xml"))
+    texto = "".join(n.text or "" for n in raiz.iter(f"{w}t"))
+    assert doc["titulo"] in texto
+    for sec in doc["secciones"]:
+        assert sec["titulo"] in texto, f"etapa {sec['n']} no llegó al Word"
+
+
+def test_doc_export_pdf_tiene_xref_valido():
+    """El PDF se escribe a mano: el xref mal contado da un archivo que no abre."""
+    import re as _re
+    from mvdg import doc_export, pipeline_doc
+
+    crudo = doc_export.a_pdf(pipeline_doc.documento("es", **_pipeline_contexto()))
+    assert crudo.startswith(b"%PDF-")
+    assert crudo.rstrip().endswith(b"%%EOF")
+
+    inicio = int(_re.search(rb"startxref\s+(\d+)", crudo).group(1))
+    assert crudo[inicio:inicio + 4] == b"xref", "startxref no apunta a la tabla"
+    declarados = int(crudo[inicio:inicio + 40].split(b"\n")[1].split()[1])
+    reales = len(_re.findall(rb"\n\d+ 0 obj", b"\n" + crudo))
+    assert declarados == reales + 1, (
+        f"el xref dice {declarados} objetos y hay {reales + 1}")
+    assert len(_re.findall(rb"/Type\s*/Page[^s]", crudo)) >= 2
+
+
+def test_doc_export_pdf_no_rompe_con_acentos_ni_tipografia_fina():
+    """cp1252 no tiene flechas ni comillas curvas; el PDF igual tiene que salir."""
+    from mvdg import doc_export
+
+    doc = {"titulo": "Año — “ñoño” ✓", "subtitulo": "a → b", "lang": "es",
+           "meta": [], "pie": "…", "secciones": [{
+               "n": 1, "titulo": "Señor Ção", "modulo": "m",
+               "bloques": [("et", "≥ 5 • ‘x’")], "evidencia": "",
+               "evidencia_etiqueta": ""}]}
+    crudo = doc_export.a_pdf(doc)
+    assert crudo.startswith(b"%PDF-") and len(crudo) > 500
+
+
+def test_la_pestana_de_trazabilidad_esta_en_la_app():
+    """La pestaña existe y baja los tres formatos, no solo uno."""
+    fuente = _app_source()
+    assert 't("tab_trace", lang)' in fuente, "la pestaña no está en st.tabs"
+    assert "with tab_tz:" in fuente
+    for clave in ("tz_dl_html", "tz_dl_docx", "tz_dl_pdf"):
+        assert f't("{clave}", lang)' in fuente, f"falta el botón {clave}"
