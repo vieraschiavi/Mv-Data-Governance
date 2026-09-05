@@ -2796,6 +2796,45 @@ def test_bat_de_activacion_del_owner_es_de_un_clic():
     assert '.venv\\Scripts\\python.exe' in bat and "py -3" in bat
 
 
+def test_el_verificador_de_licencias_importa_sin_pandas():
+    """Regresión de un fallo REAL del workflow del instalador owner en main:
+
+        File "mvdg/licensing.py", line 45, in <module>
+            from .clients import data_dir
+        File "mvdg/clients.py", line 21, in <module>
+            import pandas as pd
+        ModuleNotFoundError: No module named 'pandas'
+
+    El paso solo quería validar un token en un runner con Python limpio, y
+    se llevaba puesto el CRUD de clientes —y con él pandas— por importar
+    `data_dir` desde el módulo equivocado. Instalar pandas ahí habría
+    tapado el síntoma: un verificador de firmas Ed25519 no necesita
+    DataFrames.
+
+    Se prueba en un subproceso con pandas bloqueado, que es la única forma
+    de reproducir el runner: acá pandas ya está importado."""
+    import subprocess
+    guion = (
+        "import sys, builtins\n"
+        f"sys.path.insert(0, {_repo_root()!r})\n"
+        "_real = builtins.__import__\n"
+        "def fake(n, *a, **k):\n"
+        "    if n == 'pandas' or n.startswith('pandas.'):\n"
+        "        raise ModuleNotFoundError(\"No module named 'pandas'\")\n"
+        "    return _real(n, *a, **k)\n"
+        "builtins.__import__ = fake\n"
+        "from mvdg import licensing\n"
+        "assert licensing.plan() == 'demo'\n"
+        "assert licensing.verify('MVDG2.falso.falso') is None\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", guion], capture_output=True, text=True)
+    assert r.returncode == 0, (
+        "mvdg.licensing no se puede importar sin pandas: el build del "
+        f"instalador owner vuelve a romperse.\n{r.stderr[-800:]}")
+    assert "ok" in r.stdout
+
+
 def test_el_build_del_owner_exige_licencia_atada_a_la_maquina():
     """El instalador del owner se publica en una Release (decisión explícita:
     que siempre haya uno descargable), así que el único candado que queda de
@@ -3260,25 +3299,30 @@ def test_data_dir_program_files_sin_permiso_cae_al_perfil(tmp_path, monkeypatch)
     y el .exe sin consola moría en silencio en el primer arranque. Ahora la
     escritura se SONDEA (con un archivo real, no permisos declarados) y si
     no se puede, los datos van al perfil del usuario: arrancar siempre."""
-    from mvdg import clients
+    # Se parchea `paths`, que es donde vive el código: `clients` solo lo
+    # reexporta, y parchear el reexport cambiaría el nombre en clients sin
+    # tocar el que la función usa de verdad — el test pasaría probando nada.
+    from mvdg import clients, paths
     monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     exe_dir = tmp_path / "Program Files" / "MV Data Governance"
     exe_dir.mkdir(parents=True)
     monkeypatch.setattr(sys, "executable", str(exe_dir / "MVDataGovernance.exe"))
-    monkeypatch.setattr(clients, "_ESCRITURA_PROBADA", {})
+    monkeypatch.setattr(paths, "_ESCRITURA_PROBADA", {})
 
     real_makedirs = os.makedirs
     def sin_permiso(path, *a, **k):
         if str(path).startswith(str(exe_dir)):
             raise PermissionError(13, "Acceso denegado", str(path))
         return real_makedirs(path, *a, **k)
-    monkeypatch.setattr(clients.os, "makedirs", sin_permiso)
+    monkeypatch.setattr(paths.os, "makedirs", sin_permiso)
 
+    # Se llama por `clients` a propósito: es como lo importan seis módulos,
+    # así que esto también verifica que el reexport siga funcionando.
     d = clients.data_dir()
     assert d == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
     # y el sondeo quedó cacheado como "no escribible" (no se reintenta)
-    assert clients._ESCRITURA_PROBADA[str(exe_dir)] == ""
+    assert paths._ESCRITURA_PROBADA[str(exe_dir)] == ""
 
 
 def test_data_dir_carpeta_existente_pero_no_escribible_tambien_cae(tmp_path, monkeypatch):
