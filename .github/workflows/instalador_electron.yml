@@ -64,6 +64,16 @@ on:
       - "requirements.txt"
       - ".github/workflows/instalador_electron.yml"
 
+# Un build a la vez. Dos merges seguidos lanzaban dos corridas de Windows en
+# paralelo que publican a las MISMAS etiquetas fijas (cliente-latest,
+# owner-latest): la que terminara última ganaba, así que un merge viejo podía
+# pisar al nuevo y dejar publicado un instalador atrasado. Además son builds
+# largos y caros. `cancel-in-progress` porque de dos builds encolados el que
+# importa es el del código más nuevo.
+concurrency:
+  group: instalador-electron
+  cancel-in-progress: true
+
 permissions:
   contents: write          # publicar la Release del owner
 

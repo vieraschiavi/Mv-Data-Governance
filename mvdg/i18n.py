@@ -217,6 +217,45 @@ _T: dict[str, dict[str, str]] = {
         "en": "Include the My data cases across the whole program",
         "pt": "Incluir os casos de Meus dados em todo o programa",
     },
+    # --- Datasets que carga el propio usuario, gobernados en todas las pestañas ---
+    "scope_user_domain": {"es": "Cargado por vos", "en": "Loaded by you",
+                          "pt": "Carregado por você"},
+    "scope_user_desc": {
+        "es": "Dataset cargado en esta sesión: {filas} filas × {columnas} columnas.",
+        "en": "Dataset loaded in this session: {filas} rows × {columnas} columns.",
+        "pt": "Dataset carregado nesta sessão: {filas} linhas × {columnas} colunas.",
+    },
+    "scope_user_source": {"es": "Archivo o base cargada por el usuario",
+                          "en": "File or database loaded by the user",
+                          "pt": "Arquivo ou banco carregado pelo usuário"},
+    "scope_user_refresh": {"es": "manual", "en": "manual", "pt": "manual"},
+    "scope_user_pii": {"es": "Posible PII", "en": "Possible PII", "pt": "Possível PII"},
+    "scope_user_nopii": {"es": "Sin clasificar", "en": "Unclassified",
+                         "pt": "Sem classificação"},
+    "scope_user_col_desc": {
+        "es": "{nulos}% nulos · {distintos} valores distintos.",
+        "en": "{nulos}% nulls · {distintos} distinct values.",
+        "pt": "{nulos}% nulos · {distintos} valores distintos.",
+    },
+    "scope_user_badge": {
+        "es": "Estás viendo también **{n}** dataset(s) cargados por vos: {nombres}.",
+        "en": "You are also seeing **{n}** dataset(s) you loaded: {nombres}.",
+        "pt": "Você também está vendo **{n}** dataset(s) carregados por você: {nombres}.",
+    },
+    "scope_user_none": {
+        "es": "Todavía no cargaste ningún dataset. Subí tu Excel, CSV o conectá "
+              "una base en la pestaña «Mis datos» y vas a verlo gobernado acá y "
+              "en todas las demás pestañas.",
+        "en": "You haven't loaded any dataset yet. Upload your Excel or CSV, or "
+              "connect a database in the \"My data\" tab, and you'll see it "
+              "governed here and across every other tab.",
+        "pt": "Você ainda não carregou nenhum dataset. Envie seu Excel ou CSV, ou "
+              "conecte um banco na aba \"Meus dados\", e verá tudo governado aqui "
+              "e em todas as outras abas.",
+    },
+    "scope_user_clear": {"es": "Quitar mis datasets cargados",
+                         "en": "Remove my loaded datasets",
+                         "pt": "Remover meus datasets carregados"},
     "scope_hint": {
         "es": "Con esto activado, los 4 casos reales de Mis datos (Rotulado, Dirty Cafe, Bank Marketing, openFDA) fluyen por Panorama, Catálogo, Calidad, Linaje, Glosario, Políticas y BI & API — el recorrido end-to-end completo. Apagalo para ver solo la demo sintética.",
         "en": "With this on, the 4 real cases from My data (Food labels, Dirty Cafe, Bank Marketing, openFDA) flow through Overview, Catalog, Quality, Lineage, Glossary, Policies and BI & API — the full end-to-end journey. Turn it off to see only the synthetic demo.",
@@ -944,6 +983,14 @@ _T: dict[str, dict[str, str]] = {
     "db_host": {"es": "Servidor / host", "en": "Server / host", "pt": "Servidor / host"},
     "db_port": {"es": "Puerto", "en": "Port", "pt": "Porta"},
     "db_database": {"es": "Base de datos", "en": "Database", "pt": "Banco de dados"},
+    "db_sqlite_upload": {"es": "Subí el archivo SQLite (.db, .sqlite)",
+                         "en": "Upload the SQLite file (.db, .sqlite)",
+                         "pt": "Envie o arquivo SQLite (.db, .sqlite)"},
+    "db_sqlite_uploaded": {"es": "Archivo cargado", "en": "File loaded",
+                           "pt": "Arquivo carregado"},
+    "db_sqlite_expander": {"es": "¿Está en esta misma computadora? Escribí la ruta",
+                           "en": "Is it on this same computer? Type the path",
+                           "pt": "Está neste mesmo computador? Digite o caminho"},
     "db_sqlite_path": {"es": "Ruta del archivo .db/.sqlite", "en": "Path to .db/.sqlite file", "pt": "Caminho do arquivo .db/.sqlite"},
     "db_user": {"es": "Usuario", "en": "User", "pt": "Usuário"},
     "db_password": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
@@ -1655,28 +1702,43 @@ _T: dict[str, dict[str, str]] = {
               "relações e RLS — apenas estrutura, nunca suas linhas.",
     },
     "pbi_secure_note": {
-        "es": "Guardá el reporte como .pbip (formato TMDL) y borrá el archivo "
-              ".pbi/cache.abf: el modelo queda con toda su estructura y cero datos.",
-        "en": "Save the report as .pbip (TMDL format) and delete the .pbi/cache.abf "
-              "file: the model keeps its full structure with zero data.",
-        "pt": "Salve o relatório como .pbip (formato TMDL) e apague o arquivo "
-              ".pbi/cache.abf: o modelo fica com toda a estrutura e zero dados.",
+        "es": "Ninguna de las dos opciones sube una sola fila de tus datos: el "
+              ".pbit lleva solo la estructura, y del .pbip se lee únicamente el "
+              "TMDL. Si vas a usar .pbix, guardalo mejor como .pbit.",
+        "en": "Neither option uploads a single row of your data: a .pbit carries "
+              "only the structure, and from a .pbip only the TMDL is read. If you "
+              "were going to use .pbix, save it as .pbit instead.",
+        "pt": "Nenhuma das opções envia uma única linha dos seus dados: o .pbit "
+              "leva só a estrutura, e do .pbip lê-se apenas o TMDL. Se você ia "
+              "usar .pbix, salve como .pbit.",
     },
     "pbi_source": {"es": "Origen", "en": "Source", "pt": "Origem"},
-    "pbi_src_path": {"es": "Carpeta local .pbip", "en": "Local .pbip folder",
-                     "pt": "Pasta local .pbip"},
-    "pbi_src_zip": {"es": "Subir .zip del .pbip", "en": "Upload .pbip .zip",
-                    "pt": "Enviar .zip do .pbip"},
-    "pbi_path": {"es": "Ruta a la carpeta del proyecto .pbip",
-                 "en": "Path to the .pbip project folder",
-                 "pt": "Caminho para a pasta do projeto .pbip"},
+    "pbi_src_path": {"es": "Escribir una ruta local", "en": "Type a local path",
+                     "pt": "Digitar um caminho local"},
+    "pbi_src_zip": {"es": "Subir el archivo", "en": "Upload the file",
+                    "pt": "Enviar o arquivo"},
+    "pbi_path": {"es": "Ruta a la carpeta .pbip o al archivo .pbit",
+                 "en": "Path to the .pbip folder or the .pbit file",
+                 "pt": "Caminho para a pasta .pbip ou o arquivo .pbit"},
     "pbi_path_hint": {
-        "es": "La carpeta que contiene *.SemanticModel/definition (TMDL).",
-        "en": "The folder containing *.SemanticModel/definition (TMDL).",
-        "pt": "A pasta que contém *.SemanticModel/definition (TMDL).",
+        "es": "Solo si el archivo está en esta misma computadora. Si no, usá "
+              "«Subir el archivo», que funciona siempre.",
+        "en": "Only if the file is on this same computer. Otherwise use "
+              "\"Upload the file\", which always works.",
+        "pt": "Só se o arquivo estiver neste mesmo computador. Caso contrário use "
+              "\"Enviar o arquivo\", que funciona sempre.",
     },
-    "pbi_zip": {"es": "Archivo .zip del proyecto .pbip", "en": ".pbip project .zip file",
-                "pt": "Arquivo .zip do projeto .pbip"},
+    "pbi_zip": {"es": "Archivo de Power BI (.pbit, .pbix o .zip del .pbip)",
+                "en": "Power BI file (.pbit, .pbix or the .pbip .zip)",
+                "pt": "Arquivo do Power BI (.pbit, .pbix ou o .zip do .pbip)"},
+    "pbi_zip_hint": {
+        "es": "Lo más simple: en Power BI Desktop, Archivo → Guardar como → "
+              "Plantilla de Power BI (.pbit) y subí ese archivo.",
+        "en": "Simplest path: in Power BI Desktop, File → Save as → Power BI "
+              "Template (.pbit) and upload that file.",
+        "pt": "O mais simples: no Power BI Desktop, Arquivo → Salvar como → "
+              "Modelo do Power BI (.pbit) e envie esse arquivo.",
+    },
     "pbi_load": {"es": "Analizar modelo", "en": "Analyze model", "pt": "Analisar modelo"},
     "pbi_model": {"es": "Modelo", "en": "Model", "pt": "Modelo"},
     "pbi_tables": {"es": "Tablas", "en": "Tables", "pt": "Tabelas"},
@@ -1876,6 +1938,9 @@ _T: dict[str, dict[str, str]] = {
     "tab_mode_site": {"es": "Sitio completo (Metadata API)", "en": "Full site (Metadata API)",
                       "pt": "Site completo (Metadata API)"},
     "tab_mode_example": {"es": "Ejemplo incluido", "en": "Bundled example", "pt": "Exemplo incluído"},
+    "tab_src_path": {"es": "¿El archivo está en esta misma computadora? Escribí la ruta",
+                     "en": "Is the file on this same computer? Type the path",
+                     "pt": "O arquivo está neste mesmo computador? Digite o caminho"},
     "tab_path": {"es": "Ruta al archivo .twb o .twbx", "en": "Path to the .twb or .twbx file",
                 "pt": "Caminho para o arquivo .twb ou .twbx"},
     "tab_path_hint": {
@@ -2000,6 +2065,43 @@ _T: dict[str, dict[str, str]] = {
               "it again.",
         "pt": "O arquivo não é um ZIP válido ou está incompleto. Baixe ou exporte "
               "novamente.",
+    },
+    # --- Power BI: por qué un archivo no se puede leer y qué hacer ---
+    "err_pbix_binario": {
+        "es": "Este .pbix guarda el modelo en binario (respaldo de Analysis "
+              "Services), que no se puede leer sin las librerías de Microsoft. "
+              "Abrilo en Power BI Desktop y usá Archivo → Guardar como → "
+              "Plantilla de Power BI (.pbit): ese sí trae la estructura y no "
+              "lleva ni una fila de tus datos.",
+        "en": "This .pbix stores the model in binary (an Analysis Services "
+              "backup), which cannot be read without Microsoft's libraries. "
+              "Open it in Power BI Desktop and use File → Save as → Power BI "
+              "Template (.pbit): that one carries the structure and not a "
+              "single row of your data.",
+        "pt": "Este .pbix guarda o modelo em binário (backup do Analysis "
+              "Services), que não dá para ler sem as bibliotecas da Microsoft. "
+              "Abra no Power BI Desktop e use Arquivo → Salvar como → Modelo "
+              "do Power BI (.pbit): esse traz a estrutura e nenhuma linha dos "
+              "seus dados.",
+    },
+    "err_pbi_sin_modelo": {
+        "es": "El archivo no tiene adentro ningún modelo de Power BI. "
+              "¿Es el archivo correcto? Se aceptan .pbit, .pbix, el .zip de un "
+              "proyecto .pbip, o la carpeta del proyecto .pbip.",
+        "en": "The file contains no Power BI model. Is this the right file? "
+              "Accepted: .pbit, .pbix, the .zip of a .pbip project, or the "
+              ".pbip project folder.",
+        "pt": "O arquivo não contém nenhum modelo do Power BI. É o arquivo "
+              "certo? São aceitos .pbit, .pbix, o .zip de um projeto .pbip, "
+              "ou a pasta do projeto .pbip.",
+    },
+    "err_pbi_extension": {
+        "es": "Ese formato no es de Power BI. Se aceptan .pbit, .pbix, el .zip "
+              "de un proyecto .pbip, o la carpeta del proyecto .pbip.",
+        "en": "That format is not a Power BI one. Accepted: .pbit, .pbix, the "
+              ".zip of a .pbip project, or the .pbip project folder.",
+        "pt": "Esse formato não é do Power BI. São aceitos .pbit, .pbix, o "
+              ".zip de um projeto .pbip, ou a pasta do projeto .pbip.",
     },
     "err_json": {
         "es": "El JSON no es válido. Revisá que no falten comas o llaves — "

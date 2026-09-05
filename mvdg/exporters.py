@@ -21,30 +21,65 @@ from .quality import (overall_index, quality_by_dataset,
                       quality_by_dimension, run_rules)
 
 
+def scope_lineage_df(grafo) -> pd.DataFrame:
+    """Aplana un grafo ``(nodos, aristas)`` a la tabla de linaje."""
+    from . import scope
+    return scope.lineage_to_df(*grafo)
+
+
 def governance_tables(lang: str = "es",
-                      include_samples: bool = False) -> dict[str, pd.DataFrame]:
+                      include_samples: bool = False,
+                      user_datasets: dict | None = None) -> dict[str, pd.DataFrame]:
     """Todas las tablas de gobierno, listas para exportar o servir por API.
 
     Con ``include_samples=True`` el universo es el combinado demo + casos de
     ejemplo de Mis datos (ver ``mvdg.scope``) — mismo esquema de tablas,
     más filas. El default sigue siendo solo la demo (compatibilidad con la
-    API y los tests existentes)."""
+    API y los tests existentes).
+
+    ``user_datasets`` (``{nombre: DataFrame}``) suma lo que cargó el propio
+    usuario. Es lo que hace que el Excel que subió termine en el bundle de
+    Power BI y en la API, y no solo en la pestaña donde lo cargó — que era
+    justamente el agujero: el cliente exportaba a BI y se llevaba la demo.
+    """
+    # El grafo de linaje se lleva aparte del DataFrame porque sumarle los
+    # datasets del usuario se hace sobre NODOS y ARISTAS, no sobre la tabla
+    # ya aplanada. Aplanarlo antes de tiempo hacía que el linaje del usuario
+    # reemplazara al de los casos de ejemplo en vez de sumarse.
+    grafo = None
     if include_samples:
         from . import scope
         results = scope.combined_results(lang)
         catalog = scope.combined_catalog(lang)
         dictionary = scope.combined_dictionary(lang)
-        lineage = scope.combined_lineage_df(lang)
+        grafo = scope.combined_lineage(lang)
         glossary = scope.combined_glossary(lang)
-        policies = policies_df(lang, results, catalog=catalog,
-                               dictionary=dictionary)
     else:
         results = run_rules(lang=lang)
         catalog = catalog_df(lang)
         dictionary = dictionary_df(lang)
-        lineage = lineage_df()
         glossary = glossary_df(lang)
-        policies = policies_df(lang, results)
+    lineage = scope_lineage_df(grafo) if grafo else lineage_df()
+
+    if user_datasets:
+        from . import scope
+        nodos, aristas = scope.user_lineage(
+            user_datasets, lang,
+            nodes=grafo[0] if grafo else None, edges=grafo[1] if grafo else None)
+        results = pd.concat([results, scope.user_results(user_datasets, lang)],
+                            ignore_index=True)
+        catalog = pd.concat(
+            [catalog, scope.user_catalog(user_datasets, lang, columnas=catalog.columns)],
+            ignore_index=True)
+        dictionary = pd.concat([dictionary, scope.user_dictionary(user_datasets, lang)],
+                               ignore_index=True)
+        lineage = scope.lineage_to_df(nodos, aristas)
+
+    # Las políticas se derivan del catálogo y del diccionario finales: si se
+    # calcularan antes de sumar lo del usuario, sus columnas con PII no
+    # dispararían ninguna política.
+    policies = (policies_df(lang, results, catalog=catalog, dictionary=dictionary)
+                if (include_samples or user_datasets) else policies_df(lang, results))
     kpis = pd.DataFrame([{
         "kpi": "quality_index", "value": overall_index(results)},
         {"kpi": "rules_total", "value": len(results)},

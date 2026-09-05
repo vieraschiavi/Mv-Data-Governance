@@ -141,6 +141,86 @@ def _lab(lang: str):
     return lab_measure(lang)
 
 
+# ------------------------------------------ los datasets que carga el usuario
+# Antes, lo que el usuario subía en "Mis datos" se guardaba en
+# ``current_dataset`` y lo leía UNA sola pestaña (Proyecto, para guardarlo).
+# El resto del programa seguía mostrando la demo, así que quien probaba el
+# producto con su propio Excel veía su archivo perfilado en una pestaña y
+# datos ajenos en las otras diecinueve. Esto lo convierte en un registro que
+# se acumula y que alimenta a todas.
+def _mis_datasets() -> dict:
+    return st.session_state.setdefault("mvdg_user_datasets", {})
+
+
+def _registrar_dataset(nombre: str, df) -> None:
+    """Deja el dataset disponible para TODO el programa, no solo para la
+    pestaña donde se cargó.
+
+    El ``st.rerun()`` no es un detalle: Streamlit ejecuta el script de arriba
+    abajo, y el sidebar y las demás pestañas se dibujan ANTES de que llegue
+    el turno de "Mis datos". Sin volver a correr, el dataset queda guardado
+    pero nadie lo ve hasta la próxima interacción del usuario — que es
+    exactamente el síntoma que se reportó: el archivo cargaba y el resto del
+    programa seguía mostrando la demo.
+
+    El registro de vistos evita el bucle: cada archivo dispara UN rerun. Se
+    indexa por (nombre, filas, columnas) y no por identidad del DataFrame,
+    porque ``pd.read_csv`` devuelve un objeto nuevo en cada pasada — comparar
+    objetos haría que el rerun se dispare siempre.
+    """
+    if df is None or not len(df) or not nombre:
+        return
+    _mis_datasets()[nombre] = df
+    # Se mantiene ``current_dataset`` porque la pestaña Proyecto lo usa para
+    # guardar "el último": son dos cosas distintas y las dos hacen falta.
+    st.session_state["current_dataset"] = df
+    st.session_state["current_dataset_name"] = nombre
+
+    vistos = st.session_state.setdefault("_mvdg_user_vistos", set())
+    clave = (nombre, len(df), len(df.columns))
+    if clave not in vistos:
+        vistos.add(clave)
+        st.rerun()
+
+
+def _firma_datasets(lang: str) -> tuple:
+    """Identidad barata de lo cargado, para no recalcular en cada rerun.
+
+    Streamlit vuelve a ejecutar el script entero ante cualquier interacción
+    (cambiar de pestaña incluido). Correr las reglas de calidad de un archivo
+    grande en cada una de esas pasadas se nota; el nombre y la forma alcanzan
+    para saber si cambió algo.
+    """
+    return (lang,) + tuple(sorted((n, len(d), len(d.columns))
+                                  for n, d in _mis_datasets().items()))
+
+
+def _tablas_usuario(lang: str) -> dict:
+    """Catálogo, diccionario, calidad y linaje de lo que cargó el usuario."""
+    firma = _firma_datasets(lang)
+    if st.session_state.get("_mvdg_user_firma") == firma:
+        return st.session_state["_mvdg_user_tablas"]
+    ud = _mis_datasets()
+    tablas = {
+        "catalog": gov_scope.user_catalog(ud, lang),
+        "dictionary": gov_scope.user_dictionary(ud, lang),
+        "results": gov_scope.user_results(ud, lang),
+    }
+    st.session_state["_mvdg_user_firma"] = firma
+    st.session_state["_mvdg_user_tablas"] = tablas
+    return tablas
+
+
+def _con_usuario(base, clave: str, lang: str):
+    """Le suma al DataFrame base las filas de los datasets del usuario."""
+    extra = _tablas_usuario(lang)[clave]
+    if extra.empty:
+        return base
+    if clave == "catalog":
+        extra = gov_scope.user_catalog(_mis_datasets(), lang, columnas=base.columns)
+    return pd.concat([base, extra], ignore_index=True)
+
+
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
     st.markdown(f"## {APP_NAME}")
@@ -153,6 +233,21 @@ with st.sidebar:
     st.divider()
     incl_samples = st.toggle(t("scope_toggle", lang), value=True, key="scope_samples")
     st.caption(t("scope_hint", lang))
+    # Qué datasets propios están alimentando al programa ahora mismo. Sin
+    # esto no hay forma de saber, mirando una pestaña cualquiera, si lo que
+    # se está viendo incluye lo que uno cargó o sigue siendo la demo.
+    if _mis_datasets():
+        st.divider()
+        st.success(t("scope_user_badge", lang).format(
+            n=len(_mis_datasets()), nombres=", ".join(_mis_datasets())))
+        if st.button(t("scope_user_clear", lang), key="scope_user_clear_btn"):
+            st.session_state["mvdg_user_datasets"] = {}
+            # También el registro de "ya lo vi": si no, volver a subir el
+            # mismo archivo no refrescaría las otras pestañas.
+            for _k in ("_mvdg_user_firma", "_mvdg_user_vistos",
+                       "current_dataset", "current_dataset_name"):
+                st.session_state.pop(_k, None)
+            st.rerun()
     st.divider()
     st.caption(f"v{__version__} · {t('demo_note', lang)}")
 
@@ -187,8 +282,13 @@ def _results_combined(lang: str):
     return gov_scope.combined_results(lang, _results(lang))
 
 
-results = _results_combined(lang) if incl_samples else _results(lang)
-tables = _tables()
+# Los datasets del usuario NO dependen del toggle "incluir casos de ejemplo":
+# ese toggle decide si se muestran los 4 casos que trae el programa. Lo que
+# cargó el usuario es suyo y va siempre.
+results = _con_usuario(_results_combined(lang) if incl_samples else _results(lang),
+                       "results", lang)
+tables = dict(_tables())
+tables.update(_mis_datasets())
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
  tab_p, tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
@@ -299,8 +399,10 @@ def _render_fixes(results_df, lang, ns=""):
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
-    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
-    dic = gov_scope.combined_dictionary(lang) if incl_samples else dictionary_df(lang)
+    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
+                       else catalog_df(lang, tables), "catalog", lang)
+    dic = _con_usuario(gov_scope.combined_dictionary(lang) if incl_samples
+                       else dictionary_df(lang), "dictionary", lang)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("kpi_datasets", lang), len(cat))
     c2.metric(t("kpi_columns", lang), len(dic))
@@ -683,7 +785,8 @@ with tab_dk:
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
     st.info(t("cat_intro", lang))
-    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
+    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
+                       else catalog_df(lang, tables), "catalog", lang)
     f1, f2 = st.columns([2, 1])
     query = f1.text_input(t("cat_search", lang), "")
     domains = [t("cat_all", lang)] + sorted(cat["domain"].unique().tolist())
@@ -705,9 +808,15 @@ with tab_cat:
     }), width="stretch", hide_index=True)
 
     st.subheader(t("cat_detail", lang))
-    _cat_ds_opts = dataset_names() + (ext_samples.sample_keys() if incl_samples else [])
+    _cat_ds_opts = (list(_mis_datasets()) + dataset_names()
+                    + (ext_samples.sample_keys() if incl_samples else []))
+    # Los datasets del usuario van PRIMEROS en la lista: si cargó algo, es lo
+    # que vino a mirar.
     ds = st.selectbox(t("cat_pick", lang), _cat_ds_opts)
-    dic = gov_scope.combined_dictionary(lang, ds) if incl_samples else dictionary_df(lang, ds)
+    dic = _con_usuario(gov_scope.combined_dictionary(lang, ds) if incl_samples
+                       else dictionary_df(lang, ds), "dictionary", lang)
+    if ds:
+        dic = dic[dic["dataset"] == ds].reset_index(drop=True)
     st.dataframe(dic.rename(columns={
         "column": t("col_column", lang), "type": t("col_type", lang),
         "pii": t("col_pii", lang), "business_term": t("col_term", lang),
@@ -719,11 +828,18 @@ with tab_mdm:
     st.info(t("mdm_intro", lang))
     st.caption(t("mdm_warning", lang))
 
+    # Deduplicar es de las cosas más útiles que se le pueden hacer a un
+    # archivo propio; que MDM solo ofreciera la demo dejaba afuera justo el
+    # caso que le interesa a quien está evaluando el producto.
+    _mdm_usuario = dict(_mis_datasets())
     _mdm_demo_options = {"dim_customers": tables["dim_customers"]}
     _mdm_sample_keys = ext_samples.sample_keys()
-    mdm_source_names = list(_mdm_demo_options.keys()) + list(_mdm_sample_keys)
+    mdm_source_names = (list(_mdm_usuario) + list(_mdm_demo_options)
+                        + list(_mdm_sample_keys))
 
     def _mdm_label(key):
+        if key in _mdm_usuario:
+            return f"{key} ({t('scope_user_domain', lang)})"
         if key in _mdm_demo_options:
             return f"dim_customers ({t('mdm_src_demo', lang)})"
         meta = ext_samples.sample_meta(key, lang)
@@ -731,8 +847,12 @@ with tab_mdm:
 
     mdm_pick = st.selectbox(t("mdm_pick_dataset", lang), mdm_source_names,
                             format_func=_mdm_label, key="mdm_pick_dataset")
-    mdm_df = _mdm_demo_options[mdm_pick] if mdm_pick in _mdm_demo_options \
-        else ext_samples.load_sample_table(mdm_pick)
+    if mdm_pick in _mdm_usuario:
+        mdm_df = _mdm_usuario[mdm_pick]
+    elif mdm_pick in _mdm_demo_options:
+        mdm_df = _mdm_demo_options[mdm_pick]
+    else:
+        mdm_df = ext_samples.load_sample_table(mdm_pick)
     st.caption(f"{len(mdm_df):,} {t('mdm_rows_label', lang)} × {len(mdm_df.columns)} {t('mdm_cols_label', lang)}")
 
     all_cols = mdm_df.columns.tolist()
@@ -817,6 +937,13 @@ with tab_lin:
         _lin_nodes, _lin_edges = gov_scope.combined_lineage(lang)
     else:
         _lin_nodes, _lin_edges = NODES, None
+    # El linaje honesto de lo que cargó el usuario: origen → dataset → BI.
+    # Sin esto, su dataset aparecía en el catálogo y en calidad pero el grafo
+    # seguía siendo el de la demo, como si su archivo no existiera.
+    if _mis_datasets():
+        _lin_nodes, _lin_edges = gov_scope.user_lineage(
+            _mis_datasets(), lang, nodes=_lin_nodes, edges=_lin_edges)
+    _lin_propio = _lin_edges is not None
     labels = {n["id"]: n["label"] for n in _lin_nodes}
     focus = st.selectbox(t("lin_focus", lang),
                          ["—"] + list(labels.keys()),
@@ -827,11 +954,14 @@ with tab_lin:
         "bi": t("lin_layer_bi", lang),
     }
     fig = lineage_figure(None if focus == "—" else focus, layer_titles,
-                         nodes=_lin_nodes if incl_samples else None,
+                         nodes=_lin_nodes if _lin_propio else None,
                          edges=_lin_edges)
     st.plotly_chart(fig, width="stretch")
     with st.expander(t("tbl_lineage", lang)):
-        st.dataframe(gov_scope.combined_lineage_df(lang) if incl_samples else lineage_df(),
+        # La tabla se arma del MISMO grafo que el dibujo: si se recalculara
+        # aparte, el diagrama mostraría el dataset del usuario y la tabla no.
+        st.dataframe(gov_scope.lineage_to_df(_lin_nodes, _lin_edges)
+                     if _lin_propio else lineage_df(),
                      width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Glosario
@@ -1118,8 +1248,10 @@ with tab_p:
     st.info(t("p_intro", lang))
     if incl_samples:
         pdf = policies_df(lang, results,
-                          catalog=gov_scope.combined_catalog(lang, tables),
-                          dictionary=gov_scope.combined_dictionary(lang))
+                          catalog=_con_usuario(gov_scope.combined_catalog(lang, tables),
+                                               "catalog", lang),
+                          dictionary=_con_usuario(gov_scope.combined_dictionary(lang),
+                                                  "dictionary", lang))
     else:
         pdf = policies_df(lang, results)
     status_label = {"compliant": t("p_compliant", lang),
@@ -1270,8 +1402,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
     if user_df is None or not len(user_df):
         return
     if dataset_name:
-        st.session_state["current_dataset"] = user_df
-        st.session_state["current_dataset_name"] = dataset_name
+        _registrar_dataset(dataset_name, user_df)
     info = summary(user_df)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("col_rows", lang), f"{info['rows']:,}")
@@ -1458,7 +1589,11 @@ with tab_pr:
             except Exception as exc:  # archivo corrupto / formato raro
                 _error(exc, lang, "generico")
                 user_df = None
-            _render_profile(user_df, dataset_name=up.name if up is not None else None)
+            # Sin la extensión: ahora este nombre es el del dataset en el
+            # catálogo, en el linaje y en el bundle de BI, no una etiqueta
+            # suelta de una pestaña. "ventas_2026" es un dataset;
+            # "ventas_2026.xlsx" es un archivo.
+            _render_profile(user_df, dataset_name=os.path.splitext(up.name)[0])
     else:
         st.markdown(t("db_intro", lang))
         existing = load_connections()
@@ -1479,7 +1614,26 @@ with tab_pr:
         is_cloud = engine in CLOUD_ENGINES
         extra_raw = ""
         if is_sqlite:
-            database = st.text_input(t("db_sqlite_path", lang), (editing or {}).get("database", ""))
+            # SQLite es un archivo, no un servidor: pedir la ruta escrita
+            # solo sirve si el .db está en esta misma máquina. Subirlo
+            # funciona también desde el navegador y en modo servidor.
+            _db_up = st.file_uploader(t("db_sqlite_upload", lang),
+                                      type=["db", "sqlite", "sqlite3", "db3"],
+                                      key="db_sqlite_up")
+            if _db_up is not None:
+                import tempfile
+                _dbdir = tempfile.mkdtemp(prefix="mvdg_sqlite_")
+                _dbpath = os.path.join(_dbdir, _db_up.name)
+                with open(_dbpath, "wb") as _fh:
+                    _fh.write(_db_up.getbuffer())
+                st.session_state["db_sqlite_subida"] = _dbpath
+            _subida = st.session_state.get("db_sqlite_subida", "")
+            if _subida:
+                st.caption(f"{t('db_sqlite_uploaded', lang)}: {os.path.basename(_subida)}")
+            with st.expander(t("db_sqlite_expander", lang)):
+                _escrita = st.text_input(t("db_sqlite_path", lang),
+                                         (editing or {}).get("database", ""))
+            database = _escrita.strip() or _subida
             host, port, user, pwd = "", None, "", ""
         else:
             if is_cloud:
@@ -1543,15 +1697,19 @@ with tab_pr:
         # Traer tablas: usa la conexión guardada (o la que se está probando)
         active = editing or (profile if (database or host or extra_parsed) else None)
         if active is not None:
+            # Nombre propio: `tables` es el diccionario global de datasets
+            # gobernados que usan las otras pestañas. Reusarlo acá lo pisaba
+            # con una lista de nombres de tablas de la base para lo que
+            # quedara del rerun.
             try:
-                tables = list_tables(active, password=pwd or None)
+                _db_tables = list_tables(active, password=pwd or None)
             except Exception as exc:  # noqa: BLE001
-                tables = []
+                _db_tables = []
                 _error(exc, lang, "conexion")
-            if tables:
+            if _db_tables:
                 lim = st.number_input(t("db_limit", lang), 100, 100000, 10000, step=100)
                 p1, p2 = st.columns([2, 1])
-                table = p1.selectbox(t("db_pick_table", lang), tables)
+                table = p1.selectbox(t("db_pick_table", lang), _db_tables)
                 if p2.button(t("db_load", lang)):
                     try:
                         _render_profile(load_table(active, table, int(lim), password=pwd or None),
@@ -1571,7 +1729,8 @@ with tab_pr:
 # ---------------------------------------------------------------- BI & API
 with tab_bi:
     st.info(t("bi_intro", lang))
-    gov = governance_tables(lang, include_samples=incl_samples)
+    gov = governance_tables(lang, include_samples=incl_samples,
+                            user_datasets=_mis_datasets())
 
     st.subheader(t("bi_files", lang))
     table_labels = {
@@ -2043,7 +2202,11 @@ with tab_ws:
                 _tables: dict = {}
                 for _key in chosen:
                     if _key == "governance":
-                        for _gk, _gv in governance_tables(lang).items():
+                        # Guardar en el proyecto del cliente el gobierno que
+                        # está viendo, no el de la demo pelada.
+                        for _gk, _gv in governance_tables(
+                                lang, include_samples=incl_samples,
+                                user_datasets=_mis_datasets()).items():
                             _tables[f"gob_{_gk}"] = _gv
                     else:
                         _tables.update(candidates[_key][1])
@@ -2413,34 +2576,39 @@ with tab_pbi:
     pbi_models = None         # list[PowerBIModel] (modo tenant)
 
     if pbi_mode == "offline":
-        _PBI_SRC = {"path": t("pbi_src_path", lang), "zip": t("pbi_src_zip", lang)}
-        pbi_source = st.radio(t("pbi_source", lang), ["path", "zip"], horizontal=True,
+        # Subir el archivo va PRIMERO y es el valor por defecto: escribir una
+        # ruta a mano solo funciona si el archivo está en esta misma máquina,
+        # cosa que no pasa ni en el modo servidor ni cuando el cliente prueba
+        # la demo desde otra computadora. Antes la ruta era lo único visible
+        # y además solo aceptaba la CARPETA .pbip, así que quien tenía un
+        # .pbit —el caso normal— no tenía por dónde entrar.
+        _PBI_SRC = {"zip": t("pbi_src_zip", lang), "path": t("pbi_src_path", lang)}
+        pbi_source = st.radio(t("pbi_source", lang), ["zip", "path"], horizontal=True,
                               key="pbi_source", format_func=lambda k: _PBI_SRC[k])
-        if pbi_source == "path":
+        if pbi_source == "zip":
+            up = st.file_uploader(t("pbi_zip", lang), type=["pbit", "pbix", "zip"],
+                                  key="pbi_zip")
+            st.caption(t("pbi_zip_hint", lang))
+            if up is not None:
+                import tempfile
+                try:
+                    with st.spinner(t("pbi_wait", lang)):
+                        tmpdir = tempfile.mkdtemp(prefix="mvdg_pbi_")
+                        fpath = os.path.join(tmpdir, up.name)
+                        with open(fpath, "wb") as fh:
+                            fh.write(up.getbuffer())
+                        model_out = pbi.ingest_powerbi_file(fpath, lang)
+                except Exception as exc:  # noqa: BLE001
+                    pbi_err = exc
+        else:
             folder = st.text_input(t("pbi_path", lang), key="pbi_path")
             st.caption(t("pbi_path_hint", lang))
             if st.button(t("pbi_load", lang), key="pbi_load_path") and folder.strip():
                 try:
                     with st.spinner(t("pbi_wait", lang)):
-                        model_out = pbi.ingest_pbip(folder.strip(), lang)
+                        model_out = pbi.ingest_powerbi_file(folder.strip(), lang)
                 except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
-        else:
-            up = st.file_uploader(t("pbi_zip", lang), type=["zip"], key="pbi_zip")
-            if up is not None:
-                import tempfile
-                import zipfile
-                try:
-                    with st.spinner(t("pbi_wait", lang)):
-                        tmpdir = tempfile.mkdtemp(prefix="mvdg_pbip_")
-                        zpath = os.path.join(tmpdir, "proj.zip")
-                        with open(zpath, "wb") as fh:
-                            fh.write(up.getbuffer())
-                        with zipfile.ZipFile(zpath) as zf:
-                            zf.extractall(tmpdir)
-                        model_out = pbi.ingest_pbip(tmpdir, lang)
-                except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
+                    pbi_err = exc
         if model_out is not None:
             pbi_single_model = model_out["_model"]
     elif pbi_mode == "example":
@@ -2468,7 +2636,7 @@ with tab_pbi:
                     with st.spinner(t("pbi_wait", lang)):
                         model_out = pbi.ingest_tenant(lang, max_workspaces=int(pbi_max_ws))
                 except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
+                    pbi_err = exc
             cached = st.session_state.get("pbi_tenant_result")
             if model_out is not None:
                 st.session_state["pbi_tenant_result"] = model_out
@@ -2478,7 +2646,10 @@ with tab_pbi:
             pbi_models = model_out["_models"]
 
     if pbi_err:
-        st.error(f"{t('pbi_err', lang)}: {pbi_err}")
+        # Traducido y con el "qué hacer" adelante, no el texto crudo de la
+        # excepción: para un .pbix el mensaje útil es "guardalo como .pbit",
+        # y así se ve en los 3 idiomas.
+        _error(pbi_err, lang, "archivo", prefijo=f"{t('pbi_err', lang)}: ")
     elif model_out is None:
         st.caption(t("pbi_no_model", lang))
     else:
@@ -2626,9 +2797,13 @@ with tab_tab:
                         key="tab_mode", format_func=lambda k: _TAB_MODE[k])
 
     if tab_mode == "offline":
-        tpath = st.text_input(t("tab_path", lang), key="tab_path")
-        st.caption(t("tab_path_hint", lang))
+        # Igual que en Power BI: primero subir el archivo, que anda siempre;
+        # la ruta escrita queda plegada, para cuando el programa corre en la
+        # misma máquina donde está el workbook.
         up = st.file_uploader(t("tab_upload", lang), type=["twb", "twbx"], key="tab_upload")
+        with st.expander(t("tab_src_path", lang)):
+            tpath = st.text_input(t("tab_path", lang), key="tab_path")
+            st.caption(t("tab_path_hint", lang))
         if st.button(t("tab_load", lang), key="tab_load_btn"):
             try:
                 with st.spinner(t("tab_wait", lang)):

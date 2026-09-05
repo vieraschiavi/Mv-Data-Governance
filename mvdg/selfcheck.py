@@ -853,8 +853,32 @@ def _check_45():
 
 @check("Dashboard importable (sin errores)")
 def _check_46():
+    """Importar app/app.py lo EJECUTA entero (es un script de Streamlit).
+
+    Corriendo fuera de un servidor, Streamlit acumula los contenedores
+    abiertos (``st.form``, ``st.expander``…) en una pila global del proceso.
+    El script no termina de cerrarlos en modo bare, así que esa pila queda
+    sucia y cualquier cosa que use Streamlit DESPUÉS en el mismo proceso
+    hereda el desastre: un ``st.button`` de la barra lateral se cree adentro
+    de un formulario y revienta con "st.button() can't be used in an
+    st.form()". Se restaura la pila para que este chequeo no le deje el
+    piso mojado a lo que venga atrás.
+    """
     import importlib
-    importlib.import_module("app.app")
+    try:
+        from streamlit.delta_generator_singletons import context_dg_stack
+        pila = list(context_dg_stack.get())
+    except ImportError:   # versión de Streamlit sin ese módulo
+        pila = []
+    # Lo que queda sucio NO es la profundidad de la pila sino el `_form_data`
+    # que `st.form` estampa sobre el contenedor raíz: el objeto es el mismo,
+    # mutado. Por eso se guarda el valor de cada uno, no la pila.
+    formularios = [(dg, getattr(dg, "_form_data", None)) for dg in pila]
+    try:
+        importlib.import_module("app.app")
+    finally:
+        for dg, previo in formularios:
+            dg._form_data = previo
     return "app/app.py carga sin errores"
 
 

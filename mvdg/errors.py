@@ -22,6 +22,23 @@ from .i18n import DEFAULT_LANG, t
 CONTEXTOS = ("archivo", "conexion", "red", "generico")
 
 
+class ErrorTraducible(Exception):
+    """Un error del motor que ya sabe qué clave de i18n lo explica.
+
+    El mapeo por tipo de excepción de abajo funciona para fallas genéricas
+    (un CSV roto, un host que no resuelve), pero se queda corto cuando el
+    motor sabe exactamente qué pasó y qué hay que hacer. Ejemplo real: un
+    `.pbix` guarda el modelo en binario y no hay forma de leerlo — el
+    usuario necesita que le digan "guardalo como .pbit", no "no se pudo
+    leer el archivo". Sin esto, ese mensaje se perdía: `friendly_error`
+    lo reemplazaba por el genérico de archivo.
+    """
+
+    def __init__(self, clave: str, detalle: str = ""):
+        self.clave = clave
+        super().__init__(detalle or clave)
+
+
 def _nombre_excepcion(exc: BaseException) -> str:
     return type(exc).__name__
 
@@ -33,6 +50,11 @@ def _clave_por_tipo(exc: BaseException, contexto: str) -> str | None:
     importar pandas/sqlalchemy/openpyxl acá: el motor tiene que poder
     importarse sin ellos, y estas dependencias son opcionales según el flujo.
     """
+    # El motor ya dijo cuál es el mensaje: nada de lo de abajo lo mejora.
+    clave_propia = getattr(exc, "clave", None)
+    if isinstance(clave_propia, str) and clave_propia:
+        return clave_propia
+
     nombre = _nombre_excepcion(exc)
     texto = str(exc).lower()
 

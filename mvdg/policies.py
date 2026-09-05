@@ -93,10 +93,21 @@ def policies_df(lang: str = "es",
 
     # POL-01: dueño y steward en todos los datasets
     missing = cat[(cat["owner"] == "") | (cat["steward"] == "")]
+    # El numerador cuenta los que SÍ cumplen. Antes decía siempre
+    # "N/N asignados", así que la evidencia afirmaba cumplimiento total
+    # mientras el estado decía "parcial": quien leía la evidencia —que es
+    # lo que se exporta y lo que mira un auditor— concluía lo contrario de
+    # lo que el motor había detectado. No se notaba porque hasta ahora
+    # todos los datasets del universo traían dueño y steward puestos.
+    _con_duenio = len(cat) - len(missing)
+    _faltan = ", ".join(missing["dataset"].astype(str).head(5)) if len(missing) else ""
     add("POL-01", "compliant" if missing.empty else "partial", _d(
-        f"{len(cat)}/{len(cat)} datasets con dueño y steward asignados.",
-        f"{len(cat)}/{len(cat)} datasets with owner and steward assigned.",
-        f"{len(cat)}/{len(cat)} datasets com dono e steward atribuídos."))
+        f"{_con_duenio}/{len(cat)} datasets con dueño y steward asignados."
+        + (f" Faltan: {_faltan}." if _faltan else ""),
+        f"{_con_duenio}/{len(cat)} datasets with owner and steward assigned."
+        + (f" Missing: {_faltan}." if _faltan else ""),
+        f"{_con_duenio}/{len(cat)} datasets com dono e steward atribuídos."
+        + (f" Faltam: {_faltan}." if _faltan else "")))
 
     # POL-02: columnas documentadas (descripción no vacía)
     undoc = dic[dic["description"].str.strip() == ""]
