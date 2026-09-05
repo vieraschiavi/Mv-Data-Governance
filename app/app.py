@@ -1707,7 +1707,13 @@ with tab_pr:
                 _db_tables = []
                 _error(exc, lang, "conexion")
             if _db_tables:
-                lim = st.number_input(t("db_limit", lang), 100, 100000, 10000, step=100)
+                # El máximo era 100.000 y no se podía subir: quien tenía una
+                # tabla de 3 millones de filas no tenía forma de traerlas.
+                # 0 = sin límite, que es lo que hay que poner para gobernar
+                # la tabla entera; el default sigue siendo chico para que la
+                # primera consulta a una base desconocida no traiga todo.
+                lim = st.number_input(t("db_limit", lang), 0, 100_000_000, 10000,
+                                      step=1000, help=t("db_limit_help", lang))
                 p1, p2 = st.columns([2, 1])
                 table = p1.selectbox(t("db_pick_table", lang), _db_tables)
                 if p2.button(t("db_load", lang)):

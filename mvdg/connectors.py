@@ -94,7 +94,11 @@ EXTRA_EXAMPLE: dict[str, dict] = {
                    "schema": "default"},
 }
 
-MAX_ROWS = 100_000  # tope de seguridad al traer una tabla
+# Tope POR DEFECTO al traer una tabla, no un techo: se puede pedir más, y
+# con 0 se trae la tabla entera. Antes era un máximo duro, así que quien
+# tenía tres millones de filas no tenía forma de gobernarlas — el programa
+# le mostraba las primeras cien mil y no había manera de subirlo.
+MAX_ROWS = 100_000
 
 
 def _file() -> str:
@@ -391,10 +395,37 @@ def list_columns(profile: dict, table: str, password: str | None = None) -> list
     return [c["name"] for c in cols]
 
 
-def load_table(profile: dict, table: str, limit: int = 10_000,
+def _leer_sql(sql: str, eng, limit: int) -> pd.DataFrame:
+    """Ejecuta la consulta trayendo COMO MUCHO ``limit`` filas (0 = todas).
+
+    El bug que cierra: antes esto era ``pd.read_sql(sql, eng).head(limit)``.
+    O sea que traía la tabla ENTERA a memoria y recién después recortaba —
+    el tope no protegía nada, solo decidía cuánto se mostraba. Sobre una
+    tabla de diez millones de filas, pedir "las primeras mil" se llevaba
+    las diez millones puestas primero.
+
+    Con ``chunksize`` el driver usa un cursor del lado del servidor y se
+    corta apenas se juntan las filas pedidas: nunca entra a memoria más de
+    lo necesario, y funciona igual en los nueve motores soportados sin
+    escribir un LIMIT/TOP/FETCH FIRST distinto para cada dialecto.
+    """
+    if limit <= 0:
+        return pd.read_sql(sql, eng)
+    trozos, total = [], 0
+    for trozo in pd.read_sql(sql, eng, chunksize=min(limit, 50_000)):
+        trozos.append(trozo)
+        total += len(trozo)
+        if total >= limit:
+            break
+    if not trozos:
+        return pd.read_sql(sql, eng).head(0)   # DataFrame vacío CON columnas
+    return pd.concat(trozos, ignore_index=True).head(limit)
+
+
+def load_table(profile: dict, table: str, limit: int = MAX_ROWS,
                password: str | None = None) -> pd.DataFrame:
-    """Trae una tabla a un DataFrame (con tope de filas)."""
-    limit = max(1, min(int(limit), MAX_ROWS))
+    """Trae una tabla a un DataFrame. ``limit=0`` trae la tabla entera."""
+    limit = max(0, int(limit))
     eng = _engine(profile, password)
     if "." in table:
         schema, name = table.split(".", 1)
@@ -403,16 +434,15 @@ def load_table(profile: dict, table: str, limit: int = 10_000,
         ref = f"`{table}`"
     else:
         ref = f'"{table}"'
-    return pd.read_sql(f"SELECT * FROM {ref}", eng).head(limit)
+    return _leer_sql(f"SELECT * FROM {ref}", eng, limit)
 
 
-def run_query(profile: dict, sql: str, limit: int = 10_000,
+def run_query(profile: dict, sql: str, limit: int = MAX_ROWS,
               password: str | None = None) -> pd.DataFrame:
-    """Ejecuta una consulta SELECT y devuelve el resultado (con tope)."""
+    """Ejecuta una consulta SELECT. ``limit=0`` devuelve todas las filas."""
     if not sql.strip().lower().startswith(("select", "with")):
         raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
-    limit = max(1, min(int(limit), MAX_ROWS))
-    return pd.read_sql(sql, _engine(profile, password)).head(limit)
+    return _leer_sql(sql, _engine(profile, password), max(0, int(limit)))
 
 
 def purview_qualified_name(profile: dict, table: str) -> str | None:

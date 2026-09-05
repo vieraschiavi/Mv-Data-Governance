@@ -789,6 +789,122 @@ def test_connectors_guards():
     assert ok is False and "driver" in msg.lower()
 
 
+def _sqlite_grande(ruta, filas=60_000, relleno=200):
+    """Una tabla lo bastante grande como para que se note la diferencia entre
+    traerla entera y cortar en las primeras filas."""
+    import sqlite3
+    con = sqlite3.connect(ruta)
+    con.execute("CREATE TABLE ventas (id INTEGER, cliente TEXT, monto REAL, nota TEXT)")
+    con.executemany("INSERT INTO ventas VALUES (?,?,?,?)",
+                    ((i, f"cli_{i % 500}", i * 1.5, "x" * relleno)
+                     for i in range(filas)))
+    con.commit()
+    con.close()
+    return {"engine": "sqlite", "database": str(ruta), "host": "", "port": None,
+            "user": "", "extra": ""}
+
+
+def test_sql_sin_tope_duro_de_filas(tmp_path, monkeypatch):
+    """`MAX_ROWS` era un TECHO: `min(limit, MAX_ROWS)` recortaba lo que se
+    pidiera. Quien tenía una tabla de tres millones de filas veía las
+    primeras cien mil y no había forma de subirlo — el programa decía que
+    gobernaba su base y gobernaba un pedazo.
+
+    Ahora es solo el valor por defecto, y `limit=0` trae todo.
+
+    Se baja `MAX_ROWS` a 10 en vez de armar una tabla de cien mil filas: lo
+    que se prueba es que el pedido NO se recorta contra ese número, y con
+    una tabla enorme el test tardaría un minuto para probar lo mismo."""
+    from mvdg import connectors as C
+    monkeypatch.setattr(C, "MAX_ROWS", 10)
+    perfil = _sqlite_grande(tmp_path / "g.db", filas=1000, relleno=10)
+    assert len(C.load_table(perfil, "ventas", 500)) == 500, (
+        "el pedido se recortó contra MAX_ROWS: sigue siendo un techo")
+    assert len(C.load_table(perfil, "ventas", 0)) == 1000, "limit=0 no trajo todo"
+    # y el tope sigue funcionando cuando se pide poco
+    assert len(C.load_table(perfil, "ventas", 7)) == 7
+    # lo mismo por el camino de consulta libre
+    assert len(C.run_query(perfil, "SELECT * FROM ventas", 400)) == 400
+
+
+def test_sql_no_trae_la_tabla_entera_para_devolver_unas_pocas_filas(tmp_path):
+    """El bug que esto fija: `pd.read_sql(sql, eng).head(limit)` traía la
+    tabla ENTERA a memoria y recién después recortaba. El tope no protegía
+    nada — sobre una tabla de diez millones de filas, pedir las primeras mil
+    se llevaba las diez millones puestas primero.
+
+    Medido sobre 60.000 filas: antes ~35 MB de pico para devolver 100 filas,
+    ahora menos de 1 MB. El margen es de dos órdenes de magnitud, así que el
+    umbral no es frágil."""
+    import tracemalloc
+    from sqlalchemy import create_engine
+    from mvdg import connectors as C
+    perfil = _sqlite_grande(tmp_path / "g.db", filas=60_000)
+    eng = create_engine(f"sqlite:///{perfil['database']}")
+    sql = "SELECT * FROM ventas"
+
+    def pico(fn):
+        tracemalloc.start()
+        try:
+            fn()
+            return tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+
+    pico_todo = pico(lambda: __import__("pandas").read_sql(sql, eng))
+    pico_pocas = pico(lambda: C._leer_sql(sql, eng, 100))
+    assert pico_pocas < pico_todo / 10, (
+        f"pedir 100 filas usó {pico_pocas/1e6:.1f} MB y traer todo "
+        f"{pico_todo/1e6:.1f} MB: sigue materializando la tabla entera")
+
+
+def test_sql_devuelve_las_columnas_aunque_no_haya_filas(tmp_path):
+    """Un resultado vacío tiene que traer igual el esquema: sin columnas, el
+    perfilado de aguas abajo no puede decir siquiera qué se consultó."""
+    from mvdg import connectors as C
+    perfil = _sqlite_grande(tmp_path / "g.db", filas=100)
+    df = C.run_query(perfil, "SELECT * FROM ventas WHERE id < 0", 50)
+    assert len(df) == 0
+    assert list(df.columns) == ["id", "cliente", "monto", "nota"]
+
+
+def test_los_topes_de_subida_se_configuran_y_se_pueden_apagar():
+    """Los topes viejos (40 MB / 200.000 filas) estaban puestos para la API
+    expuesta y se comían también el caso normal: alguien perfilando SU
+    archivo en SU PC. El de filas era el peor: no rechazaba, LEÍA LAS
+    PRIMERAS 200.000 Y SEGUÍA."""
+    import importlib
+    import bi_api.main as api
+    fuente = open(api.__file__, encoding="utf-8").read()
+    for env in ("MVDG_MAX_UPLOAD_MB", "MVDG_MAX_FILAS", "MVDG_MAX_UPLOAD_DE_MB"):
+        assert env in fuente, f"{env} no se puede configurar"
+    # Por defecto NO se trunca en silencio.
+    assert api._MAX_FILAS == 0, (
+        "sigue habiendo un corte de filas por defecto: el cliente recibiría "
+        "el perfil de un pedazo de su archivo con cara de perfil completo")
+    assert api._MAX_BYTES > 200 * 1024 * 1024, "el tope de tamaño sigue siendo chico"
+    # Y se pueden apagar del todo.
+    os.environ["MVDG_MAX_UPLOAD_MB"] = "0"
+    try:
+        recargado = importlib.reload(api)
+        assert recargado._MAX_BYTES == 0, "MVDG_MAX_UPLOAD_MB=0 no apaga el tope"
+    finally:
+        del os.environ["MVDG_MAX_UPLOAD_MB"]
+        importlib.reload(api)
+
+
+def test_streamlit_acepta_archivos_grandes():
+    """Streamlit corta las subidas en 200 MB por defecto, y el corte es del
+    servidor: el archivo se sube ENTERO y recién ahí se rechaza. El usuario
+    espera toda la subida de su Excel para que le digan que no."""
+    ruta = os.path.join(_repo_root(), ".streamlit", "config.toml")
+    with open(ruta, encoding="utf-8") as fh:
+        cfg = fh.read()
+    m = re.search(r"^maxUploadSize\s*=\s*(\d+)", cfg, re.M)
+    assert m, "no se configuró maxUploadSize: el tope sigue siendo 200 MB"
+    assert int(m.group(1)) >= 1000, f"maxUploadSize quedó en {m.group(1)} MB"
+
+
 # ------------------------------------------------- conectores Cloud DW/Lake
 def test_connectors_cloud_engines_registered():
     from mvdg import connectors as C
@@ -8941,8 +9057,14 @@ def test_el_exe_puede_perfilar_un_archivo_propio(tmp_path, monkeypatch):
 
 
 def test_el_perfilador_no_se_come_la_memoria_ni_acepta_cualquier_cosa(tmp_path, monkeypatch):
-    """Corre en la PC del cliente, con el Python embebido del .exe: un archivo
-    de 2 GB se lleva puesta la memoria del programa entero."""
+    """Corre en la PC del cliente, con el Python embebido del .exe: sin
+    ningún tope, un archivo enorme se lleva puesta la memoria del programa.
+
+    El tope ya no es fijo en 40 MB —eso se comía el caso normal, alguien
+    perfilando SU archivo— sino configurable y alto por defecto. Lo que se
+    prueba acá es que, CUANDO hay tope, se respeta: se baja a 1 MB por la
+    variable de entorno y se manda un archivo más grande."""
+    import bi_api.main as api
     c = _api_cliente(tmp_path, monkeypatch)
 
     for nombre, cuerpo, estado, motivo in [
@@ -8954,10 +9076,18 @@ def test_el_perfilador_no_se_come_la_memoria_ni_acepta_cualquier_cosa(tmp_path, 
         assert r.status_code == estado, f"{nombre}: {r.status_code}"
         assert r.json()["detail"]["error"] == motivo
 
-    grande = b"a,b\n" + b"1,2\n" * 12_000_000        # ~45 MB
+    monkeypatch.setattr(api, "_MAX_BYTES", 1024 * 1024)   # 1 MB
+    grande = b"a,b\n" + b"1,2\n" * 300_000                # ~1,2 MB
     r = c.post("/api/perfilar", files={"archivo": ("grande.csv", grande, "text/csv")})
     assert r.status_code == 413
     assert r.json()["detail"]["error"] == "archivo_muy_grande"
+
+    # Y con el tope apagado, ese mismo archivo entra.
+    monkeypatch.setattr(api, "_MAX_BYTES", 0)
+    r = c.post("/api/perfilar", files={"archivo": ("grande.csv", grande, "text/csv")})
+    assert r.status_code == 200, "con el tope apagado el archivo tiene que entrar"
+    assert r.json()["filas_leidas"] == 300_000
+    assert r.json()["truncado"] is False, "se truncó sin que nadie lo pidiera"
 
 
 def test_el_perfilador_llega_a_la_pantalla_del_exe():

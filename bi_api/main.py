@@ -422,11 +422,36 @@ def migrar(destino: str, cuerpo: dict = _CUERPO,
 # quede — que es exactamente lo que la landing promete cuando dice que tus
 # datos nunca salen de tu PC.
 
-# 40 MB: un Excel de gobierno de datos rara vez pasa de unos pocos MB, y el
-# .exe corre con el Python embebido en la PC del cliente. Sin tope, un archivo
-# de 2 GB se lleva puesta la memoria del programa entero.
-_MAX_BYTES = 40 * 1024 * 1024
-_MAX_FILAS = 200_000
+# ───────────────────────── Cuánto se acepta ─────────────────────────────
+# Los topes viejos (40 MB, 200.000 filas) estaban puestos para el peor caso
+# —la API expuesta a varios usuarios— y se los comía también el caso normal:
+# alguien perfilando SU archivo en SU PC. Y el de filas era peor que el de
+# bytes, porque no rechazaba: LEÍA LAS PRIMERAS 200.000 Y SEGUÍA. El cliente
+# recibía el perfil de un pedazo de su archivo con cara de perfil completo.
+#
+# Ahora los dos se configuran, y por defecto no estorban:
+#
+#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 2048; 0 = sin tope)
+#   MVDG_MAX_FILAS        tope de filas          (default 0 = sin tope)
+#
+# El tope de bytes sigue existiendo por defecto porque esta API PUEDE
+# publicarse fuera de 127.0.0.1: sin ningún límite, una sola petición basta
+# para voltear el proceso. En una instalación de escritorio se puede poner
+# MVDG_MAX_UPLOAD_MB=0 y el único límite pasa a ser la RAM de la máquina,
+# que es el límite honesto.
+def _limite(env: str, defecto: int) -> int:
+    """Lee un tope numérico del entorno. 0 (o negativo) = sin tope."""
+    try:
+        valor = int(os.environ.get(env, "").strip() or defecto)
+    except ValueError:
+        return defecto
+    return max(0, valor)
+
+
+_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 2048) * 1024 * 1024
+# 0 = leer el archivo entero. Es el default: truncar en silencio es la peor
+# de las tres opciones (rechazar, truncar avisando, leer todo).
+_MAX_FILAS = _limite("MVDG_MAX_FILAS", 0)
 _EXT_OK = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
 
 
@@ -452,8 +477,8 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
             "pt": f"Formatos aceitos: {', '.join(_EXT_OK)}.",
         })
 
-    crudo = await archivo.read(_MAX_BYTES + 1)
-    if len(crudo) > _MAX_BYTES:
+    crudo = await archivo.read(_MAX_BYTES + 1) if _MAX_BYTES else await archivo.read()
+    if _MAX_BYTES and len(crudo) > _MAX_BYTES:
         raise HTTPException(413, {
             "error": "archivo_muy_grande",
             "max_mb": _MAX_BYTES // (1024 * 1024),
@@ -465,15 +490,17 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         raise HTTPException(400, {"error": "archivo_vacio"})
 
     try:
+        # nrows=None es "todas": con _MAX_FILAS en 0 se lee el archivo entero.
+        _filas = _MAX_FILAS or None
         if nombre.lower().endswith((".xlsx", ".xlsm", ".xls")):
-            df = pd.read_excel(io.BytesIO(crudo), nrows=_MAX_FILAS)
+            df = pd.read_excel(io.BytesIO(crudo), nrows=_filas)
         else:
             # sep=None + engine="python" deja que pandas descubra si es coma,
             # punto y coma o tabulador. En Uruguay el Excel exporta con punto y
             # coma por el separador decimal, asi que asumir la coma daria una
             # sola columna con todo adentro y un perfil que no dice nada.
             df = pd.read_csv(io.BytesIO(crudo), sep=None, engine="python",
-                             nrows=_MAX_FILAS)
+                             nrows=_filas)
     except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
         raise HTTPException(400, {
             "error": "no_se_pudo_leer", "tipo": type(exc).__name__,
@@ -502,7 +529,7 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         # perfil sobre la mitad de las filas presentado como si fuera el total
         # es un dato equivocado con cara de dato bueno.
         "filas_leidas": int(len(df)),
-        "truncado": bool(len(df) >= _MAX_FILAS),
+        "truncado": bool(_MAX_FILAS and len(df) >= _MAX_FILAS),
     }
 
 
@@ -544,9 +571,10 @@ def _de_error(clave: str, status: int, **extra) -> HTTPException:
     })
 
 
-# 60 MB: un poco más que /api/perfilar porque acá entran varios archivos a
-# la vez (o un .sqlite con varias tablas), no uno solo.
-_MAX_BYTES_DE = 60 * 1024 * 1024
+# Acá entran VARIOS archivos a la vez (o un .sqlite con varias tablas), así
+# que el tope es el del conjunto. Configurable con MVDG_MAX_UPLOAD_DE_MB;
+# 0 = sin tope, igual que en /api/perfilar.
+_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 4096) * 1024 * 1024
 _ARCHIVOS = File(...)
 
 
@@ -573,9 +601,14 @@ async def ingenieria_archivo(
         ext = os.path.splitext(nombre.lower())[1]
         if ext not in dataeng.EXT_SOPORTADAS:
             raise _de_error("de_err_formato", 400)
-        crudo = await arch.read(restante + 1)
-        if len(crudo) > restante:
-            raise _de_error("de_grande", 413)
+        # Con el tope apagado (_MAX_BYTES_DE = 0) se lee el archivo entero y
+        # no se lleva presupuesto: `restante` deja de tener sentido.
+        if _MAX_BYTES_DE:
+            crudo = await arch.read(restante + 1)
+            if len(crudo) > restante:
+                raise _de_error("de_grande", 413)
+        else:
+            crudo = await arch.read()
         if not crudo:
             continue
         restante -= len(crudo)
@@ -698,8 +731,12 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         raise HTTPException(400, "Falta el motor de la conexión.")
 
     try:
-        limite = max(1, min(int(cuerpo.get("limite") or dataeng.MUESTRA_SQL_DEFECTO),
-                            connectors.MAX_ROWS))
+        # Sin techo: `limite=0` trae la tabla entera. Antes se recortaba a
+        # connectors.MAX_ROWS, así que pedir más filas de las permitidas
+        # devolvía menos sin decir nada.
+        crudo_lim = cuerpo.get("limite")
+        limite = (max(0, int(crudo_lim)) if crudo_lim is not None
+                  else dataeng.MUESTRA_SQL_DEFECTO)
     except (TypeError, ValueError):
         limite = dataeng.MUESTRA_SQL_DEFECTO
 

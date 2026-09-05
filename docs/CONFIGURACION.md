@@ -88,6 +88,10 @@ Nada de esto hace falta para vender: el programa anda sin configurar nada.
 | `MVDG_API_CORS_ORIGINS` | Solo la app local |
 | `MVDG_API_RATE_LIMIT` | `240` req/min por IP (`0` = desactivado) |
 | `MVDG_DATA_DIR` | `~/.mv_data_governance` |
+| `MVDG_MAX_UPLOAD_MB` | `2048` MB por archivo en `/api/perfilar`. **`0` = sin tope**, y ahí el único límite es la RAM de la máquina. Conviene bajarlo si publicás la API fuera de `127.0.0.1`: sin tope, una sola petición basta para voltear el proceso. |
+| `MVDG_MAX_UPLOAD_DE_MB` | `4096` MB para el conjunto de archivos de Ingeniería de datos (entran varios a la vez). `0` = sin tope. |
+| `MVDG_MAX_FILAS` | `0` = leer el archivo entero. Con un número, se leen las primeras N filas **y la respuesta lo avisa** (`truncado: true`). Antes esto valía 200.000 fijo y truncaba en silencio. |
+| `STREAMLIT_SERVER_MAX_UPLOAD_SIZE` | `5000` MB (definido en `.streamlit/config.toml`). Es el tope del dashboard; el corte es del servidor, así que el archivo se sube entero antes de rechazarse. |
 | `MVDG_SERVER_PASSWORD` | Vacío. Si se define, exige login antes del dashboard. |
 | `MVDG_LICENCIAS_URL` | El emisor embebido en `mvdg/licensing.py` |
 | `MVDG_AI_PROVIDER` / `MVDG_AI_BASE_URL` | IA externa apagada. **La API key de IA no es una variable de entorno**: se guarda en el keyring del sistema operativo desde la pestaña Ayuda, con la cuenta del propio cliente. |
