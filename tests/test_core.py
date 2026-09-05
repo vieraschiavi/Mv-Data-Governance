@@ -7059,6 +7059,90 @@ def test_powerbi_un_pbit_da_las_mismas_tablas_de_gobierno_que_un_pbip(tmp_path):
         assert not salida[k].empty, f"{k} vino vacía desde el .pbit"
 
 
+def test_powerbi_lee_el_traspaso_que_deja_el_generador(tmp_path):
+    """El puente con MV DAX Lab, del lado de acá.
+
+    Un generador de modelos sabe cosas que el TMSL no cuenta: cuántas filas
+    trae cada tabla —van comprimidas dentro del Power Query— y por qué cada
+    medida está escrita como está. MV DAX Lab lo deja anotado en el modelo;
+    esto verifica que se lea. El contrato es el nombre de la anotación y el
+    número de formato: si alguno de los dos cambia de un lado, este test se
+    pone rojo del otro, que es exactamente para lo que está.
+    """
+    import json as _json
+    import zipfile
+
+    from mvdg import powerbi_meta as pbi
+    ruta = _pbit_de_prueba(str(tmp_path / "generado.pbit"))
+    with zipfile.ZipFile(ruta) as z:
+        schema = _json.loads(z.read("DataModelSchema").decode("utf-16"))
+    schema["model"]["annotations"] = [{
+        "name": pbi.ANOTACION_TRASPASO,
+        "value": _json.dumps({
+            "formato": pbi.FORMATO_TRASPASO,
+            "generador": "MV DAX Lab",
+            "tablas": [{"nombre": "Ventas", "filas": 1200},
+                       {"nombre": "Producto", "filas": 30}],
+            "medidas": [{"tabla": "Ventas", "nombre": "Total Ventas",
+                         "porque": "Cálculo directo, sin modificar el contexto."}],
+        }, ensure_ascii=False)}]
+    con_rastro = str(tmp_path / "con_rastro.pbit")
+    with zipfile.ZipFile(ruta) as zin, zipfile.ZipFile(con_rastro, "w") as zout:
+        for n in zin.namelist():
+            zout.writestr(n, _json.dumps(schema).encode("utf-16")
+                          if n == "DataModelSchema" else zin.read(n))
+
+    salida = pbi.ingest_pbit(con_rastro, "es")
+    modelo = salida["_model"]
+    assert modelo.generator == "MV DAX Lab"
+    assert modelo.table_rows == {"Ventas": 1200, "Producto": 30}
+    # El catálogo decía 0 filas siempre. Con las filas declaradas, las dice.
+    assert int(salida["catalog"]["rows"][0]) == 1230
+    assert "MV DAX Lab" in salida["catalog"]["description"][0]
+    # Una descripción escrita a mano en el modelo gana sobre el porqué
+    # derivado: lo que puso una persona no se pisa.
+    assert modelo.measures[0].description == "Suma del importe"
+
+
+def test_powerbi_un_pbit_sin_traspaso_se_comporta_igual_que_antes(tmp_path):
+    """Casi ningún .pbit del mundo trae el rastro del generador: los hace
+    una persona en Desktop. Leerlo no puede ser obligatorio ni cambiar en
+    nada lo que se ve de un archivo que no lo trae."""
+    from mvdg import powerbi_meta as pbi
+    salida = pbi.ingest_pbit(_pbit_de_prueba(str(tmp_path / "a_mano.pbit")), "es")
+    assert salida["_model"].generator == ""
+    assert salida["_model"].table_rows == {}
+    assert int(salida["catalog"]["rows"][0]) == 0
+
+
+def test_powerbi_un_traspaso_roto_no_rompe_la_lectura(tmp_path):
+    """Un manifiesto ilegible —o de una versión del formato que este
+    programa no conoce— se ignora entero. Que no haya rastro no es una
+    falla del archivo; leerlo mal, sí."""
+    import json as _json
+    import zipfile
+
+    from mvdg import powerbi_meta as pbi
+    base = _pbit_de_prueba(str(tmp_path / "base.pbit"))
+    with zipfile.ZipFile(base) as z:
+        schema = _json.loads(z.read("DataModelSchema").decode("utf-16"))
+    for etiqueta, anotacion in (
+            ("json roto", {"name": pbi.ANOTACION_TRASPASO, "value": "{no es json"}),
+            ("formato futuro", {"name": pbi.ANOTACION_TRASPASO,
+                                "value": _json.dumps({"formato": 999,
+                                                      "tablas": [{"nombre": "Ventas",
+                                                                  "filas": 9}]})})):
+        schema["model"]["annotations"] = [anotacion]
+        ruta = str(tmp_path / f"{etiqueta.replace(' ', '_')}.pbit")
+        with zipfile.ZipFile(base) as zin, zipfile.ZipFile(ruta, "w") as zout:
+            for n in zin.namelist():
+                zout.writestr(n, _json.dumps(schema).encode("utf-16")
+                              if n == "DataModelSchema" else zin.read(n))
+        salida = pbi.ingest_pbit(ruta, "es")
+        assert salida["_model"].generator == "", etiqueta
+        assert int(salida["catalog"]["rows"][0]) == 0, etiqueta
+
+
 def test_powerbi_un_pbix_binario_explica_que_hacer_en_los_tres_idiomas(tmp_path):
     """Un .pbix guarda el modelo como respaldo binario de Analysis Services:
     no hay forma de leerlo sin librerías de Microsoft. Lo que NO puede pasar
