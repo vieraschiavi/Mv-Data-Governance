@@ -42,7 +42,12 @@ import os
 import sys
 import time
 
-from .clients import data_dir
+# Desde `paths` y no desde `clients`: este módulo corre en el arranque de
+# TODO —incluido un runner de CI que solo quiere validar un token— y
+# `clients` importa pandas para el CRUD de fichas. Importarlo desde acá
+# rompía el build del instalador owner con ModuleNotFoundError: pandas.
+# Un verificador de firmas Ed25519 no tiene por qué necesitar DataFrames.
+from .paths import data_dir
 
 # ---------------------------------------------------------------------------
 # Clave pública del emisor de licencias.

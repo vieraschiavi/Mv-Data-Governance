@@ -1002,6 +1002,14 @@ _T: dict[str, dict[str, str]] = {
     "db_need_name": {"es": "Poné un nombre para la conexión.", "en": "Enter a name for the connection.", "pt": "Informe um nome para a conexão."},
     "db_pick_table": {"es": "Tabla a traer", "en": "Table to load", "pt": "Tabela para trazer"},
     "db_limit": {"es": "Máximo de filas", "en": "Max rows", "pt": "Máximo de linhas"},
+    "db_limit_help": {
+        "es": "0 = sin límite: trae la tabla entera. El límite real pasa a "
+              "ser la memoria de esta computadora.",
+        "en": "0 = no limit: brings the whole table. The real limit becomes "
+              "this computer's memory.",
+        "pt": "0 = sem limite: traz a tabela inteira. O limite real passa a "
+              "ser a memória deste computador.",
+    },
     "db_load": {"es": "Traer y perfilar tabla", "en": "Load and profile table", "pt": "Trazer e perfilar tabela"},
     "db_query": {"es": "…o una consulta SQL (SELECT)", "en": "…or a SQL query (SELECT)", "pt": "…ou uma consulta SQL (SELECT)"},
     "db_run_query": {"es": "▶ Ejecutar consulta y perfilar", "en": "▶ Run query and profile", "pt": "▶ Executar consulta e perfilar"},

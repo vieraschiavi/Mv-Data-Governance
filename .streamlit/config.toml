@@ -17,6 +17,19 @@
 # es exactamente lo que faltaba: la hoja de estilos de app.py solo cubría
 # h1/h2/h3, el valor/etiqueta de las métricas y el fondo de la barra
 # lateral, dejando todo lo demás en su color de tema claro por defecto.
+[server]
+# Streamlit corta las subidas en 200 MB por defecto, y el corte es del
+# SERVIDOR: el archivo se sube entero y recién ahí se rechaza, así que el
+# usuario espera la subida completa de su Excel para que le digan que no.
+# 5 GB es un techo que en la práctica no se toca con un CSV o un Excel; el
+# límite real pasa a ser la RAM de la máquina, que es el límite honesto.
+#
+# Se puede bajar sin tocar código: la variable de entorno
+# STREAMLIT_SERVER_MAX_UPLOAD_SIZE (en MB) pisa este valor. Tiene sentido
+# bajarlo en modo servidor multiusuario, donde varias subidas grandes a la
+# vez sí pueden voltear el proceso.
+maxUploadSize = 5000
+
 [theme]
 base = "dark"
 primaryColor = "#f2b441"
