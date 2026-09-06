@@ -22,9 +22,10 @@ import time
 from collections import deque
 
 import uvicorn
-from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import (Body, FastAPI, File, Form, HTTPException, Query, Request,
+                     UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from mvdg import APP_NAME, __version__
 from mvdg.exporters import governance_tables
@@ -829,19 +830,74 @@ def _serve(df, table: str, lang: str, format: str):
     records = json.loads(df.to_json(orient="records", date_format="iso"))
     return {"table": table, "lang": lang, "rows": len(df), "data": records}
 
+# --------------------------------------------------------------- descargas
+#
+# Los documentos (HTML/Word/PDF/Excel) se arman ACA y viajan como una
+# respuesta HTTP con Content-Disposition, en vez de construirse en el
+# navegador y bajarse como blob. Dos razones:
+#
+#   1. El motor que los escribe (mvdg.doc_export) es Python. Reimplementarlo
+#      en JavaScript serian dos escritores de PDF que se separan en el primer
+#      cambio, y el que se probaria menos es el del .exe.
+#   2. Una descarga por URL http:// normal es lo que la ventana de Electron
+#      maneja sin trucos. Un blob: dentro de un empaquetado es justo el
+#      camino que se rompe callado.
+_TIPOS_DOC = {
+    "html": ("text/html; charset=utf-8", "html"),
+    "docx": ("application/vnd.openxmlformats-officedocument."
+             "wordprocessingml.document", "docx"),
+    "pdf": ("application/pdf", "pdf"),
+    "xlsx": ("application/vnd.openxmlformats-officedocument."
+             "spreadsheetml.sheet", "xlsx"),
+}
+
+
+def _documento(doc: dict, formato: str, nombre: str, tabla=None) -> Response:
+    """Un documento ya armado, servido como descarga."""
+    from mvdg import doc_export
+
+    if formato not in _TIPOS_DOC:
+        raise HTTPException(400, f"Formato desconocido: {formato!r}. "
+                                 f"Validos: {', '.join(_TIPOS_DOC)}.")
+    if formato == "xlsx":
+        if tabla is None:
+            raise HTTPException(400, "Este documento no tiene version Excel.")
+        from mvdg.exporters import to_excel_bytes
+        crudo = to_excel_bytes(tabla, nombre[:31])
+    elif formato == "html":
+        crudo = doc_export.a_html(doc).encode("utf-8")
+    elif formato == "docx":
+        crudo = doc_export.a_docx(doc)
+    else:
+        crudo = doc_export.a_pdf(doc)
+    tipo, ext = _TIPOS_DOC[formato]
+    return Response(
+        content=crudo, media_type=tipo,
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.{ext}"'})
+
 
 # ---------------------------------------------------------------------------
 # Relevamiento y reuniones
 #
-# El motor de los dos modulos ya existe (mvdg/interview.py, mvdg/meetings.py) y
-# la interfaz completa esta en el panel Streamlit. Estos endpoints lo dejan
-# alcanzable desde la API, que es por donde lo consume la version .exe: sin
-# ellos, el motor solo se podria usar desde una de las dos interfaces.
+# El motor de los dos modulos ya existe (mvdg/interview.py, mvdg/meetings.py).
+# Estos endpoints lo dejan alcanzable desde la API, que es por donde lo
+# consume la version .exe: sin ellos, el motor solo se podria usar desde una
+# de las dos interfaces.
 #
 # Van ANTES de /api/{table}: esa ruta es un comodin y se come cualquier cosa
 # que se declare despues. Hay un test que fija el orden, porque el sintoma de
 # equivocarse no es un error sino un 200 con el contenido de otra ruta.
 # ---------------------------------------------------------------------------
+@app.get("/api/empresas", tags=["governance"])
+def empresas():
+    """Las empresas cargadas. El relevamiento se guarda por empresa."""
+    from mvdg.clients import load_clients
+    return [{"client_id": c.get("client_id", ""),
+             "company": c.get("company", ""),
+             "status": c.get("status", "")}
+            for c in load_clients() if c.get("client_id")]
+
+
 @app.get("/api/relevamiento/preguntas", tags=["governance"])
 def relevamiento_preguntas(lang: str = Query("es", pattern="^(es|en|pt)$")):
     """El banco entero: areas del pipeline y sus preguntas."""
@@ -852,7 +908,14 @@ def relevamiento_preguntas(lang: str = Query("es", pattern="^(es|en|pt)$")):
 
 @app.post("/api/relevamiento/repreguntas", tags=["governance"])
 def relevamiento_repreguntas(cuerpo: dict = _CUERPO):
-    """Que repreguntar sobre una respuesta. Local: no sale nada de la maquina."""
+    """Que repreguntar sobre una respuesta.
+
+    Las de `repreguntas` se calculan ACA, sin red y sin clave: es el camino
+    normal, porque un relevamiento se hace en la sala de reuniones de un
+    cliente. Con `"ia": true` se agregan ademas las que genera el proveedor
+    configurado sobre la respuesta exacta, y eso manda la respuesta del
+    cliente afuera: el que llama tiene que haberlo advertido en pantalla.
+    """
     from mvdg import interview
     datos = cuerpo or {}
     lang = str(datos.get("lang") or "es")
@@ -860,9 +923,25 @@ def relevamiento_repreguntas(cuerpo: dict = _CUERPO):
     qid = str(datos.get("id") or "").strip()
     if not interview.question(qid, lang):
         raise HTTPException(404, f"No existe la pregunta {qid!r}.")
-    return {"id": qid,
-            "repreguntas": interview.follow_ups(
-                qid, str(datos.get("respuesta") or ""), lang)}
+    respuesta = str(datos.get("respuesta") or "")
+    salida = {"id": qid,
+              "repreguntas": interview.follow_ups(qid, respuesta, lang)}
+    if datos.get("ia"):
+        salida["repreguntas_ia"] = interview.ai_follow_ups(qid, respuesta, lang)
+    return salida
+
+
+@app.get("/api/relevamiento/{client_id}/documento", tags=["governance"])
+def relevamiento_documento(client_id: str,
+                           formato: str = Query("pdf"),
+                           lang: str = Query("es", pattern="^(es|en|pt)$"),
+                           empresa: str = ""):
+    """El relevamiento de un cliente como HTML, Word, PDF o Excel."""
+    from mvdg import interview
+    return _documento(
+        interview.to_document(client_id, lang, empresa), formato,
+        f"relevamiento_{client_id[:8]}_{lang}",
+        tabla=interview.answers_df(client_id, lang))
 
 
 @app.get("/api/relevamiento/{client_id}", tags=["governance"])
@@ -896,6 +975,18 @@ def relevamiento_guardar(client_id: str, cuerpo: dict = _CUERPO):
         estado=str(datos.get("estado") or ""))
 
 
+def _minuta_de(datos: dict):
+    """La minuta y su idioma, a partir del cuerpo de un pedido."""
+    from mvdg import meetings
+    lang = str(datos.get("lang") or "es")
+    lang = lang if lang in LANGS else "es"
+    inter = meetings.parse_transcript(str(datos.get("texto") or ""))
+    return meetings.minutes(
+        inter, lang, titulo=str(datos.get("titulo") or ""),
+        fecha=str(datos.get("fecha") or ""),
+        participantes=str(datos.get("participantes") or "")), lang
+
+
 @app.post("/api/reuniones/minuta", tags=["governance"])
 def reuniones_minuta(cuerpo: dict = _CUERPO):
     """Transcripcion -> minuta: quien hablo, hallazgos y cruce con el pipeline.
@@ -904,20 +995,64 @@ def reuniones_minuta(cuerpo: dict = _CUERPO):
     decision se toma en la interfaz, con el aviso delante, no por una llamada
     de API que alguien podria encadenar sin darse cuenta.
     """
-    from mvdg import meetings
-    datos = cuerpo or {}
-    lang = str(datos.get("lang") or "es")
-    lang = lang if lang in LANGS else "es"
-    inter = meetings.parse_transcript(str(datos.get("texto") or ""))
-    minuta = meetings.minutes(
-        inter, lang, titulo=str(datos.get("titulo") or ""),
-        fecha=str(datos.get("fecha") or ""),
-        participantes=str(datos.get("participantes") or ""))
+    minuta, _ = _minuta_de(cuerpo or {})
     tablas = ("oradores", "hallazgos", "pipeline", "transcripcion")
     salida = {k: v for k, v in minuta.items() if k not in tablas}
     salida.update({k: json.loads(minuta[k].to_json(orient="records"))
                    for k in tablas})
     return salida
+
+
+@app.post("/api/reuniones/documento", tags=["governance"])
+def reuniones_documento(formato: str = Query("pdf"), cuerpo: dict = _CUERPO):
+    """La minuta como HTML, Word, PDF o Excel (la transcripcion completa)."""
+    from mvdg import meetings
+    minuta, lang = _minuta_de(cuerpo or {})
+    return _documento(meetings.to_document(minuta, lang), formato,
+                      f"minuta_{lang}", tabla=minuta["transcripcion"])
+
+
+@app.get("/api/reuniones/transcripcion", tags=["governance"])
+def reuniones_transcripcion_estado(lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Si se puede transcribir audio, y con que proveedor.
+
+    La interfaz lo consulta para NO ofrecer el boton cuando no hay clave: un
+    boton que siempre falla es peor que no tenerlo.
+    """
+    from mvdg import ai_provider, transcribe
+    proveedor = transcribe.proveedor_disponible()
+    return {"disponible": bool(proveedor), "proveedor": proveedor or "",
+            "etiqueta": ai_provider.provider_label(proveedor) if proveedor else "",
+            "motivo": "" if proveedor else transcribe.motivo("sin_proveedor", lang)}
+
+
+_CONFIRMO = Form(False)
+_LANG_FORM = Form("es")
+
+
+@app.post("/api/reuniones/transcribir", tags=["governance"])
+async def reuniones_transcribir(archivo: UploadFile = _ARCHIVO,
+                                confirmo: bool = _CONFIRMO,
+                                lang: str = _LANG_FORM):
+    """Audio -> texto, con la clave del usuario. MANDA EL AUDIO A UN TERCERO.
+
+    Exige `confirmo=true` explicito. No es burocracia: es el unico endpoint de
+    esta API que saca contenido del cliente de la maquina, y el resto del
+    programa promete justo lo contrario. Que haya que decirlo en cada llamada
+    evita que quede encendido por una configuracion que alguien puso una vez.
+    """
+    from mvdg import transcribe
+    lang = lang if lang in LANGS else "es"
+    if not confirmo:
+        raise HTTPException(400, (
+            "Falta la confirmacion explicita: transcribir manda este audio a "
+            "un proveedor externo. Mande confirmo=true solo despues de "
+            "avisarlo en pantalla."))
+    crudo = await archivo.read()
+    resultado = transcribe.transcribir(crudo, archivo.filename or "reunion.wav", lang)
+    if not resultado["ok"]:
+        raise HTTPException(400, resultado["mensaje"])
+    return resultado
 
 
 @app.get("/api/{table}", tags=["governance"])

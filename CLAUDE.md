@@ -38,6 +38,7 @@ Tableau, Purview y Collibra (en las dos direcciones).
 | Un test puntual | `pytest tests/test_core.py::<nombre> -v` |
 | Servir la landing local | `cd landing && python -m http.server 8080` |
 | Verificación end-to-end (servicios reales + Chromium) | `python scripts/e2e_demo.py` (`--api` para saltear el navegador) |
+| E2E de las vistas del .exe (Relevamiento + Reuniones) | `python scripts/e2e_exe_consultoria.py` |
 | Regenerar el video demo | `python assets/video/build_video.py` |
 | Regenerar el video antes/después | `python assets/video/build_antes_despues.py` |
 

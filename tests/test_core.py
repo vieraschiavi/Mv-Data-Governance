@@ -10467,3 +10467,107 @@ def test_api_relevamiento_preguntas_no_la_come_la_ruta_comodin():
         assert rutas.index(especifica) < comodin, (
             f"{especifica} se declara después de /api/{{table}}: el comodín se "
             f"la come y nunca se llega a ella")
+
+
+def test_api_documentos_del_relevamiento_y_la_minuta(tmp_path, monkeypatch):
+    """Los cuatro formatos se arman en el SERVIDOR y viajan como descarga.
+
+    Se sirven así y no como un blob construido en el navegador porque el
+    escritor de PDF/Word es Python: reimplementarlo en JavaScript daría dos
+    escritores que se separan en el primer cambio, y el menos probado sería
+    el del .exe — el que corre en la máquina del cliente.
+    """
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+    from mvdg import interview
+
+    interview.save_answer("conaprole", "MDM-01", respuesta="Pasa seguido",
+                          responsable="Juan Pérez", area_responsable="Comercial")
+    vtt = ("WEBVTT\n\n00:00:01.000 --> 00:00:06.000\n"
+           "<v Ana García>Quedamos en que el dueño va a ser Comercial.</v>\n")
+    firmas = {"html": b"<!doctype html>", "docx": b"PK", "pdf": b"%PDF-", "xlsx": b"PK"}
+
+    with TestClient(app) as cli:
+        for formato, firma in firmas.items():
+            r = cli.get(f"/api/relevamiento/conaprole/documento?formato={formato}"
+                        f"&lang=es&empresa=Conaprole")
+            assert r.status_code == 200, (formato, r.text[:200])
+            assert r.content.startswith(firma), formato
+            # Sin Content-Disposition el navegador MUESTRA el archivo en vez
+            # de bajarlo, y un .docx mostrado es una pantalla de basura.
+            assert "attachment" in r.headers.get("content-disposition", ""), formato
+
+            m = cli.post(f"/api/reuniones/documento?formato={formato}",
+                         json={"texto": vtt, "lang": "es"})
+            assert m.status_code == 200, (formato, m.text[:200])
+            assert m.content.startswith(firma), formato
+
+        assert cli.get("/api/relevamiento/x/documento?formato=zip").status_code == 400
+
+
+def test_api_transcribir_exige_confirmacion_explicita(tmp_path, monkeypatch):
+    """Es el ÚNICO endpoint que saca contenido del cliente de la máquina.
+
+    El resto del programa promete lo contrario, así que la confirmación va en
+    cada llamada y no en una configuración que alguien encendió una vez y
+    nadie recuerda.
+    """
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    import io
+
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+
+    with TestClient(app) as cli:
+        sin = cli.post("/api/reuniones/transcribir",
+                       files={"archivo": ("a.wav", io.BytesIO(b"x"), "audio/wav")},
+                       data={"lang": "es"})
+        assert sin.status_code == 400
+        assert "confirmacion" in sin.json()["detail"].lower()
+
+        # Con la confirmación pero sin clave: falla igual, y explica por qué.
+        con = cli.post("/api/reuniones/transcribir",
+                       files={"archivo": ("a.wav", io.BytesIO(b"x"), "audio/wav")},
+                       data={"confirmo": "true", "lang": "es"})
+        assert con.status_code == 400
+        assert "clave" in con.json()["detail"].lower()
+
+        estado = cli.get("/api/reuniones/transcripcion?lang=es").json()
+        assert estado["disponible"] is False and estado["motivo"]
+
+
+def test_api_empresas_alimenta_el_selector_del_exe(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+    from mvdg import clients
+
+    with TestClient(app) as cli:
+        assert cli.get("/api/empresas").json() == []
+        clients.save_client({"client_id": "conaprole-001", "company": "Conaprole",
+                             "it_restriction": "exe_ok", "status": "piloto"})
+        fichas = cli.get("/api/empresas").json()
+        assert [f["company"] for f in fichas] == ["Conaprole"]
+        assert fichas[0]["client_id"] == "conaprole-001"
+
+
+def test_las_dos_interfaces_usan_EL_MISMO_banco_de_preguntas():
+    """El .exe no puede tener su propio banco de preguntas.
+
+    Si la vista React trajera una copia, el relevamiento que se hace en la VM
+    del cliente y el que se hace en el panel dejarían de ser el mismo trabajo
+    — y el que se probaría menos es justo el del cliente.
+    """
+    import re
+    ruta = os.path.join(_repo_root(), "electron", "ui", "src", "consultoria.jsx")
+    with open(ruta, encoding="utf-8") as fh:
+        vista = fh.read()
+    assert "relevamientoPreguntas" in vista, (
+        "la vista del .exe no pide el banco a la API")
+    # Ni una pregunta escrita a mano del lado del navegador.
+    from mvdg.interview_bank import PREGUNTAS
+    for q in PREGUNTAS[:5]:
+        assert q["pregunta"]["es"] not in vista, (
+            f"la pregunta {q['id']} está copiada dentro del JavaScript")
+    assert not re.search(r"const\s+PREGUNTAS", vista)
