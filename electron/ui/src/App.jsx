@@ -13,7 +13,7 @@
  * Un <div> con un ancho porcentual las resuelve, y evita sumarle ~500 KB al
  * bundle de un instalador que ya pesa cientos de MB.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   activarLicencia, conectores, desactivarLicencia, escanearTenant,
   ingenieriaArchivo, ingenieriaSqlAnalizar, ingenieriaSqlBorrarConexion,
@@ -22,30 +22,12 @@ import {
   renovarLicencia, todo,
 } from "./api";
 import { t } from "./i18n";
+import { Relevamiento, Reuniones } from "./consultoria";
+import { num, Tabla } from "./tabla";
 
 const VISTAS = ["panorama", "catalogo", "calidad", "linaje", "glosario",
-                "politicas", "misdatos", "ingenieria", "licencia"];
-
-/* ------------------------------------------------------------- helpers */
-
-const num = (v, dec = 0) =>
-  v === null || v === undefined || v === "" || Number.isNaN(Number(v))
-    ? "—"
-    : Number(v).toLocaleString(undefined, {
-        minimumFractionDigits: dec, maximumFractionDigits: dec });
-
-/** Texto plano de una fila, para el buscador. */
-const textoDe = (fila) => Object.values(fila).map((v) => String(v ?? "")).join(" ").toLowerCase();
-
-function useBusqueda(filas) {
-  const [q, setQ] = useState("");
-  const filtradas = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return filas;
-    return filas.filter((f) => textoDe(f).includes(t));
-  }, [filas, q]);
-  return { q, setQ, filtradas };
-}
+                "politicas", "misdatos", "ingenieria", "relevamiento",
+                "reuniones", "licencia"];
 
 /* ---------------------------------------------------------- componentes */
 
@@ -67,57 +49,6 @@ function Barras({ filas, clave, lang, traducirNombre }) {
     </>
   );
 }
-
-/**
- * Tabla con buscador. `columnas` = [{clave, etiqueta, tipo?, render?}].
- * El buscador filtra sobre la fila COMPLETA y no solo sobre las columnas
- * visibles: buscar "PII" o el nombre de un steward tiene que encontrar algo
- * aunque esa columna no se esté mostrando.
- */
-function Tabla({ filas, columnas, lang }) {
-  const { q, setQ, filtradas } = useBusqueda(filas);
-  return (
-    <>
-      <div className="herramientas">
-        <input
-          className="buscador" type="search" value={q}
-          placeholder={t("buscar", lang)}
-          aria-label={t("buscar", lang)}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <span className="conteo">{filtradas.length} {t("filas", lang)}</span>
-      </div>
-      {filtradas.length === 0 ? (
-        <p className="sub">{t("sin_datos", lang)}</p>
-      ) : (
-        <div className="tabla-wrap">
-          <table>
-            <thead>
-              <tr>{columnas.map((c) => <th key={c.clave}>{c.etiqueta}</th>)}</tr>
-            </thead>
-            <tbody>
-              {filtradas.map((f, i) => (
-                <tr key={i}>
-                  {columnas.map((c) => (
-                    <td key={c.clave} className={c.tipo === "num" ? "num" : undefined}>
-                      {c.render ? c.render(f) : (f[c.clave] ?? "—")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  );
-}
-
-const Estado = ({ valor, lang }) => (
-  <span className={`pill ${valor}`}>{t(`est_${valor}`, lang) || valor}</span>
-);
-
-/* -------------------------------------------------------------- vistas */
 
 function Panorama({ d, lang }) {
   const kpi = Object.fromEntries((d.kpis || []).map((k) => [k.kpi, k.value]));
@@ -1140,7 +1071,9 @@ function Ingenieria({ lang }) {
 
 const RENDER = { panorama: Panorama, catalogo: Catalogo, calidad: Calidad,
                  linaje: Linaje, glosario: Glosario, politicas: Politicas,
-                 misdatos: MisDatos, ingenieria: Ingenieria, licencia: Licencia };
+                 misdatos: MisDatos, ingenieria: Ingenieria,
+                 relevamiento: Relevamiento, reuniones: Reuniones,
+                 licencia: Licencia };
 
 /* ----------------------------------------------------------------- app */
 

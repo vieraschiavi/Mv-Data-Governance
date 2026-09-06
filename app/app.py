@@ -2205,10 +2205,19 @@ with tab_srv:
                 _resp = st.text_area(t("srv_answer", lang),
                                      value=_prev.get("respuesta", ""),
                                      key=f"srv_ans_{_q['id']}", height=90)
+                # El estado tiene que decir lo que se va a GUARDAR. Antes
+                # arrancaba siempre en el valor con el que se abrió la
+                # pregunta, así que escribir la respuesta y apretar Guardar
+                # la dejaba "pendiente": la cobertura no subía nunca y no
+                # había forma de notarlo sin mirar el JSON. "No aplica" es
+                # una decisión explícita y no se pisa.
+                _sugerido = _prev.get("estado", "pendiente")
+                if _sugerido != "no_aplica":
+                    _sugerido = "respondida" if _resp.strip() else "pendiente"
                 _estado = st.radio(
                     t("srv_state", lang), list(_SRV_ESTADO),
                     format_func=lambda k: _SRV_ESTADO[k], horizontal=True,
-                    index=list(_SRV_ESTADO).index(_prev.get("estado", "pendiente")),
+                    index=list(_SRV_ESTADO).index(_sugerido),
                     key=f"srv_st_{_q['id']}")
 
                 b1, b2 = st.columns(2)

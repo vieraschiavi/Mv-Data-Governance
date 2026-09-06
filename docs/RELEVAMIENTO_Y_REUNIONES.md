@@ -119,10 +119,36 @@ cada cliente.
 
 ---
 
+## Dónde están
+
+**ES:** En las dos interfaces, con las mismas funciones:
+
+- **Panel completo** (`streamlit run app/app.py`, modo servidor): pestañas
+  «Relevamiento» y «Reuniones».
+- **Escritorio (`.exe` / paquete portable para la VM del cliente)**: vistas
+  «Relevamiento» y «Reuniones» en la interfaz React.
+
+**ES:** El motor es **el mismo** en las dos: el banco de preguntas, el
+detector de respuestas a medias y el parser de transcripciones viven en
+Python y la vista de escritorio los consulta por la API. Hay un test que lo
+fija — si alguien copiara el banco de preguntas dentro del JavaScript «para
+que ande sin el servidor», el relevamiento que se hace en la VM del cliente
+dejaría de ser el mismo trabajo que el del panel, y el que se probaría menos
+sería justo el del cliente.
+
+**EN:** Both interfaces, same features, one engine: the desktop view queries
+the Python engine over the API. A test enforces it.
+
+**PT:** As duas interfaces, mesmas funções, um só motor: a visão de desktop
+consulta o motor Python pela API. Um teste garante isso.
+
 ## Salida
 
 **ES:** Los dos módulos exportan a **HTML, Word y PDF** (y a Excel), con los
 mismos escritores sin dependencias nuevas que usa la pestaña de Trazabilidad.
+En el escritorio los arma el servidor y bajan como una descarga normal: el
+escritor de PDF y Word es Python, y reimplementarlo en JavaScript daría dos
+escritores que se separan en el primer cambio.
 
 ## Desde la API
 
@@ -132,6 +158,11 @@ GET  /api/relevamiento/{client_id}?lang=es    lo respondido + cobertura
 POST /api/relevamiento/{client_id}            anotar una respuesta
 POST /api/relevamiento/repreguntas            qué repreguntar (local)
 POST /api/reuniones/minuta                    transcripción -> minuta
+GET  /api/relevamiento/{client_id}/documento  el relevamiento como archivo
+POST /api/reuniones/documento                 la minuta como archivo
+GET  /api/reuniones/transcripcion             ¿hay clave para transcribir?
+POST /api/reuniones/transcribir               audio -> texto (exige confirmo=true)
+GET  /api/empresas                            para el selector de empresa
 ```
 
 **ES:** `/api/reuniones/minuta` recibe **texto, no audio**: transcribir manda

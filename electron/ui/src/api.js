@@ -283,3 +283,118 @@ export async function ingenieriaSqlBorrarConexion(connId) {
   if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
   return r.json();
 }
+
+/* ------------------------------------------- relevamiento y reuniones
+ * Los dos modulos que cubren lo que pasa ANTES de tocar un dato. El motor
+ * vive en Python (mvdg/interview.py, mvdg/meetings.py) y esta capa solo lo
+ * consulta: reimplementar en JavaScript el banco de preguntas o el parser de
+ * transcripciones serian dos motores que se separan en el primer cambio, y
+ * el que se probaria menos es justo el del .exe.
+ *
+ * Los POST reusan `enviar()`, el mismo que ya usan migracion y el escaneo de
+ * tenant: un segundo helper que hace lo mismo es un segundo lugar donde
+ * arreglar el proximo borde del manejo de errores.
+ */
+
+/** Las empresas cargadas. El relevamiento se guarda por empresa. */
+export async function empresas() {
+  return pedir("/api/empresas");
+}
+
+/** El banco entero: areas del pipeline y sus preguntas. */
+export async function relevamientoPreguntas(lang) {
+  return pedir(`/api/relevamiento/preguntas?lang=${encodeURIComponent(lang || "es")}`);
+}
+
+/** Lo respondido para una empresa, con la cobertura por area. */
+export async function relevamientoEstado(clientId, lang) {
+  return pedir(`/api/relevamiento/${encodeURIComponent(clientId)}`
+               + `?lang=${encodeURIComponent(lang || "es")}`);
+}
+
+/** Anota quien respondio que. */
+export async function relevamientoGuardar(clientId, respuesta) {
+  return enviar(`/api/relevamiento/${encodeURIComponent(clientId)}`, respuesta);
+}
+
+/**
+ * Que repreguntar. Las locales salen SIEMPRE, sin red y sin clave: es el
+ * camino normal, porque un relevamiento se hace en la sala de reuniones de
+ * un cliente. Con `ia` en true se piden ademas las generadas — y eso manda
+ * la respuesta del cliente afuera, asi que la pantalla tiene que avisarlo.
+ */
+export async function relevamientoRepreguntas(id, respuesta, lang, ia = false) {
+  return enviar("/api/relevamiento/repreguntas", { id, respuesta, lang, ia });
+}
+
+/** Transcripcion -> minuta: quien hablo, hallazgos y cruce con el pipeline. */
+export async function reunionMinuta(cuerpo) {
+  return enviar("/api/reuniones/minuta", cuerpo);
+}
+
+/** Si se puede transcribir audio, y con que proveedor. */
+export async function transcripcionEstado(lang) {
+  return pedir(`/api/reuniones/transcripcion?lang=${encodeURIComponent(lang || "es")}`);
+}
+
+/**
+ * Audio -> texto. MANDA EL AUDIO A UN TERCERO.
+ *
+ * `confirmo` va explicito en cada llamada y el servidor lo exige: es el
+ * unico endpoint que saca contenido del cliente de la maquina, y el resto
+ * del programa promete lo contrario. Que haya que decirlo cada vez evita que
+ * quede encendido por una configuracion que alguien puso una vez.
+ */
+export async function transcribirAudio(archivo, lang) {
+  const form = new FormData();
+  form.append("archivo", archivo, archivo.name || "reunion.wav");
+  form.append("confirmo", "true");
+  form.append("lang", lang || "es");
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/reuniones/transcribir`, { method: "POST", body: form });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError("transcripcion_fallo", datos.detail || `HTTP ${r.status}`);
+  return datos;
+}
+
+/**
+ * URL de descarga del relevamiento. Se devuelve la URL y no los bytes a
+ * proposito: una descarga por http:// normal es lo que la ventana de
+ * escritorio maneja sin trucos, y el documento lo escribe el motor en
+ * Python, que es el mismo que usa la otra interfaz.
+ */
+export function urlRelevamientoDoc(clientId, formato, lang, empresa) {
+  return `${BASE}/api/relevamiento/${encodeURIComponent(clientId)}/documento`
+         + `?formato=${encodeURIComponent(formato)}`
+         + `&lang=${encodeURIComponent(lang || "es")}`
+         + `&empresa=${encodeURIComponent(empresa || "")}`;
+}
+
+/**
+ * La minuta como archivo. Va por POST porque el cuerpo es la transcripcion
+ * entera, que no entra en una URL — asi que aca si hace falta el blob.
+ */
+export async function descargarMinuta(cuerpo, formato) {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api/reuniones/documento?formato=${encodeURIComponent(formato)}`,
+                    { method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify(cuerpo) });
+  } catch (e) {
+    throw new ApiError("sin_conexion", e.message);
+  }
+  if (!r.ok) throw new ApiError("respuesta_invalida", `HTTP ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `minuta.${formato}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
