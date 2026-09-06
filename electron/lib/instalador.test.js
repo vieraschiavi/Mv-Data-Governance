@@ -58,6 +58,38 @@ check("NSIS: accesos directos en escritorio y menu Inicio", () => {
   assert.strictEqual(nsis.createStartMenuShortcut, true);
 });
 
+// ------------------------------ las DOS formas de instalar, bien separadas
+//
+// Instalacion normal (mi laptop, o la de la consultora que me contrata) y
+// paquete portable para la VM del cliente. La segunda no puede salir de un
+// instalador: en una VM corporativa no hay permisos de administrador y el
+// perfil de usuario se puede resetear al cerrar sesion. Son dos targets
+// distintos del MISMO build — mismo binario, misma auditoria.
+// El paquete portable NO es otro target de electron-builder: se rearma desde
+// `dist_electron/win-unpacked` en el workflow, agregandole el marcador. Un
+// target `zip` daria un segundo ZIP de ~400 MB sin el marcador adentro — o
+// sea, el paquete equivocado, pesando el doble. Que el workflow lo arme
+// bien lo verifica un test de Python sobre el YAML.
+check("NSIS: instalacion por USUARIO, sin pedir administrador", () => {
+  // perMachine true exige elevacion. En la laptop de una consultora eso ya
+  // es incomodo; en la VM de un cliente, directamente no se puede.
+  assert.strictEqual(nsis.perMachine, false,
+    "perMachine tiene que ser false: instalar por maquina pide admin y en " +
+    "un equipo corporativo el consultor no lo tiene");
+});
+
+check("el shell y el motor llaman igual al marcador del modo VM", () => {
+  const fs = require("node:fs");
+  const sm = require("./server-manager");
+  const py = fs.readFileSync(
+    path.join(__dirname, "..", "..", "mvdg", "install_mode.py"), "utf8");
+  const m = py.match(/^MARCADOR\s*=\s*"([^"]+)"/m);
+  assert.ok(m, "no se encontro MARCADOR en mvdg/install_mode.py");
+  assert.strictEqual(sm.MARCADOR_VM, m[1],
+    `el shell busca "${sm.MARCADOR_VM}" y el motor "${m[1]}": con nombres ` +
+    `distintos quedan en modos distintos y el usuario ve una sola mitad`);
+});
+
 // --------------------------------------- el motor, UN nivel sobre python
 //
 // El ._pth del Python embebido lleva ".." y eso se resuelve contra la

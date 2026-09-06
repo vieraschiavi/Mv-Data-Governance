@@ -53,6 +53,13 @@ cd landing && python -m http.server 8080   # → http://localhost:8080
 | **`./run.sh`** | Linux / macOS (escritorio, abre el navegador local) |
 
 Guía completa: [`docs/MANUAL_PUESTA_EN_MARCHA.md`](docs/MANUAL_PUESTA_EN_MARCHA.md).
+
+**¿En tu equipo o en el del cliente?** Son dos formas de instalar distintas —
+instalador para tu laptop (o la de la consultora que te contrata), y paquete
+portable para la VM del cliente, donde no hay administrador ni internet y el
+perfil de usuario se resetea. Mismo programa; lo único que cambia es dónde
+queda guardado tu trabajo: [`docs/INSTALACION.md`](docs/INSTALACION.md).
+
 ¿Qué es el gobierno de datos y cómo lo cubre esta plataforma frente al
 estándar DAMA-DMBOK? [`docs/DMBOK.md`](docs/DMBOK.md) (explicado para
 técnicos y no técnicos, en los 3 idiomas).

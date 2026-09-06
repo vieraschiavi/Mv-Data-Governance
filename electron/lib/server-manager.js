@@ -66,6 +66,56 @@ function serverRoot(resourcesPath, repoRoot) {
   return repoRoot;
 }
 
+// Nombre del archivo que marca un paquete como "para la VM del cliente".
+// Tiene que decir EXACTAMENTE lo mismo que mvdg/install_mode.py:MARCADOR;
+// hay un test que compara los dos valores, porque si se separan el shell y
+// el motor quedan en modos distintos y nadie lo nota hasta la VM del cliente.
+const MARCADOR_VM = "MODO_VM_CLIENTE.txt";
+
+/**
+ * En que modo esta instalado esto: "normal" o "vm_cliente".
+ *
+ * El ZIP portable trae el marcador en la raiz de la carpeta; el instalador
+ * NSIS no. Asi el paquete que se bajo ES el modo, sin que nadie tenga que
+ * configurar nada — que es justo lo que no se puede pedir en la VM de un
+ * cliente, donde el consultor entra con lo puesto.
+ *
+ * Se busca al lado del .exe de la ventana (execPath) y arriba de resources/,
+ * porque electron-builder deja el ejecutable en la raiz de la carpeta y los
+ * recursos un nivel adentro.
+ */
+function modoInstalacion(execPath, resourcesPath) {
+  const carpetas = [
+    execPath ? path.dirname(execPath) : null,
+    resourcesPath ? path.dirname(resourcesPath) : null,
+    resourcesPath || null,
+  ].filter(Boolean);
+  for (const c of carpetas) {
+    try {
+      if (fs.existsSync(path.join(c, MARCADOR_VM))) return { modo: "vm_cliente", raiz: c };
+    } catch { /* carpeta ilegible: se prueba la siguiente */ }
+  }
+  return { modo: "normal", raiz: null };
+}
+
+/**
+ * Variables que hacen que el motor Python vea el MISMO modo que el shell.
+ *
+ * Se pasan explicitas en vez de dejar que install_mode.py vuelva a sondear
+ * el disco: en el empaquetado el motor vive en resources/server/mvdg, o sea
+ * tres niveles por debajo del marcador, y depender de que la busqueda hacia
+ * arriba acierte en cada layout futuro es fragil. El shell ya sabe la
+ * respuesta; se la dice.
+ */
+function envDelModo(execPath, resourcesPath) {
+  const { modo, raiz } = modoInstalacion(execPath, resourcesPath);
+  if (modo !== "vm_cliente") return {};
+  return {
+    MVDG_MODO_INSTALACION: "vm_cliente",
+    MVDG_DATA_DIR: path.join(raiz, "Datos"),
+  };
+}
+
 function spawnStreamlit(bin, root, port, extraEnv) {
   const appPy = path.join(root, "app", "app.py");
   const args = ["-m", "streamlit", "run", appPy,
@@ -134,4 +184,5 @@ function stopProcess(proc) {
 module.exports = {
   freePort, pythonCandidates, pythonWorks, serverRoot,
   spawnStreamlit, spawnApi, waitForServer, stopProcess,
+  modoInstalacion, envDelModo, MARCADOR_VM,
 };

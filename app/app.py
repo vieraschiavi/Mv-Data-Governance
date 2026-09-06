@@ -44,6 +44,7 @@ from mvdg import collibra_pull
 from mvdg import curation
 from mvdg import enforcement
 from mvdg import insights
+from mvdg import install_mode
 from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
@@ -2355,6 +2356,20 @@ with tab_h:
     else:
         st.caption(t("ia_none", lang))
     st.caption(t("ia_copilot", lang))
+    st.divider()
+
+    # --- Cómo está instalado ------------------------------------------------
+    # Lo único que cambia entre las dos formas de instalar es DÓNDE queda
+    # guardado lo que el usuario hace, y eso no se puede adivinar mirando la
+    # pantalla. En la VM de un cliente es la diferencia entre llevarse el
+    # trabajo y perderlo al cerrar sesión.
+    st.subheader(t("inst_title", lang))
+    _inst = install_mode.descripcion(lang)
+    st.markdown(f"**{_inst['titulo']}**")
+    st.caption(_inst["detalle"])
+    st.caption(f"{t('inst_where', lang)}: `{_inst['datos']}`")
+    if _inst["datos_fuera_de_la_carpeta"]:
+        st.warning(t("inst_fallback", lang))
     st.divider()
 
     # --- Licencia -----------------------------------------------------------

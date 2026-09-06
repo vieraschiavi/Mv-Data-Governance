@@ -71,6 +71,35 @@ async function main() {
   assert.strictEqual(upDead, false, "waitForServer debería dar timeout en un puerto muerto");
   console.log("✓ waitForServer() da timeout correctamente si nadie escucha");
 
+  // 6. el modo de instalacion: lo decide el PAQUETE, no una configuracion
+  {
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), "mvdg_modo_"));
+    const exe = path.join(carpeta, "MV Data Governance.exe");
+    const recursos = path.join(carpeta, "resources");
+    fs.mkdirSync(recursos);
+
+    // Sin marcador: instalacion normal, y NINGUNA variable — el motor decide
+    // como siempre. Pasar MVDG_DATA_DIR aca romperia la instalacion normal,
+    // que guarda en el perfil del usuario a proposito.
+    assert.strictEqual(sm.modoInstalacion(exe, recursos).modo, "normal");
+    assert.deepStrictEqual(sm.envDelModo(exe, recursos), {});
+    console.log("✓ sin marcador el paquete es una instalacion normal");
+
+    fs.writeFileSync(path.join(carpeta, sm.MARCADOR_VM), "vm");
+    const detectado = sm.modoInstalacion(exe, recursos);
+    assert.strictEqual(detectado.modo, "vm_cliente");
+    assert.strictEqual(detectado.raiz, carpeta);
+    const env = sm.envDelModo(exe, recursos);
+    assert.strictEqual(env.MVDG_MODO_INSTALACION, "vm_cliente");
+    assert.strictEqual(env.MVDG_DATA_DIR, path.join(carpeta, "Datos"));
+    console.log("✓ con marcador los datos quedan DENTRO de la carpeta del programa");
+
+    fs.rmSync(carpeta, { recursive: true, force: true });
+  }
+
   console.log("\nTodos los checks de server-manager.js pasaron.");
 }
 

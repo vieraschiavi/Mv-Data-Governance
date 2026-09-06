@@ -211,6 +211,17 @@ _T: dict[str, dict[str, str]] = {
         "en": "Every number comes from running the real rules on the case file and from the saved curation — nothing is made up. If curation shows 0%, that's the real state: go validate definitions in Curation and the deliverable reflects it instantly.",
         "pt": "Cada número vem de rodar as regras reais no arquivo do caso e da curadoria salva — nada é inventado. Se a curadoria está em 0%, esse é o estado real: valide definições em Curadoria e o entregável reflete na hora.",
     },
+    # -------------------------------------------------- cómo está instalado
+    "inst_title": {"es": "Cómo está instalado", "en": "How this is installed",
+                   "pt": "Como está instalado"},
+    "inst_where": {"es": "Tus datos se guardan en",
+                   "en": "Your data is stored in",
+                   "pt": "Seus dados são guardados em"},
+    "inst_fallback": {
+        "es": "Este paquete es el portable (para la VM del cliente), pero su carpeta no admite escritura, así que se está guardando en tu perfil de usuario. En una VM que se resetea al cerrar sesión, ese trabajo se pierde: mové la carpeta del programa a un lugar donde puedas escribir (Documentos, D:\\, un disco de red).",
+        "en": "This is the portable package (for the client's VM), but its folder is not writable, so data is going to your user profile instead. On a VM that resets at logoff, that work is lost: move the program folder somewhere you can write (Documents, D:\\, a network drive).",
+        "pt": "Este pacote é o portátil (para a VM do cliente), mas a pasta dele não permite escrita, então os dados estão indo para o seu perfil de usuário. Numa VM que se reinicia ao sair, esse trabalho se perde: mova a pasta do programa para um lugar onde você possa escrever (Documentos, D:\\, um disco de rede).",
+    },
     # ------------------------------------------------ trazabilidad del pipeline
     "tz_intro": {
         "es": "Todo lo que el programa le hizo a los datos, en el orden real en que pasó. Cada etapa está contada dos veces: en criollo, para quien decide, y en técnico, para quien mantiene el código. La evidencia de cada una se mide sobre esta corrida, no sobre un folleto.",

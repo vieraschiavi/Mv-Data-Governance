@@ -199,6 +199,20 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/instalacion", tags=["meta"])
+def instalacion(lang: str = "es"):
+    """Cómo está instalado esto y DÓNDE queda guardado lo que hace el usuario.
+
+    No es un dato de diagnóstico: es lo único que cambia entre las dos formas
+    de instalar (tu equipo / la VM del cliente), y el usuario tiene que poder
+    verlo sin abrir una consola. En una VM no persistente, guardar en el
+    perfil del usuario significa perder el trabajo al cerrar sesión — si eso
+    está pasando, la pantalla lo dice.
+    """
+    from mvdg import install_mode
+    return install_mode.descripcion(lang if lang in LANGS else "es")
+
+
 # ---------------------------------------------------------------------------
 # Licencia
 #

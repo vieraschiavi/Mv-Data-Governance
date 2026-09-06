@@ -15,6 +15,22 @@ de TI de cada empresa — **mesmas funcionalidades em ambas**. A ficha de cada
 empresa (aba 🏢 Empresas do programa) registra a restrição e recomenda o
 pacote automaticamente.
 
+> **ES:** Esa tabla mira la restricción de TI. Hay un segundo eje, distinto y
+> más frecuente: **de quién es el equipo**. Instalás en tu laptop (o la de la
+> consultora que te contrata) de una forma, y en la VM del cliente de otra —
+> ahí no hay administrador, muchas veces no hay internet, y el perfil de
+> usuario se puede resetear al cerrar sesión. Las dos formas se bajan de la
+> misma Release y son el mismo programa: ver
+> [`docs/INSTALACION.md`](../docs/INSTALACION.md).
+>
+> **EN:** That table looks at IT restrictions. There is a second axis, and a
+> more common one: **whose machine it is**. See
+> [`docs/INSTALACION.md`](../docs/INSTALACION.md).
+>
+> **PT:** Essa tabela olha a restrição de TI. Há um segundo eixo, mais
+> frequente: **de quem é o equipamento**. Veja
+> [`docs/INSTALACION.md`](../docs/INSTALACION.md).
+
 | Carpeta / Folder | Para qué empresa / For which company | Requisitos / Requirements |
 |---|---|---|
 | [`opcion_A_instalador_exe/`](opcion_A_instalador_exe/LEEME.md) | ES: permite instalar software (.exe) · EN: allows installing software · PT: permite instalar software | ❌ Python **no** requerido / not required |

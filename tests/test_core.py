@@ -3321,8 +3321,10 @@ def test_data_dir_program_files_sin_permiso_cae_al_perfil(tmp_path, monkeypatch)
     # así que esto también verifica que el reexport siga funcionando.
     d = clients.data_dir()
     assert d == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
-    # y el sondeo quedó cacheado como "no escribible" (no se reintenta)
-    assert paths._ESCRITURA_PROBADA[str(exe_dir)] == ""
+    # y el sondeo quedó cacheado como "no escribible" (no se reintenta).
+    # La clave es la carpeta DESTINO (…/Data), no la del ejecutable: el mismo
+    # sondeo lo usa ahora el modo portable, que apunta a otra carpeta.
+    assert paths._ESCRITURA_PROBADA[str(exe_dir / "Data")] == ""
 
 
 def test_data_dir_carpeta_existente_pero_no_escribible_tambien_cae(tmp_path, monkeypatch):
@@ -9915,3 +9917,194 @@ def test_la_pestana_de_trazabilidad_esta_en_la_app():
     assert "with tab_tz:" in fuente
     for clave in ("tz_dl_html", "tz_dl_docx", "tz_dl_pdf"):
         assert f't("{clave}", lang)' in fuente, f"falta el botón {clave}"
+
+
+# ===========================================================================
+# Dos formas de instalar: mi equipo y la VM del cliente
+# ===========================================================================
+
+def _layout_portable(tmp_path, monkeypatch, escribible=True):
+    """Arma en disco lo que el ZIP portable deja al descomprimirse.
+
+    Se replica el layout REAL de electron-builder —el motor tres niveles por
+    debajo del marcador— porque el bug que este modo puede tener es
+    justamente que la búsqueda hacia arriba no llegue.
+    """
+    from mvdg import install_mode, paths
+    raiz = tmp_path / "MV Data Governance"
+    motor = raiz / "resources" / "server" / "mvdg"
+    motor.mkdir(parents=True)
+    (raiz / install_mode.MARCADOR).write_text("vm", encoding="utf-8")
+
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.delenv(install_mode.VARIABLE, raising=False)
+    monkeypatch.setattr(install_mode, "__file__", str(motor / "install_mode.py"))
+    monkeypatch.setattr(install_mode, "_MARCADOR_ENCONTRADO", {})
+    monkeypatch.setattr(paths, "_ESCRITURA_PROBADA", {})
+    if not escribible:
+        real = os.makedirs
+
+        def sin_permiso(path, *a, **k):
+            if str(path).startswith(str(raiz)):
+                raise PermissionError(13, "Acceso denegado", str(path))
+            return real(path, *a, **k)
+        monkeypatch.setattr(paths.os, "makedirs", sin_permiso)
+    return raiz
+
+
+def test_sin_marcador_el_paquete_es_una_instalacion_normal():
+    """El default no puede ser el modo raro: la mayoría instala en su equipo."""
+    from mvdg import install_mode
+    assert install_mode.modo() == install_mode.MODO_NORMAL
+    assert not install_mode.es_vm_cliente()
+    assert install_mode.raiz_portable() is None
+
+
+def test_el_marcador_hace_que_los_datos_queden_en_la_carpeta_del_programa(
+        tmp_path, monkeypatch):
+    """El caso Conaprole: nada del trabajo puede quedar en el perfil de la VM."""
+    from mvdg import install_mode, paths
+    raiz = _layout_portable(tmp_path, monkeypatch)
+
+    assert install_mode.es_vm_cliente()
+    assert install_mode.raiz_portable() == str(raiz)
+
+    destino = paths.data_dir()
+    assert destino == str(raiz / "Datos"), destino
+    assert os.path.isdir(destino)
+    # Y explícitamente NO el perfil del usuario, que es lo que se pierde
+    # cuando la VM se resetea al cerrar sesión.
+    assert not destino.startswith(os.path.expanduser("~") + os.sep)
+
+
+def test_la_variable_de_entorno_le_gana_al_marcador(tmp_path, monkeypatch):
+    """Es lo que usa el shell de Electron para decirle el modo al motor."""
+    from mvdg import install_mode
+    _layout_portable(tmp_path, monkeypatch)
+    monkeypatch.setenv(install_mode.VARIABLE, "normal")
+    assert install_mode.modo() == install_mode.MODO_NORMAL
+    monkeypatch.setenv(install_mode.VARIABLE, "vm_cliente")
+    assert install_mode.modo() == install_mode.MODO_VM_CLIENTE
+    # Un valor que no existe no puede dejar el programa en un tercer estado.
+    monkeypatch.setenv(install_mode.VARIABLE, "cualquier_cosa")
+    assert install_mode.modo() in install_mode.MODOS
+
+
+def test_carpeta_portable_de_solo_lectura_arranca_igual_y_lo_avisa(
+        tmp_path, monkeypatch):
+    """Descomprimido en una carpeta sin permiso de escritura.
+
+    Pasa de verdad: el consultor descomprime en `C:\\Archivos de programa`
+    o en una carpeta de red montada de solo lectura. Que el programa no
+    abra sería el peor final posible — abre guardando en el perfil, y lo
+    dice, porque en una VM no persistente ese trabajo se pierde.
+    """
+    from mvdg import install_mode, paths
+    _layout_portable(tmp_path, monkeypatch, escribible=False)
+
+    destino = paths.data_dir()
+    assert destino == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
+    desc = install_mode.descripcion("es")
+    assert desc["modo"] == install_mode.MODO_VM_CLIENTE
+    assert desc["datos_fuera_de_la_carpeta"] is True
+
+
+def test_las_dos_formas_de_instalar_habilitan_lo_mismo(tmp_path, monkeypatch):
+    """«Funciona igual» tiene que ser verificable, no una promesa de folleto.
+
+    Un modo recortado sería una segunda versión del producto disfrazada de
+    opción de instalación — y la menos probada sería justo la que corre en
+    la máquina del cliente.
+    """
+    from mvdg import install_mode, licensing
+    normal = (licensing.plan(), sorted(licensing.status()["funciones_pagas"]))
+    _layout_portable(tmp_path, monkeypatch)
+    assert install_mode.es_vm_cliente()
+    portable = (licensing.plan(), sorted(licensing.status()["funciones_pagas"]))
+    assert normal == portable, (
+        f"el modo cambia las funciones habilitadas: {normal} vs {portable}")
+
+
+def test_el_modo_se_describe_en_los_tres_idiomas():
+    from mvdg import install_mode
+    for modo in install_mode.MODOS:
+        textos = install_mode._TEXTOS[modo]
+        for campo in ("titulo", "detalle"):
+            valores = textos[campo]
+            assert set(valores) == {"es", "en", "pt"}, f"{modo}.{campo}"
+            assert len(set(valores.values())) == 3, (
+                f"{modo}.{campo}: hay idiomas con el texto repetido")
+
+
+def test_install_mode_se_importa_sin_pandas():
+    """Igual que `paths` y `licensing`: esto corre en el arranque de todo.
+
+    El modo lo consulta `data_dir()`, que consulta `licensing`, que tiene que
+    poder importarse en un runner con Python limpio (ver el test del build
+    del owner). Si `install_mode` arrastrara pandas, ese build vuelve a
+    romperse por el mismo camino, un módulo más abajo.
+    """
+    import subprocess
+    guion = (
+        "import sys, builtins\n"
+        f"sys.path.insert(0, {_repo_root()!r})\n"
+        "_real = builtins.__import__\n"
+        "def fake(n, *a, **k):\n"
+        "    if n == 'pandas' or n.startswith('pandas.'):\n"
+        "        raise ModuleNotFoundError(\"No module named 'pandas'\")\n"
+        "    return _real(n, *a, **k)\n"
+        "builtins.__import__ = fake\n"
+        "from mvdg import install_mode\n"
+        "assert install_mode.modo() in install_mode.MODOS\n"
+        "assert install_mode.descripcion('en')['titulo']\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", guion], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-800:]
+    assert "ok" in r.stdout
+
+
+def test_el_workflow_arma_los_dos_paquetes():
+    """El instalador y el portable salen del MISMO build, y los dos se suben.
+
+    Rearmar el portable con un segundo `dist-win` daría un binario distinto
+    que nadie compara: la versión que corre en la máquina del cliente sería
+    la menos probada de las dos.
+    """
+    from mvdg import install_mode
+    datos, texto = _yaml_workflow("instalador_electron.yml")
+    pasos = datos["jobs"]["build"]["steps"]
+    nombres = [p.get("name", "") for p in pasos]
+
+    portable = next((p for p in pasos if "PORTABLE" in p.get("name", "")), None)
+    assert portable, f"no hay paso que arme el portable. Pasos: {nombres}"
+    guion = portable["run"]
+    assert "win-unpacked" in guion, (
+        "el portable no sale del build ya hecho: se estaría compilando otro")
+    assert install_mode.MARCADOR in guion, (
+        f"el portable no lleva {install_mode.MARCADOR} adentro, así que abre "
+        f"en modo normal y guarda en el perfil de la VM del cliente")
+
+    # Y el portable se arma ANTES de que el build del owner pise win-unpacked.
+    i_portable = nombres.index(portable["name"])
+    i_owner = next(i for i, n in enumerate(nombres) if "OWNER" in n)
+    assert i_portable < i_owner, (
+        "el portable se arma después del build del owner: se publicaría el "
+        "binario desbloqueado como paquete del cliente")
+
+    # Los dos van a la misma Release: publicarlos aparte garantiza que tarde
+    # o temprano uno quede en una versión distinta del otro.
+    assert "MVDataGovernance_VM_v$v.zip" in texto
+
+
+def test_la_api_reporta_el_modo_de_instalacion():
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+    with TestClient(app) as cli:
+        r = cli.get("/api/instalacion?lang=en")
+        assert r.status_code == 200
+        cuerpo = r.json()
+        assert cuerpo["modo"] in ("normal", "vm_cliente")
+        assert cuerpo["titulo"] and cuerpo["detalle"] and cuerpo["datos"]
+        # El idioma se respeta: la UI React lo pide en el del usuario.
+        assert "machine" in cuerpo["titulo"] or "install" in cuerpo["titulo"].lower()
