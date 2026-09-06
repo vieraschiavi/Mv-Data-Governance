@@ -60,6 +60,12 @@ portable para la VM del cliente, donde no hay administrador ni internet y el
 perfil de usuario se resetea. Mismo programa; lo único que cambia es dónde
 queda guardado tu trabajo: [`docs/INSTALACION.md`](docs/INSTALACION.md).
 
+**Antes de tocar un dato**: el módulo de **Relevamiento** (38 preguntas por
+área del pipeline, con quién respondió cada una y qué repreguntar) y el de
+**Reuniones** (transcripción de Zoom/Teams/Meet/WebEx o grabación propia →
+minuta con quién dijo qué y qué le toca a cada etapa):
+[`docs/RELEVAMIENTO_Y_REUNIONES.md`](docs/RELEVAMIENTO_Y_REUNIONES.md).
+
 ¿Qué es el gobierno de datos y cómo lo cubre esta plataforma frente al
 estándar DAMA-DMBOK? [`docs/DMBOK.md`](docs/DMBOK.md) (explicado para
 técnicos y no técnicos, en los 3 idiomas).

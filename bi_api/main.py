@@ -830,6 +830,96 @@ def _serve(df, table: str, lang: str, format: str):
     return {"table": table, "lang": lang, "rows": len(df), "data": records}
 
 
+# ---------------------------------------------------------------------------
+# Relevamiento y reuniones
+#
+# El motor de los dos modulos ya existe (mvdg/interview.py, mvdg/meetings.py) y
+# la interfaz completa esta en el panel Streamlit. Estos endpoints lo dejan
+# alcanzable desde la API, que es por donde lo consume la version .exe: sin
+# ellos, el motor solo se podria usar desde una de las dos interfaces.
+#
+# Van ANTES de /api/{table}: esa ruta es un comodin y se come cualquier cosa
+# que se declare despues. Hay un test que fija el orden, porque el sintoma de
+# equivocarse no es un error sino un 200 con el contenido de otra ruta.
+# ---------------------------------------------------------------------------
+@app.get("/api/relevamiento/preguntas", tags=["governance"])
+def relevamiento_preguntas(lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """El banco entero: areas del pipeline y sus preguntas."""
+    from mvdg import interview
+    return {"lang": lang, "areas": interview.areas(lang),
+            "preguntas": interview.questions(lang)}
+
+
+@app.post("/api/relevamiento/repreguntas", tags=["governance"])
+def relevamiento_repreguntas(cuerpo: dict = _CUERPO):
+    """Que repreguntar sobre una respuesta. Local: no sale nada de la maquina."""
+    from mvdg import interview
+    datos = cuerpo or {}
+    lang = str(datos.get("lang") or "es")
+    lang = lang if lang in LANGS else "es"
+    qid = str(datos.get("id") or "").strip()
+    if not interview.question(qid, lang):
+        raise HTTPException(404, f"No existe la pregunta {qid!r}.")
+    return {"id": qid,
+            "repreguntas": interview.follow_ups(
+                qid, str(datos.get("respuesta") or ""), lang)}
+
+
+@app.get("/api/relevamiento/{client_id}", tags=["governance"])
+def relevamiento_estado(client_id: str,
+                        lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Lo respondido para un cliente, con la cobertura por area."""
+    from mvdg import interview
+    return {
+        "client_id": client_id, "lang": lang,
+        "cobertura": interview.overall_coverage(client_id),
+        "por_area": json.loads(
+            interview.progress(client_id, lang).to_json(orient="records")),
+        "respuestas": json.loads(
+            interview.answers_df(client_id, lang).to_json(orient="records")),
+    }
+
+
+@app.post("/api/relevamiento/{client_id}", tags=["governance"])
+def relevamiento_guardar(client_id: str, cuerpo: dict = _CUERPO):
+    """Anota quien respondio que. El estado se deduce si no viene."""
+    from mvdg import interview
+    datos = cuerpo or {}
+    qid = str(datos.get("id") or "").strip()
+    if not interview.question(qid):
+        raise HTTPException(404, f"No existe la pregunta {qid!r}.")
+    return interview.save_answer(
+        client_id, qid,
+        respuesta=str(datos.get("respuesta") or ""),
+        responsable=str(datos.get("responsable") or ""),
+        area_responsable=str(datos.get("area_responsable") or ""),
+        estado=str(datos.get("estado") or ""))
+
+
+@app.post("/api/reuniones/minuta", tags=["governance"])
+def reuniones_minuta(cuerpo: dict = _CUERPO):
+    """Transcripcion -> minuta: quien hablo, hallazgos y cruce con el pipeline.
+
+    Recibe TEXTO, no audio: transcribir manda el audio a un tercero y esa
+    decision se toma en la interfaz, con el aviso delante, no por una llamada
+    de API que alguien podria encadenar sin darse cuenta.
+    """
+    from mvdg import meetings
+    datos = cuerpo or {}
+    lang = str(datos.get("lang") or "es")
+    lang = lang if lang in LANGS else "es"
+    inter = meetings.parse_transcript(str(datos.get("texto") or ""))
+    minuta = meetings.minutes(
+        inter, lang, titulo=str(datos.get("titulo") or ""),
+        fecha=str(datos.get("fecha") or ""),
+        participantes=str(datos.get("participantes") or ""))
+    tablas = ("oradores", "hallazgos", "pipeline", "transcripcion")
+    salida = {k: v for k, v in minuta.items() if k not in tablas}
+    salida.update({k: json.loads(minuta[k].to_json(orient="records"))
+                   for k in tablas})
+    return salida
+
+
 @app.get("/api/{table}", tags=["governance"])
 def get_table(
     table: str,
