@@ -3888,7 +3888,8 @@ def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
     assert "SAP" not in html and "Dynamics 365" not in html and "NetSuite" not in html
 
 
-def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma(archivo):
     """No existen /en/ /pt/ como rutas separadas (es un solo HTML con
     traduccion por JS) -- eso significa que un bot que nunca ejecuta JS
     (Google, el unfurl de WhatsApp/LinkedIn) siempre ve el HTML servido en
@@ -3896,13 +3897,27 @@ def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
     alcance sin rehacer el sitio es que, para alguien mirando la pagina ya
     cargada, el <title> y los meta cambien de verdad al tocar el selector de
     idioma -- antes quedaban fijos en espanol aunque el usuario estuviera
-    viendo el contenido en EN/PT."""
-    html = _landing("index.html")
+    viendo el contenido en EN/PT.
+
+    Este test miraba SOLO index.html, y por eso no vio que las otras cuatro
+    paginas no tenian setMetaTags: la pestana del navegador quedaba en
+    espanol mientras el cuerpo estaba en ingles. Cubrirlas a todas es lo
+    que convierte la guarda en una guarda."""
+    import re
+
+    html = _landing(archivo)
     assert "var META={" in html or "var META = {" in html, "falta el diccionario META por idioma"
     assert "function setMetaTags(" in html
-    assert "setMetaTags(lang)" in html, "setLang() no llama a setMetaTags()"
 
-    import re
+    # OJO: `"setMetaTags(lang)" in html` NO sirve para esto -- tambien matchea
+    # la DEFINICION, `function setMetaTags(lang){`. Con esa version el test
+    # pasaba en una pagina que definia la funcion y no la llamaba nunca, que
+    # es exactamente el estado en el que estaban cuatro de las cinco. Hay que
+    # mirar adentro del cuerpo de setLang().
+    cuerpo_setlang = re.search(r"function setLang\((\w+)\)\{(.*?)\n\}", html, re.S)
+    assert cuerpo_setlang, "no se pudo extraer setLang()"
+    assert "setMetaTags(" in cuerpo_setlang.group(2), \
+        f"{archivo}: setLang() no llama a setMetaTags() -- el <title> se queda en espanol"
     bloque = re.search(r"var META=\{(.*?)\n\};", html, re.S)
     assert bloque, "no se pudo extraer el diccionario META"
     cuerpo = bloque.group(1)
@@ -3919,6 +3934,54 @@ def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
                      'meta[property="og:description"]', 'meta[name="twitter:title"]'):
         assert selector in bloque_fn, f"setMetaTags() no toca {selector}"
     assert "document.title=" in bloque_fn
+
+
+def _claves_del_diccionario(html: str, idioma: str):
+    """Las claves del literal del idioma: `en:{...}` o `I18N.en={...}`."""
+    import re
+
+    m = (re.search(rf"\b{idioma}\s*:\s*\{{", html)
+         or re.search(rf"I18N\.{idioma}\s*=\s*\{{", html))
+    if not m:
+        return None
+    i = html.index("{", m.start())
+    prof, j = 0, i
+    while j < len(html):
+        if html[j] == "{":
+            prof += 1
+        elif html[j] == "}":
+            prof -= 1
+            if prof == 0:
+                break
+        j += 1
+    return set(re.findall(r"(?:^|[,{]\s*)([A-Za-z_]\w*)\s*:", html[i:j]))
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+@pytest.mark.parametrize("idioma", ("en", "pt"))
+def test_landing_todas_las_claves_estan_en_los_tres_idiomas(archivo, idioma):
+    """Cada data-i del HTML tiene que existir en EN y en PT.
+
+    setLang() hace `dict[k]!==undefined ? dict[k] : ES[k]`: si la clave no
+    esta en el diccionario del idioma, el texto se queda en espanol. No tira
+    error, no ensucia la consola, no rompe el build. El sintoma es media
+    pantalla en un idioma y media en otro, y solo se ve mirando la pagina.
+
+    Sin este test la unica defensa era acordarse. No alcanzo: las claves
+    d4t/d4p/d4b entraron sin su version PT y un visitante brasileno leyo esa
+    tarjeta en espanol hasta que alguien la miro."""
+    import re
+
+    html = _landing(archivo)
+    dom = set(re.findall(r'data-i(?:-ph|-al)?="([^"]+)"', html))
+    if not dom:
+        pytest.skip(f"{archivo} no usa data-i")
+    dic = _claves_del_diccionario(html, idioma)
+    assert dic is not None, f"{archivo}: no encontre el diccionario {idioma}"
+    faltan = sorted(dom - dic)
+    assert not faltan, (
+        f"{archivo}: {len(faltan)} clave(s) sin traducir a {idioma} "
+        f"— se quedan en espanol en la pantalla {idioma}: {faltan[:8]}")
 
 
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)

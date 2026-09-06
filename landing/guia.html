@@ -348,12 +348,36 @@ pt:{sub:"· Guia",back:"← Início",kick:"Guia · O que é e como ajuda",
   ft:"Sem APK · 100% web e PC · Español · English · Português"}};
 var ES={};
 document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+/* El <title> y la meta descripción NO llevan data-i: no son nodos del body,
+   así que setLang no los tocaba y se quedaban en español para siempre. El
+   resultado era la pestaña del navegador en un idioma y la página en otro
+   —y, en Google, el resultado de búsqueda en español para quien busca en
+   inglés. Mismo mecanismo que index.html. */
+var META={
+  es:{title:"MV Data Governance · Qué es gobernanza de datos y cómo te ayuda",
+      desc:"Guía práctica de gobierno de datos: qué es, para qué sirve y cómo aplicarlo. Catálogo, calidad, linaje, glosario y políticas explicados sin jerga."},
+  en:{title:"MV Data Governance · What data governance is and how it helps you",
+      desc:"A practical guide to data governance: what it is, what it is for and how to apply it. Catalog, quality, lineage, glossary and policies explained without jargon."},
+  pt:{title:"MV Data Governance · O que é governança de dados e como ela ajuda",
+      desc:"Guia prático de governança de dados: o que é, para que serve e como aplicá-la. Catálogo, qualidade, linhagem, glossário e políticas explicados sem jargão."}
+};
+function setMetaTags(lang){
+  var m=META[lang]||META.es;
+  document.title=m.title;
+  function setMeta(sel,attr,val){var el=document.querySelector(sel);if(el)el.setAttribute(attr,val);}
+  setMeta('meta[name="description"]','content',m.desc);
+  setMeta('meta[property="og:title"]','content',m.title);
+  setMeta('meta[property="og:description"]','content',m.desc);
+  setMeta('meta[name="twitter:title"]','content',m.title);
+  setMeta('meta[name="twitter:description"]','content',m.desc);
+}
 function setLang(lang){
   var dict=lang==='es'?null:I18N[lang];
   document.querySelectorAll('[data-i]').forEach(function(el){
     var k=el.getAttribute('data-i');el.innerHTML=(dict&&dict[k]!==undefined)?dict[k]:ES[k];});
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  setMetaTags(lang);
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 try{var s=localStorage.getItem('mvdg_lang');if(s&&s!=='es')setLang(s);}catch(e){}
