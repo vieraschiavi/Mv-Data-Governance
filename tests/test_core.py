@@ -10571,3 +10571,93 @@ def test_las_dos_interfaces_usan_EL_MISMO_banco_de_preguntas():
         assert q["pregunta"]["es"] not in vista, (
             f"la pregunta {q['id']} está copiada dentro del JavaScript")
     assert not re.search(r"const\s+PREGUNTAS", vista)
+
+
+# ===========================================================================
+# La landing no puede anunciar un número que ya no es
+# ===========================================================================
+
+# Los números se escriben con letra en los tres idiomas. Solo hacen falta los
+# que la landing usa hoy y los vecinos, para que agregar o sacar una tarjeta
+# quede cubierto sin inventar un conversor de números a palabras.
+_EN_LETRA = {
+    8: {"es": "Ocho", "en": "Eight", "pt": "Oito"},
+    9: {"es": "Nueve", "en": "Nine", "pt": "Nove"},
+    10: {"es": "Diez", "en": "Ten", "pt": "Dez"},
+    11: {"es": "Once", "en": "Eleven", "pt": "Onze"},
+    12: {"es": "Doce", "en": "Twelve", "pt": "Doze"},
+    13: {"es": "Trece", "en": "Thirteen", "pt": "Treze"},
+    3: {"es": "Tres", "en": "Three", "pt": "Três"},
+    4: {"es": "Cuatro", "en": "Four", "pt": "Quatro"},
+    5: {"es": "Cinco", "en": "Five", "pt": "Cinco"},
+}
+
+
+def _landing_html() -> str:
+    with open(os.path.join(_repo_root(), "landing", "index.html"),
+              encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _lead_de(html: str, clave: str) -> dict:
+    """El texto del `lead` de una sección, por idioma.
+
+    El español sale del HTML (la landing arma su diccionario ES leyendo el
+    DOM); inglés y portugués, del objeto I18N.
+    """
+    import re
+    es = re.search(rf'data-i="{clave}"[^>]*>(.*?)</p>', html, re.DOTALL)
+    salida = {"es": " ".join(es.group(1).split()) if es else ""}
+    for lang in ("en", "pt"):
+        # Los dos diccionarios tienen la misma clave: se toman en orden.
+        todos = re.findall(rf'\n  {clave}:"([^"]+)"', html)
+        salida[lang] = todos[0 if lang == "en" else 1] if len(todos) >= 2 else ""
+    return salida
+
+
+def test_la_landing_no_promete_mas_modulos_de_los_que_muestra():
+    """El conteo del texto tiene que coincidir con las tarjetas dibujadas.
+
+    Pasó de verdad: se agregaron tres módulos, quedaron nueve tarjetas más
+    tres, y el texto siguió diciendo "Nueve módulos". Un visitante que cuenta
+    las tarjetas encuentra doce y el que lee la bajada lee nueve — y en una
+    página de venta, un número que no cierra es lo primero que se nota.
+    """
+    import re
+    html = _landing_html()
+
+    casos = [
+        # (prefijo de la tarjeta, clave del lead, qué se cuenta)
+        ("f", "p_lead", "módulos de la plataforma"),
+        ("d", "d_lead", "formas de descargar"),
+    ]
+    for prefijo, clave_lead, que in casos:
+        tarjetas = len(set(re.findall(rf'data-i="{prefijo}(\d+)t"', html)))
+        assert tarjetas >= 3, f"no se encontraron las tarjetas de {que}"
+        assert tarjetas in _EN_LETRA, (
+            f"hay {tarjetas} {que} y el test no sabe escribir ese número: "
+            f"agregalo a _EN_LETRA")
+        leads = _lead_de(html, clave_lead)
+        for lang, texto in leads.items():
+            assert texto, f"no se encontró el lead {clave_lead} en {lang}"
+            esperado = _EN_LETRA[tarjetas][lang]
+            assert esperado.lower() in texto.lower(), (
+                f"[{lang}] hay {tarjetas} {que} pero la bajada dice "
+                f"«{texto[:70]}…» — tendría que decir «{esperado}»")
+
+
+def test_la_landing_describe_los_modulos_nuevos_en_los_tres_idiomas():
+    """Una tarjeta sin traducir deja la página en inglés con texto en español.
+
+    El i18n de la landing es en JavaScript y no falla: si falta la clave,
+    `setLang` cae al español sin decir nada. Solo se ve mirando la página.
+    """
+    import re
+    html = _landing_html()
+    # Los módulos que se agregaron con Relevamiento, Reuniones y Trazabilidad.
+    for clave in ("f10t", "f10p", "f11t", "f11p", "f12t", "f12p", "d4t", "d4p"):
+        assert f'data-i="{clave}"' in html, f"falta la tarjeta {clave} en el HTML"
+        traducciones = re.findall(rf'[\s,]{clave}:"', html)
+        assert len(traducciones) == 2, (
+            f"{clave} tiene {len(traducciones)} traducciones y necesita 2 "
+            f"(inglés y portugués): el español sale del propio HTML")

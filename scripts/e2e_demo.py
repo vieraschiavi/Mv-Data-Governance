@@ -361,6 +361,23 @@ def _chromium_kwargs() -> dict:
     return {}
 
 
+def _pestañas_declaradas() -> int:
+    """Cuántas pestañas de primer nivel declara app.py.
+
+    Se lee del texto, no importando app.py: importarlo levanta Streamlit
+    entero dentro del proceso del E2E. La llamada es una sola en el archivo
+    (``st.tabs([...])`` de primer nivel) y cada pestaña es un ``t("tab_...")``.
+    """
+    import re
+
+    fuente = open(os.path.join(REPO_ROOT, "app", "app.py"), encoding="utf-8").read()
+    # La primera st.tabs del archivo es la de primer nivel; las otras son
+    # sub-pestañas dentro de un panel.
+    inicio = fuente.index("st.tabs([")
+    fin = fuente.index("])", inicio)
+    return len(re.findall(r't\("tab_\w+",\s*lang\)', fuente[inicio:fin]))
+
+
 class Vigilante:
     """Junta todo lo que el navegador considera un problema.
 
@@ -406,8 +423,15 @@ def verificar_streamlit(base: str, pw) -> None:
         # tablist de arriba, el recorrido intenta clickear sub-pestañas que
         # están ocultas dentro de un panel cerrado.
         pestañas = page.locator('[role="tablist"]').first.locator('[data-testid="stTab"]')
-        chequeo("el dashboard carga y dibuja sus 20 pestañas",
-                pestañas.count() == 20, f"encontradas {pestañas.count()}")
+        # Cuántas tienen que ser NO se escribe acá: se cuenta en app.py. Este
+        # número estaba clavado en 20 y al agregar tres pestañas el E2E se puso
+        # rojo por estar desactualizado, no por un defecto — un rojo que no
+        # significa nada enseña a ignorar el rojo. Leyéndolo del código, la
+        # comprobación sigue siendo real (que Streamlit las DIBUJE todas) y deja
+        # de envejecer sola.
+        esperadas = _pestañas_declaradas()
+        chequeo(f"el dashboard carga y dibuja sus {esperadas} pestañas",
+                pestañas.count() == esperadas, f"encontradas {pestañas.count()}")
 
         # Recorrer TODAS. Una excepción de Python en una pestaña se dibuja
         # dentro de la página y no rompe nada: solo se ve entrando.
