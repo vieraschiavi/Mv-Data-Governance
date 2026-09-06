@@ -535,3 +535,71 @@ def ai_parse_orgchart_image(image_bytes: bytes, media_type: str = "image/png",
                 "email": "",
             })
     return people or None
+
+
+# ------------------------------------------------------- repreguntas del relevamiento
+# El "casillero de IA" del módulo de relevamiento (ver mvdg/interview.py).
+#
+# Acá se manda la PREGUNTA del banco y la RESPUESTA que dio el cliente. Eso es
+# más de lo que manda el resto de este archivo, así que hay que decirlo con
+# todas las letras: la respuesta de una persona del cliente sale de la máquina
+# hacia el proveedor que el usuario configuró. Por eso la pantalla lo avisa en
+# el botón, y por eso mvdg/interview.py tiene repreguntas LOCALES que
+# funcionan sin clave: la función de acá es un extra, nunca el camino único.
+_REPREGUNTA_TMPL = {
+    "es": (
+        "Sos un consultor senior de gobierno de datos haciendo un relevamiento. "
+        "Área del pipeline: {area}. Le preguntaste al cliente: \"{pregunta}\". "
+        "Te respondió: \"{respuesta}\". Escribí las 3 REPREGUNTAS más útiles para "
+        "cerrar lo que quedó impreciso o sin decir. Concretas, una sola cosa cada "
+        "una, respondibles en una frase. No repitas la pregunta original ni pidas "
+        "algo que la respuesta ya contesta. Respondé SOLO con un objeto JSON sin "
+        'texto extra ni markdown: {{"repreguntas": ["...", "...", "..."]}}'
+    ),
+    "en": (
+        "You are a senior data governance consultant running a discovery interview. "
+        "Pipeline area: {area}. You asked the client: \"{pregunta}\". They answered: "
+        "\"{respuesta}\". Write the 3 most useful FOLLOW-UP questions to close what "
+        "was left vague or unsaid. Concrete, one thing each, answerable in a "
+        "sentence. Do not repeat the original question or ask what the answer "
+        "already covers. Reply ONLY with a JSON object, no extra text or markdown: "
+        '{{"repreguntas": ["...", "...", "..."]}}'
+    ),
+    "pt": (
+        "Você é um consultor sênior de governança de dados fazendo um levantamento. "
+        "Área do pipeline: {area}. Você perguntou ao cliente: \"{pregunta}\". Ele "
+        "respondeu: \"{respuesta}\". Escreva as 3 REPERGUNTAS mais úteis para fechar "
+        "o que ficou impreciso ou não dito. Concretas, uma coisa cada, respondíveis "
+        "em uma frase. Não repita a pergunta original nem peça o que a resposta já "
+        "cobre. Responda APENAS com um objeto JSON, sem texto extra nem markdown: "
+        '{{"repreguntas": ["...", "...", "..."]}}'
+    ),
+}
+
+
+def ai_follow_ups(pregunta: str, respuesta: str, area: str = "",
+                  lang: str = "es", provider: str | None = None) -> list[str] | None:
+    """Qué repreguntar sobre una respuesta concreta del cliente.
+
+    Devuelve ``None`` —nunca lanza— si no hay proveedor, no hay clave, la
+    respuesta está vacía o la llamada falla. El llamador se queda con las
+    repreguntas locales, que es el comportamiento por defecto."""
+    provider = provider or configured_provider()
+    if not provider or provider not in _CALLERS or not str(respuesta).strip():
+        return None
+    api_key = _key_for(provider)
+    if not api_key:
+        return None
+    tmpl = _REPREGUNTA_TMPL.get(lang, _REPREGUNTA_TMPL["es"])
+    prompt = tmpl.format(area=area or "-", pregunta=pregunta,
+                         respuesta=str(respuesta)[:2000])
+    try:
+        text = _CALLERS[provider](prompt, api_key, _model_for(provider))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            KeyError, IndexError, ValueError, OSError):
+        return None
+    parsed = _extract_json_object(text)
+    if not parsed or not isinstance(parsed.get("repreguntas"), list):
+        return None
+    limpias = [str(r).strip() for r in parsed["repreguntas"] if str(r).strip()]
+    return limpias[:3] or None

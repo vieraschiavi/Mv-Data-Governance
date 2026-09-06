@@ -18,7 +18,8 @@ import {
   activarLicencia, conectores, desactivarLicencia, escanearTenant,
   ingenieriaArchivo, ingenieriaSqlAnalizar, ingenieriaSqlBorrarConexion,
   ingenieriaSqlConexiones, ingenieriaSqlGuardarConexion, ingenieriaSqlProbar,
-  ingenieriaSqlTablas, licencia, migrar, perfilar, renovarLicencia, todo,
+  ingenieriaSqlTablas, instalacion, licencia, migrar, perfilar,
+  renovarLicencia, todo,
 } from "./api";
 import { t } from "./i18n";
 
@@ -286,6 +287,35 @@ function Politicas({ d, lang }) {
  * detras de /api/licencia, que revalida la firma Ed25519 en cada lectura. Si
  * alguien edita el archivo de licencia a mano, deja de validar y vuelve a demo.
  */
+/* --- Como esta instalado -------------------------------------------------
+   Dos formas de instalar y una sola cosa que cambia entre ellas: donde queda
+   guardado lo que el usuario hace. En la VM de un cliente eso decide si el
+   trabajo sobrevive al cierre de sesion, asi que tiene que verse sin abrir
+   una consola. El motor es el que sabe (mvdg/install_mode.py); aca solo se
+   muestra. --- */
+function Instalacion({ lang }) {
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    instalacion(lang).then((i) => { if (vivo) setInfo(i); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [lang]);
+
+  if (!info) return null;
+  return (
+    <>
+      <h3>{t("inst_titulo", lang)}</h3>
+      <p><b>{info.titulo}</b></p>
+      <p className="sub">{info.detalle}</p>
+      <p className="sub">{t("inst_donde", lang)}: <code>{info.datos}</code></p>
+      {info.datos_fuera_de_la_carpeta ? (
+        <p className="malo" role="status">{t("inst_aviso", lang)}</p>
+      ) : null}
+    </>
+  );
+}
+
 function Licencia({ lang }) {
   const [estado, setEstado] = useState(null);
   const [clave, setClave] = useState("");
@@ -420,6 +450,8 @@ function Licencia({ lang }) {
         })}
       </ul>
       <p className="sub">{t("lic_nota_exe", lang)}</p>
+
+      <Instalacion lang={lang} />
 
       <Funciones lang={lang} />
     </section>

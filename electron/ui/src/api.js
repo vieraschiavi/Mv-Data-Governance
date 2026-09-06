@@ -86,6 +86,15 @@ export async function licencia() {
   return pedir("/api/licencia");
 }
 
+/* Como esta instalado esto y DONDE queda guardado lo que hace el usuario.
+ * Es lo unico que cambia entre las dos formas de instalar (mi equipo / la VM
+ * del cliente) y no se puede adivinar mirando la pantalla — en una VM que se
+ * resetea al cerrar sesion es la diferencia entre llevarse el trabajo y
+ * perderlo. */
+export async function instalacion(lang) {
+  return pedir(`/api/instalacion?lang=${encodeURIComponent(lang || "es")}`);
+}
+
 export async function activarLicencia(token) {
   let r;
   try {

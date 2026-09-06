@@ -3321,8 +3321,10 @@ def test_data_dir_program_files_sin_permiso_cae_al_perfil(tmp_path, monkeypatch)
     # así que esto también verifica que el reexport siga funcionando.
     d = clients.data_dir()
     assert d == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
-    # y el sondeo quedó cacheado como "no escribible" (no se reintenta)
-    assert paths._ESCRITURA_PROBADA[str(exe_dir)] == ""
+    # y el sondeo quedó cacheado como "no escribible" (no se reintenta).
+    # La clave es la carpeta DESTINO (…/Data), no la del ejecutable: el mismo
+    # sondeo lo usa ahora el modo portable, que apunta a otra carpeta.
+    assert paths._ESCRITURA_PROBADA[str(exe_dir / "Data")] == ""
 
 
 def test_data_dir_carpeta_existente_pero_no_escribible_tambien_cae(tmp_path, monkeypatch):
@@ -9727,3 +9729,741 @@ def test_streamlit_tiene_tema_oscuro_configurado():
     assert tema.get("backgroundColor", "").lower() == BRAND["navy"].lower()
     assert tema.get("secondaryBackgroundColor", "").lower() == BRAND["navy2"].lower()
     assert tema.get("textColor", "").lower() == BRAND["ink"].lower()
+
+
+# ===========================================================================
+# Trazabilidad del pipeline: qué se le hizo al dato, en criollo y en técnico
+# ===========================================================================
+
+def _pipeline_contexto():
+    """El contexto real que la pestaña le pasa al documentador."""
+    from mvdg.exporters import governance_tables
+    gov = governance_tables("es", include_samples=True)
+    return dict(catalog=gov["catalog"], dictionary=gov["dictionary"],
+                results=gov["quality_results"], lineage=gov["lineage"],
+                glossary=gov["glossary"], policies=gov["policies"],
+                indice=87, tablas_bi=sorted(gov))
+
+
+def test_pipeline_doc_cuenta_las_etapas_en_orden():
+    """El número de etapa no es decorativo: es el orden en que pasan.
+
+    Si alguien agrega una etapa en el medio y se olvida de renumerar, el
+    documento que lee el gerente cuenta el pipeline en un orden que no
+    ocurre. Es peor que no tenerlo: es una explicación que miente.
+    """
+    from mvdg import pipeline_doc
+    etapas = pipeline_doc.documentar("es")
+    assert [e["n"] for e in etapas] == list(range(1, len(etapas) + 1))
+    assert len({e["key"] for e in etapas}) == len(etapas), "claves repetidas"
+    # La primera es leer el dato y la última publicarlo: si eso se da vuelta,
+    # el recorrido dejó de ser un pipeline.
+    assert etapas[0]["key"] == "ingesta"
+    assert etapas[-1]["key"] == "publicacion"
+
+
+def test_pipeline_doc_esta_en_los_tres_idiomas():
+    from mvdg import pipeline_doc
+    campos = ("titulo", "criollo", "tecnico", "porque", "impacto")
+    por_idioma = {lg: pipeline_doc.documentar(lg) for lg in ("es", "en", "pt")}
+    assert len({len(v) for v in por_idioma.values()}) == 1
+    for i in range(len(por_idioma["es"])):
+        for campo in campos:
+            textos = {lg: por_idioma[lg][i][campo] for lg in por_idioma}
+            for lg, texto in textos.items():
+                assert texto.strip(), f"etapa {i + 1} sin {campo} en {lg}"
+            # Traducido de verdad, no copiado: si EN y PT son el texto en
+            # español, la paridad de claves pasa y el cliente igual lee
+            # español en la pantalla en inglés.
+            assert textos["en"] != textos["es"], f"etapa {i + 1}: {campo} EN sin traducir"
+            assert textos["pt"] != textos["es"], f"etapa {i + 1}: {campo} PT sin traducir"
+
+
+def test_pipeline_doc_sin_datos_no_inventa_evidencia():
+    """Sin nada cargado, cada etapa se explica pero no reporta números.
+
+    Un "0 datasets catalogados" escrito como si fuera un resultado es peor
+    que el silencio: parece una medición y es la ausencia de una.
+    """
+    from mvdg import pipeline_doc
+    etapas = pipeline_doc.documentar("es")
+    assert all(e["evidencia"] == "" for e in etapas)
+
+
+def test_pipeline_doc_mide_la_corrida_de_verdad():
+    from mvdg import pipeline_doc
+    ctx = _pipeline_contexto()
+    etapas = pipeline_doc.documentar("es", **ctx)
+    con_evidencia = {e["key"]: e["evidencia"] for e in etapas if e["evidencia"]}
+    # Las etapas que la app siempre tiene calculadas deben medirse.
+    for clave in ("catalogo", "diccionario", "reglas", "politicas", "glosario"):
+        assert clave in con_evidencia, f"{clave} sin evidencia con datos reales"
+    # Y los números tienen que ser los de las tablas, no constantes.
+    assert str(len(ctx["catalog"])) in con_evidencia["catalogo"]
+    assert str(len(ctx["results"])) in con_evidencia["reglas"]
+
+
+def test_pipeline_doc_documento_arma_las_secciones():
+    from mvdg import pipeline_doc
+    doc = pipeline_doc.documento("es", **_pipeline_contexto())
+    assert doc["titulo"] and doc["subtitulo"] and doc["pie"]
+    assert len(doc["secciones"]) == len(pipeline_doc.documentar("es"))
+    for sec in doc["secciones"]:
+        assert sec["titulo"] and sec["modulo"]
+        assert len(sec["bloques"]) == 4
+        assert all(rotulo and texto for rotulo, texto in sec["bloques"])
+    # El origen de los datos no puede decir "sin datos" cuando hay catálogo:
+    # el gerente que lee el PDF necesita saber sobre qué se midió.
+    origen = dict(doc["meta"])["Origen de los datos"]
+    assert "Sin datos" not in origen, origen
+    assert "clientes" in origen or "customers" in origen, origen
+
+
+def test_doc_export_html_se_cierra_y_escapa():
+    """HTML bien formado y sin inyección: el nombre del dataset lo pone el usuario."""
+    from html.parser import HTMLParser
+    from mvdg import doc_export
+
+    doc = {"titulo": "T", "subtitulo": "S", "lang": "es", "meta": [("a", "b")],
+           "pie": "pie", "secciones": [{
+               "n": 1, "titulo": "<script>alert(1)</script>", "modulo": "m",
+               "bloques": [("et", "texto & más")], "evidencia": "e",
+               "evidencia_etiqueta": "Evidencia"}]}
+    salida = doc_export.a_html(doc)
+    assert "<script>alert(1)</script>" not in salida
+    assert "&lt;script&gt;" in salida and "&amp;" in salida
+
+    vacias = {"meta", "br", "hr", "img", "link", "input"}
+
+    class _Balance(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.pila, self.mal = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in vacias:
+                self.pila.append(tag)
+
+        def handle_endtag(self, tag):
+            if self.pila and self.pila[-1] == tag:
+                self.pila.pop()
+            else:
+                self.mal.append(tag)
+
+    p = _Balance()
+    p.feed(salida)
+    p.close()
+    assert not p.mal and not p.pila, (p.mal, p.pila)
+
+
+def test_doc_export_docx_es_un_word_de_verdad():
+    """Un .docx es un zip OOXML. Si le faltan partes, Word no lo abre."""
+    import io
+    import zipfile
+    from xml.etree import ElementTree as ET
+    from mvdg import doc_export, pipeline_doc
+
+    doc = pipeline_doc.documento("es", **_pipeline_contexto())
+    crudo = doc_export.a_docx(doc)
+    z = zipfile.ZipFile(io.BytesIO(crudo))
+    assert z.testzip() is None
+    faltan = {"[Content_Types].xml", "_rels/.rels", "word/document.xml",
+              "word/_rels/document.xml.rels"} - set(z.namelist())
+    assert not faltan, f"al .docx le faltan partes: {faltan}"
+
+    w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    raiz = ET.fromstring(z.read("word/document.xml"))
+    texto = "".join(n.text or "" for n in raiz.iter(f"{w}t"))
+    assert doc["titulo"] in texto
+    for sec in doc["secciones"]:
+        assert sec["titulo"] in texto, f"etapa {sec['n']} no llegó al Word"
+
+
+def test_doc_export_pdf_tiene_xref_valido():
+    """El PDF se escribe a mano: el xref mal contado da un archivo que no abre."""
+    import re as _re
+    from mvdg import doc_export, pipeline_doc
+
+    crudo = doc_export.a_pdf(pipeline_doc.documento("es", **_pipeline_contexto()))
+    assert crudo.startswith(b"%PDF-")
+    assert crudo.rstrip().endswith(b"%%EOF")
+
+    inicio = int(_re.search(rb"startxref\s+(\d+)", crudo).group(1))
+    assert crudo[inicio:inicio + 4] == b"xref", "startxref no apunta a la tabla"
+    declarados = int(crudo[inicio:inicio + 40].split(b"\n")[1].split()[1])
+    reales = len(_re.findall(rb"\n\d+ 0 obj", b"\n" + crudo))
+    assert declarados == reales + 1, (
+        f"el xref dice {declarados} objetos y hay {reales + 1}")
+    assert len(_re.findall(rb"/Type\s*/Page[^s]", crudo)) >= 2
+
+
+def test_doc_export_pdf_no_rompe_con_acentos_ni_tipografia_fina():
+    """cp1252 no tiene flechas ni comillas curvas; el PDF igual tiene que salir."""
+    from mvdg import doc_export
+
+    doc = {"titulo": "Año — “ñoño” ✓", "subtitulo": "a → b", "lang": "es",
+           "meta": [], "pie": "…", "secciones": [{
+               "n": 1, "titulo": "Señor Ção", "modulo": "m",
+               "bloques": [("et", "≥ 5 • ‘x’")], "evidencia": "",
+               "evidencia_etiqueta": ""}]}
+    crudo = doc_export.a_pdf(doc)
+    assert crudo.startswith(b"%PDF-") and len(crudo) > 500
+
+
+def test_la_pestana_de_trazabilidad_esta_en_la_app():
+    """La pestaña existe y baja los tres formatos, no solo uno."""
+    fuente = _app_source()
+    assert 't("tab_trace", lang)' in fuente, "la pestaña no está en st.tabs"
+    assert "with tab_tz:" in fuente
+    for clave in ("tz_dl_html", "tz_dl_docx", "tz_dl_pdf"):
+        assert f't("{clave}", lang)' in fuente, f"falta el botón {clave}"
+
+
+# ===========================================================================
+# Dos formas de instalar: mi equipo y la VM del cliente
+# ===========================================================================
+
+def _layout_portable(tmp_path, monkeypatch, escribible=True):
+    """Arma en disco lo que el ZIP portable deja al descomprimirse.
+
+    Se replica el layout REAL de electron-builder —el motor tres niveles por
+    debajo del marcador— porque el bug que este modo puede tener es
+    justamente que la búsqueda hacia arriba no llegue.
+    """
+    from mvdg import install_mode, paths
+    raiz = tmp_path / "MV Data Governance"
+    motor = raiz / "resources" / "server" / "mvdg"
+    motor.mkdir(parents=True)
+    (raiz / install_mode.MARCADOR).write_text("vm", encoding="utf-8")
+
+    monkeypatch.delenv("MVDG_DATA_DIR", raising=False)
+    monkeypatch.delenv(install_mode.VARIABLE, raising=False)
+    monkeypatch.setattr(install_mode, "__file__", str(motor / "install_mode.py"))
+    monkeypatch.setattr(install_mode, "_MARCADOR_ENCONTRADO", {})
+    monkeypatch.setattr(paths, "_ESCRITURA_PROBADA", {})
+    if not escribible:
+        real = os.makedirs
+
+        def sin_permiso(path, *a, **k):
+            if str(path).startswith(str(raiz)):
+                raise PermissionError(13, "Acceso denegado", str(path))
+            return real(path, *a, **k)
+        monkeypatch.setattr(paths.os, "makedirs", sin_permiso)
+    return raiz
+
+
+def test_sin_marcador_el_paquete_es_una_instalacion_normal():
+    """El default no puede ser el modo raro: la mayoría instala en su equipo."""
+    from mvdg import install_mode
+    assert install_mode.modo() == install_mode.MODO_NORMAL
+    assert not install_mode.es_vm_cliente()
+    assert install_mode.raiz_portable() is None
+
+
+def test_el_marcador_hace_que_los_datos_queden_en_la_carpeta_del_programa(
+        tmp_path, monkeypatch):
+    """El caso Conaprole: nada del trabajo puede quedar en el perfil de la VM."""
+    from mvdg import install_mode, paths
+    raiz = _layout_portable(tmp_path, monkeypatch)
+
+    assert install_mode.es_vm_cliente()
+    assert install_mode.raiz_portable() == str(raiz)
+
+    destino = paths.data_dir()
+    assert destino == str(raiz / "Datos"), destino
+    assert os.path.isdir(destino)
+    # Y explícitamente NO el perfil del usuario, que es lo que se pierde
+    # cuando la VM se resetea al cerrar sesión.
+    assert not destino.startswith(os.path.expanduser("~") + os.sep)
+
+
+def test_la_variable_de_entorno_le_gana_al_marcador(tmp_path, monkeypatch):
+    """Es lo que usa el shell de Electron para decirle el modo al motor."""
+    from mvdg import install_mode
+    _layout_portable(tmp_path, monkeypatch)
+    monkeypatch.setenv(install_mode.VARIABLE, "normal")
+    assert install_mode.modo() == install_mode.MODO_NORMAL
+    monkeypatch.setenv(install_mode.VARIABLE, "vm_cliente")
+    assert install_mode.modo() == install_mode.MODO_VM_CLIENTE
+    # Un valor que no existe no puede dejar el programa en un tercer estado.
+    monkeypatch.setenv(install_mode.VARIABLE, "cualquier_cosa")
+    assert install_mode.modo() in install_mode.MODOS
+
+
+def test_carpeta_portable_de_solo_lectura_arranca_igual_y_lo_avisa(
+        tmp_path, monkeypatch):
+    """Descomprimido en una carpeta sin permiso de escritura.
+
+    Pasa de verdad: el consultor descomprime en `C:\\Archivos de programa`
+    o en una carpeta de red montada de solo lectura. Que el programa no
+    abra sería el peor final posible — abre guardando en el perfil, y lo
+    dice, porque en una VM no persistente ese trabajo se pierde.
+    """
+    from mvdg import install_mode, paths
+    _layout_portable(tmp_path, monkeypatch, escribible=False)
+
+    destino = paths.data_dir()
+    assert destino == os.path.join(os.path.expanduser("~"), ".mv_data_governance")
+    desc = install_mode.descripcion("es")
+    assert desc["modo"] == install_mode.MODO_VM_CLIENTE
+    assert desc["datos_fuera_de_la_carpeta"] is True
+
+
+def test_las_dos_formas_de_instalar_habilitan_lo_mismo(tmp_path, monkeypatch):
+    """«Funciona igual» tiene que ser verificable, no una promesa de folleto.
+
+    Un modo recortado sería una segunda versión del producto disfrazada de
+    opción de instalación — y la menos probada sería justo la que corre en
+    la máquina del cliente.
+    """
+    from mvdg import install_mode, licensing
+    normal = (licensing.plan(), sorted(licensing.status()["funciones_pagas"]))
+    _layout_portable(tmp_path, monkeypatch)
+    assert install_mode.es_vm_cliente()
+    portable = (licensing.plan(), sorted(licensing.status()["funciones_pagas"]))
+    assert normal == portable, (
+        f"el modo cambia las funciones habilitadas: {normal} vs {portable}")
+
+
+def test_el_modo_se_describe_en_los_tres_idiomas():
+    from mvdg import install_mode
+    for modo in install_mode.MODOS:
+        textos = install_mode._TEXTOS[modo]
+        for campo in ("titulo", "detalle"):
+            valores = textos[campo]
+            assert set(valores) == {"es", "en", "pt"}, f"{modo}.{campo}"
+            assert len(set(valores.values())) == 3, (
+                f"{modo}.{campo}: hay idiomas con el texto repetido")
+
+
+def test_install_mode_se_importa_sin_pandas():
+    """Igual que `paths` y `licensing`: esto corre en el arranque de todo.
+
+    El modo lo consulta `data_dir()`, que consulta `licensing`, que tiene que
+    poder importarse en un runner con Python limpio (ver el test del build
+    del owner). Si `install_mode` arrastrara pandas, ese build vuelve a
+    romperse por el mismo camino, un módulo más abajo.
+    """
+    import subprocess
+    guion = (
+        "import sys, builtins\n"
+        f"sys.path.insert(0, {_repo_root()!r})\n"
+        "_real = builtins.__import__\n"
+        "def fake(n, *a, **k):\n"
+        "    if n == 'pandas' or n.startswith('pandas.'):\n"
+        "        raise ModuleNotFoundError(\"No module named 'pandas'\")\n"
+        "    return _real(n, *a, **k)\n"
+        "builtins.__import__ = fake\n"
+        "from mvdg import install_mode\n"
+        "assert install_mode.modo() in install_mode.MODOS\n"
+        "assert install_mode.descripcion('en')['titulo']\n"
+        "print('ok')\n"
+    )
+    r = subprocess.run([sys.executable, "-c", guion], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-800:]
+    assert "ok" in r.stdout
+
+
+def test_el_workflow_arma_los_dos_paquetes():
+    """El instalador y el portable salen del MISMO build, y los dos se suben.
+
+    Rearmar el portable con un segundo `dist-win` daría un binario distinto
+    que nadie compara: la versión que corre en la máquina del cliente sería
+    la menos probada de las dos.
+    """
+    from mvdg import install_mode
+    datos, texto = _yaml_workflow("instalador_electron.yml")
+    pasos = datos["jobs"]["build"]["steps"]
+    nombres = [p.get("name", "") for p in pasos]
+
+    portable = next((p for p in pasos if "PORTABLE" in p.get("name", "")), None)
+    assert portable, f"no hay paso que arme el portable. Pasos: {nombres}"
+    guion = portable["run"]
+    assert "win-unpacked" in guion, (
+        "el portable no sale del build ya hecho: se estaría compilando otro")
+    assert install_mode.MARCADOR in guion, (
+        f"el portable no lleva {install_mode.MARCADOR} adentro, así que abre "
+        f"en modo normal y guarda en el perfil de la VM del cliente")
+
+    # Y el portable se arma ANTES de que el build del owner pise win-unpacked.
+    i_portable = nombres.index(portable["name"])
+    i_owner = next(i for i, n in enumerate(nombres) if "OWNER" in n)
+    assert i_portable < i_owner, (
+        "el portable se arma después del build del owner: se publicaría el "
+        "binario desbloqueado como paquete del cliente")
+
+    # Los dos van a la misma Release: publicarlos aparte garantiza que tarde
+    # o temprano uno quede en una versión distinta del otro.
+    assert "MVDataGovernance_VM_v$v.zip" in texto
+
+
+def test_la_api_reporta_el_modo_de_instalacion():
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+    with TestClient(app) as cli:
+        r = cli.get("/api/instalacion?lang=en")
+        assert r.status_code == 200
+        cuerpo = r.json()
+        assert cuerpo["modo"] in ("normal", "vm_cliente")
+        assert cuerpo["titulo"] and cuerpo["detalle"] and cuerpo["datos"]
+        # El idioma se respeta: la UI React lo pide en el del usuario.
+        assert "machine" in cuerpo["titulo"] or "install" in cuerpo["titulo"].lower()
+
+
+# ===========================================================================
+# Reuniones: de la transcripción a la minuta
+# ===========================================================================
+
+_VTT_TEAMS = """WEBVTT
+
+1
+00:00:01.000 --> 00:00:05.000
+<v Ana García>Arrancamos con el relevamiento del maestro de clientes.</v>
+
+2
+00:00:05.500 --> 00:00:11.000
+<v Juan Pérez>El problema es que el maestro se duplica y el ERP pisa los códigos.</v>
+
+3
+00:00:11.200 --> 00:00:16.000
+<v Juan Pérez>Y nadie sabe de dónde sale el campo segmento.</v>
+
+4
+00:00:20.000 --> 00:00:26.000
+<v Ana García>Quedamos en que el dueño va a ser Comercial y el steward Martina.</v>
+
+5
+00:00:27.000 --> 00:00:33.000
+<v Martina Rossi>Yo me encargo, te mando el diccionario antes del viernes.</v>
+"""
+
+
+def test_meetings_parsea_el_vtt_de_teams_con_su_orador():
+    """El camino recomendado: la plataforma ya sabe quién tenía el micrófono."""
+    from mvdg import meetings
+    inter = meetings.parse_transcript(_VTT_TEAMS)
+    assert [i["orador"] for i in inter] == [
+        "Ana García", "Juan Pérez", "Ana García", "Martina Rossi"]
+    # La 2 y la 3 son del mismo orador y seguidas: se unen, porque un VTT
+    # parte cada frase en un subtítulo de tres segundos y sin unirlas "quién
+    # dijo qué" sale en doscientas líneas de seis palabras.
+    assert "segmento" in inter[1]["texto"] and "duplica" in inter[1]["texto"]
+
+
+def test_meetings_parsea_srt_y_texto_pegado_a_mano():
+    from mvdg import meetings
+    srt = ("1\n00:00:02,000 --> 00:00:06,000\n"
+           "Ana García: Buen día a todos.\n\n"
+           "2\n00:00:07,000 --> 00:00:09,000\n"
+           "Juan Pérez: Buen día.\n")
+    assert [i["orador"] for i in meetings.parse_transcript(srt)] == \
+        ["Ana García", "Juan Pérez"]
+
+    pegado = ("[00:01] Ana García: ¿Quién mantiene el maestro?\n"
+              "[00:02] Juan Pérez: Comercial.\n")
+    inter = meetings.parse_transcript(pegado)
+    assert [i["orador"] for i in inter] == ["Ana García", "Juan Pérez"]
+    # "[00:02]" son dos partes: se leen mm:ss, igual que las muestra la
+    # tabla. Interpretarlas como hh:mm pondría el minuto 2 en la hora 2.
+    assert inter[1]["inicio"] == 2.0
+
+
+def test_meetings_no_confunde_una_oracion_con_dos_puntos_con_un_orador():
+    """El falso positivo que arruina una minuta.
+
+    "El problema es este: el ERP pisa los códigos" NO es una intervención de
+    alguien llamado "El problema es este". Si se cuela, la tabla de oradores
+    se llena de nombres que no existen y la minuta deja de ser creíble.
+    """
+    from mvdg import meetings
+    inter = meetings.parse_transcript("El problema es este: el ERP pisa los códigos.\n")
+    assert len(inter) == 1
+    assert inter[0]["orador"] == meetings.SIN_ORADOR
+    assert inter[0]["texto"].startswith("El problema es este:")
+
+    # Y el otro lado del filtro: un encabezado largo, todo en mayúsculas y sin
+    # ninguna palabra funcional que lo delate. Solo lo frena el límite de
+    # palabras — un nombre de persona no tiene siete.
+    largo = meetings.parse_transcript(
+        "Reunión Kickoff Conaprole Practia Gobierno Datos Marzo: arrancamos.\n")
+    assert largo[0]["orador"] == meetings.SIN_ORADOR, largo[0]
+
+
+def test_meetings_sin_orador_no_lo_inventa():
+    """Un micrófono da un canal. Atribuir sin saber es peor que no atribuir."""
+    from mvdg import meetings
+    inter = meetings.parse_transcript(
+        "Buen día, arrancamos.\nEl maestro de clientes se duplica.\n")
+    assert all(i["orador"] == meetings.SIN_ORADOR for i in inter)
+    ora = meetings.speakers(inter, "es")
+    assert list(ora["orador"]) == ["(sin asignar)"]
+
+
+def test_meetings_marca_los_hallazgos_con_la_cita_textual():
+    """Un compromiso resumido no sirve para reclamarlo: va textual y con minuto."""
+    from mvdg import meetings
+    inter = meetings.parse_transcript(_VTT_TEAMS)
+    hall = meetings.findings(inter, "es")
+    por_tipo = dict(zip(hall["tipo_id"], hall["cita"], strict=True))
+    assert "decision" in por_tipo and "compromiso" in por_tipo and "riesgo" in por_tipo
+    # Textual, no parafraseado.
+    assert por_tipo["compromiso"] == (
+        "Yo me encargo, te mando el diccionario antes del viernes.")
+    assert set(hall["minuto"]) <= set(meetings.transcript_df(inter)["minuto"])
+    assert (hall["orador"] != "").all()
+
+
+def test_meetings_cruza_lo_dicho_con_las_etapas_del_pipeline():
+    """Es lo que convierte la minuta en trabajo."""
+    from mvdg import meetings, pipeline_doc
+    inter = meetings.parse_transcript(_VTT_TEAMS)
+    cruce = meetings.pipeline_links(inter, "es")
+    tocadas = set(cruce["etapa_id"])
+    for esperada in ("mdm", "catalogo", "linaje"):
+        assert esperada in tocadas, f"no detectó la etapa {esperada}: {tocadas}"
+    # Las etapas son las del pipeline real, no una lista paralela.
+    validas = {e["key"] for e in pipeline_doc.documentar("es")}
+    assert tocadas <= validas
+    # Y van en el orden del pipeline, que es como se trabaja.
+    assert list(cruce["n"]) == sorted(cruce["n"])
+
+
+def test_meetings_minuta_vacia_lo_dice_y_no_rompe():
+    from mvdg import meetings
+    m = meetings.minutes([], "en")
+    assert m["vacia"] and m["intervenciones"] == 0
+    assert m["aviso_vacia"]
+    assert len(m["hallazgos"]) == 0 and len(m["oradores"]) == 0
+
+
+def test_meetings_la_minuta_se_exporta_a_los_tres_formatos():
+    from mvdg import doc_export, meetings
+    inter = meetings.parse_transcript(_VTT_TEAMS)
+    for lg in ("es", "en", "pt"):
+        doc = meetings.to_document(
+            meetings.minutes(inter, lg, titulo="Kickoff", fecha="2026-09-06"), lg)
+        assert len(doc["secciones"]) == 3
+        assert doc_export.a_html(doc).startswith("<!doctype html>")
+        assert doc_export.a_docx(doc)[:2] == b"PK"
+        assert doc_export.a_pdf(doc).startswith(b"%PDF-")
+
+
+# ===========================================================================
+# Relevamiento: el banco de preguntas y las repreguntas
+# ===========================================================================
+
+def test_interview_cubre_las_doce_areas_del_pipeline():
+    """Las áreas son las etapas del pipeline, no una taxonomía paralela.
+
+    Si el relevamiento preguntara por áreas que no existen en el pipeline,
+    estaría relevando un proyecto distinto del que después se implementa.
+    """
+    from mvdg import interview, pipeline_doc
+    etapas = {e["key"] for e in pipeline_doc.documentar("es")}
+    con_preguntas = {a["key"] for a in interview.areas("es")}
+    assert con_preguntas <= etapas, con_preguntas - etapas
+    assert con_preguntas == etapas, f"áreas del pipeline sin preguntas: {etapas - con_preguntas}"
+    # Ninguna área puede quedar con una sola pregunta: eso no es un
+    # relevamiento del área, es una casilla marcada.
+    assert min(a["preguntas"] for a in interview.areas("es")) >= 3
+
+
+def test_interview_el_banco_esta_en_los_tres_idiomas():
+    from mvdg.interview_bank import PREGUNTAS
+    assert len({q["id"] for q in PREGUNTAS}) == len(PREGUNTAS), "ids repetidos"
+    for q in PREGUNTAS:
+        for campo in ("pregunta", "porque", "a_quien"):
+            valores = q[campo]
+            assert set(valores) == {"es", "en", "pt"}, f"{q['id']}.{campo}"
+            assert all(v.strip() for v in valores.values()), f"{q['id']}.{campo} vacío"
+        assert q["repreguntas"], f"{q['id']} sin repreguntas del banco"
+        for r in q["repreguntas"]:
+            assert set(r) == {"es", "en", "pt"}, f"{q['id']} repregunta incompleta"
+            assert r["en"] != r["es"], f"{q['id']}: repregunta EN sin traducir"
+
+
+def test_interview_guarda_por_cliente_y_no_los_mezcla(tmp_path, monkeypatch):
+    """Las respuestas de Conaprole no pueden aparecer en otro cliente."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import interview
+    interview.save_answer("conaprole", "MDM-01", respuesta="Pasa seguido",
+                          responsable="Juan Pérez", area_responsable="Comercial")
+    assert interview.load_answers("conaprole")["MDM-01"]["responsable"] == "Juan Pérez"
+    assert interview.load_answers("otra-empresa") == {}
+    assert interview.overall_coverage("otra-empresa") == 0.0
+
+    # Borrar la respuesta deja la pregunta PENDIENTE, no "respondida en blanco".
+    interview.save_answer("conaprole", "MDM-01", respuesta="")
+    assert interview.load_answers("conaprole")["MDM-01"]["estado"] == "pendiente"
+
+
+def test_interview_no_aplica_no_cuenta_como_pendiente(tmp_path, monkeypatch):
+    """Marcar "no aplica" tiene que sacar la pregunta del denominador.
+
+    Si no, un relevamiento correcto y cerrado nunca llega al 100% y el
+    número deja de servir para saber si falta algo.
+    """
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import interview
+    from mvdg.interview_bank import PREGUNTAS
+    for q in PREGUNTAS:
+        interview.save_answer("x", q["id"], estado="no_aplica")
+    assert interview.overall_coverage("x") == 100.0
+    interview.save_answer("x", PREGUNTAS[0]["id"], respuesta="")
+    assert interview.overall_coverage("x") == 0.0
+
+
+def test_interview_las_repreguntas_funcionan_sin_clave_de_ia(tmp_path, monkeypatch):
+    """El detector de respuesta a medias es local: se releva sin internet.
+
+    Es la decisión que sostiene el módulo — un relevamiento pasa en la sala
+    de reuniones de un cliente, que es exactamente donde puede no haber red.
+    """
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from mvdg import interview
+
+    # Pregunta que pide frecuencia, respuesta sin ningún número.
+    sin_numero = interview.follow_ups("ING-02", "Depende, más o menos seguido", "es")
+    assert any("número" in r for r in sin_numero), sin_numero
+    # Y la vaguedad se detecta aparte del número.
+    assert any("condicional" in r or "ejemplo concreto" in r for r in sin_numero)
+
+    # Pregunta por un responsable, respuesta de una palabra.
+    sin_nombre = interview.follow_ups("CAT-01", "Comercial", "es")
+    assert any("nombre" in r for r in sin_nombre), sin_nombre
+
+    # Una respuesta completa NO dispara los genéricos: solo quedan las del
+    # banco. Si saltaran igual, el consultor deja de leerlas.
+    buena = interview.follow_ups(
+        "MDM-01",
+        "Sí, pasa seguido: detectamos unos 40 duplicados por mes cuando el "
+        "sistema factura dos veces al mismo cliente con distinto código.", "es")
+    del_banco = interview.question("MDM-01", "es")["repreguntas"]
+    assert buena == del_banco, buena
+
+    # Sin responder, lo primero que se dice es que falta responderla.
+    assert "Todavía sin responder" in interview.follow_ups("REG-01", "", "es")[0]
+
+
+def test_interview_sin_proveedor_la_ia_devuelve_none(monkeypatch):
+    from mvdg import ai_provider, interview
+    monkeypatch.setattr(ai_provider, "configured_provider", lambda: None)
+    assert interview.ai_follow_ups("MDM-01", "Pasa seguido", "es") is None
+
+
+def test_interview_se_exporta_a_los_tres_formatos(tmp_path, monkeypatch):
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import doc_export, interview
+    interview.save_answer("conaprole", "MDM-01", respuesta="Pasa seguido",
+                          responsable="Juan Pérez", area_responsable="Comercial")
+    for lg in ("es", "en", "pt"):
+        doc = interview.to_document("conaprole", lg, "Conaprole")
+        assert len(doc["secciones"]) == len(interview.areas(lg))
+        assert "Conaprole" in dict(doc["meta"]).values()
+        assert doc_export.a_html(doc).startswith("<!doctype html>")
+        assert doc_export.a_docx(doc)[:2] == b"PK"
+        assert doc_export.a_pdf(doc).startswith(b"%PDF-")
+
+
+# ===========================================================================
+# Transcripción de audio: apagada por defecto
+# ===========================================================================
+
+def test_transcribir_no_manda_nada_sin_clave(monkeypatch):
+    """Sin clave configurada no hay ninguna llamada de red. Ni una."""
+    import urllib.request
+    from mvdg import ai_provider, transcribe
+
+    monkeypatch.setattr(ai_provider, "configured_provider", lambda: None)
+
+    def prohibido(*a, **k):
+        raise AssertionError("se intentó salir a la red sin clave configurada")
+    monkeypatch.setattr(urllib.request, "urlopen", prohibido)
+
+    r = transcribe.transcribir(b"audio falso", "reunion.wav", "es")
+    assert r["ok"] is False and r["motivo"] == "sin_proveedor"
+    assert r["mensaje"]
+
+
+def test_transcribir_avisa_cuando_el_proveedor_no_toma_audio(monkeypatch):
+    """Claude no transcribe. Decirlo es mejor que fallar en silencio."""
+    from mvdg import ai_provider, transcribe
+    monkeypatch.setattr(ai_provider, "configured_provider", lambda: "claude")
+    r = transcribe.transcribir(b"audio falso", "reunion.wav", "es")
+    assert r["motivo"] == "proveedor_sin_audio"
+    assert "claude" not in transcribe.PROVEEDORES
+
+
+def test_transcribir_arma_un_multipart_valido():
+    """El cuerpo se escribe a mano: un borde mal puesto da un 400 sin pistas."""
+    from mvdg import transcribe
+    cuerpo, tipo = transcribe._multipart({"model": "whisper-1"}, "mi reunión.wav", b"AUDIO")
+    borde = tipo.split("boundary=")[1]
+    texto = cuerpo.decode("utf-8", "replace")
+    assert texto.startswith(f"--{borde}\r\n")
+    assert texto.rstrip().endswith(f"--{borde}--")
+    assert 'name="model"' in texto and 'filename="mi reunión.wav"' in texto
+    assert b"AUDIO" in cuerpo
+    # Dos partes: el campo y el archivo.
+    assert texto.count(f"--{borde}") == 3       # dos aperturas + el cierre
+
+
+def test_api_relevamiento_y_minuta(tmp_path, monkeypatch):
+    """Los dos módulos nuevos, alcanzables desde la API que consume el .exe."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from fastapi.testclient import TestClient
+    from bi_api.main import app
+
+    with TestClient(app) as cli:
+        banco = cli.get("/api/relevamiento/preguntas?lang=en")
+        assert banco.status_code == 200
+        assert len(banco.json()["areas"]) == 12
+        assert len(banco.json()["preguntas"]) >= 30
+
+        assert cli.post("/api/relevamiento/x", json={"id": "NO-EXISTE"}).status_code == 404
+
+        guardar = cli.post("/api/relevamiento/conaprole", json={
+            "id": "MDM-01", "respuesta": "Pasa seguido",
+            "responsable": "Juan Pérez", "area_responsable": "Comercial"})
+        assert guardar.status_code == 200
+        assert guardar.json()["estado"] == "respondida"
+
+        estado = cli.get("/api/relevamiento/conaprole?lang=es").json()
+        assert estado["cobertura"] > 0
+        assert len(estado["por_area"]) == 12
+
+        rep = cli.post("/api/relevamiento/repreguntas",
+                       json={"id": "CAT-01", "respuesta": "Comercial", "lang": "es"})
+        assert rep.status_code == 200 and rep.json()["repreguntas"]
+
+        vtt = ("WEBVTT\n\n00:00:01.000 --> 00:00:06.000\n"
+               "<v Ana García>Quedamos en que el dueño va a ser Comercial.</v>\n")
+        minuta = cli.post("/api/reuniones/minuta",
+                          json={"texto": vtt, "lang": "es"}).json()
+        assert minuta["intervenciones"] == 1
+        assert minuta["hallazgos"][0]["orador"] == "Ana García"
+        # Las tablas viajan como listas de objetos, no como DataFrames.
+        assert isinstance(minuta["oradores"], list)
+
+
+def test_api_relevamiento_preguntas_no_la_come_la_ruta_comodin():
+    """`/api/{table}` es un comodín: declarar algo después queda inalcanzable.
+
+    Es el error clásico de FastAPI y es silencioso — la ruta responde 200 con
+    el contenido equivocado en vez de fallar. Se fija el ORDEN, que es lo que
+    lo evita.
+    """
+    from bi_api.main import app
+    rutas = [r.path for r in app.routes if hasattr(r, "path")]
+    comodin = rutas.index("/api/{table}")
+    for especifica in ("/api/relevamiento/preguntas",
+                       "/api/relevamiento/repreguntas",
+                       "/api/relevamiento/{client_id}",
+                       "/api/reuniones/minuta",
+                       "/api/instalacion"):
+        assert especifica in rutas, f"falta la ruta {especifica}"
+        assert rutas.index(especifica) < comodin, (
+            f"{especifica} se declara después de /api/{{table}}: el comodín se "
+            f"la come y nunca se llega a ella")

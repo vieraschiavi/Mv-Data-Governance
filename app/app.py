@@ -44,10 +44,16 @@ from mvdg import collibra_pull
 from mvdg import curation
 from mvdg import enforcement
 from mvdg import insights
+from mvdg import install_mode
+from mvdg import interview
+from mvdg import meetings
 from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
+from mvdg import doc_export
 from mvdg import mdm
+from mvdg import pipeline_doc
+from mvdg import transcribe
 from mvdg import glossary_auto
 from mvdg import purview_export
 from mvdg import purview_pull
@@ -291,13 +297,16 @@ tables = dict(_tables())
 tables.update(_mis_datasets())
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
- tab_p, tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+ tab_p, tab_pr, tab_bi, tab_tz, tab_del, tab_pbi, tab_tab, tab_cl, tab_srv, tab_mtg,
+ tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_contracts", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
-    t("tab_bi", lang), t("tab_deliverable", lang), t("tab_pbi", lang), t("tab_tableau", lang),
-    t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
+    t("tab_bi", lang), t("tab_trace", lang), t("tab_deliverable", lang),
+    t("tab_pbi", lang), t("tab_tableau", lang),
+    t("tab_clients", lang), t("tab_survey", lang), t("tab_meetings", lang),
+    t("tab_workspace", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -2140,6 +2149,249 @@ with tab_cl:
                            width="stretch")
     st.caption(t("cl_where", lang).format(path=data_dir()))
 
+# ------------------------------------------------------------ Relevamiento
+with tab_srv:
+    # Las preguntas que hay que hacerle al cliente, partidas por área del
+    # pipeline. Lo que se responde queda guardado en la carpeta de ESE
+    # cliente: las respuestas de una empresa no viajan con las de otra.
+    st.info(t("srv_intro", lang))
+    _srv_clients = load_clients()
+    if not _srv_clients:
+        st.warning(t("srv_no_client", lang).format(tab=t("tab_clients", lang)))
+    else:
+        _srv_opts = {f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})": c
+                     for c in _srv_clients}
+        _srv_pick = st.selectbox(t("srv_client", lang), list(_srv_opts.keys()),
+                                 key="srv_pick_client")
+        _srv_cli = _srv_opts[_srv_pick]
+        _srv_cid = _srv_cli["client_id"]
+        _srv_nombre = _srv_cli.get("company", _srv_cid)
+
+        # Cobertura: qué área quedó sin tocar. Es lo que se mira antes de
+        # cerrar una reunión — un 90% en ingesta y 0% en políticas no es la
+        # mitad del relevamiento, es todo el riesgo todavía adelante.
+        _srv_prog = interview.progress(_srv_cid, lang)
+        v1, v2, v3 = st.columns(3)
+        v1.metric(t("srv_coverage", lang), f"{interview.overall_coverage(_srv_cid)}%")
+        v2.metric(t("srv_kpi_questions", lang), len(interview.questions(lang)))
+        v3.metric(t("srv_kpi_areas", lang), len(interview.areas(lang)))
+        st.dataframe(_srv_prog, width="stretch", hide_index=True)
+
+        _srv_areas = interview.areas(lang)
+        _srv_labels = {a["key"]: f"{a['n']}. {a['titulo']} ({a['preguntas']})"
+                       for a in _srv_areas}
+        _srv_area = st.selectbox(t("srv_area", lang), list(_srv_labels),
+                                 format_func=lambda k: _srv_labels[k],
+                                 key="srv_pick_area")
+
+        _srv_guardadas = interview.load_answers(_srv_cid)
+        _SRV_ESTADO = {"pendiente": t("srv_st_pending", lang),
+                       "respondida": t("srv_st_answered", lang),
+                       "no_aplica": t("srv_st_na", lang)}
+
+        for _q in interview.questions(lang, _srv_area):
+            _prev = _srv_guardadas.get(_q["id"], {})
+            _hecho = _prev.get("estado") == "respondida"
+            with st.expander(f"{_q['id']} · {_q['pregunta']}", expanded=not _hecho):
+                st.caption(f"**{t('srv_why', lang)}:** {_q['porque']}")
+                st.caption(f"**{t('srv_ask_whom', lang)}:** {_q['a_quien']}")
+                q1, q2 = st.columns(2)
+                _resp_nom = q1.text_input(t("srv_who", lang),
+                                          value=_prev.get("responsable", ""),
+                                          key=f"srv_who_{_q['id']}")
+                _resp_area = q2.text_input(t("srv_who_area", lang),
+                                           value=_prev.get("area_responsable", ""),
+                                           key=f"srv_area_{_q['id']}")
+                _resp = st.text_area(t("srv_answer", lang),
+                                     value=_prev.get("respuesta", ""),
+                                     key=f"srv_ans_{_q['id']}", height=90)
+                _estado = st.radio(
+                    t("srv_state", lang), list(_SRV_ESTADO),
+                    format_func=lambda k: _SRV_ESTADO[k], horizontal=True,
+                    index=list(_SRV_ESTADO).index(_prev.get("estado", "pendiente")),
+                    key=f"srv_st_{_q['id']}")
+
+                b1, b2 = st.columns(2)
+                if b1.button(t("srv_save", lang), key=f"srv_save_{_q['id']}",
+                             type="primary", width="stretch"):
+                    interview.save_answer(_srv_cid, _q["id"], respuesta=_resp,
+                                          responsable=_resp_nom,
+                                          area_responsable=_resp_area,
+                                          estado=_estado)
+                    st.success(t("srv_saved", lang))
+                    st.rerun()
+
+                # El casillero de repreguntas. Las locales salen SIEMPRE — se
+                # calculan mirando qué le falta a esta respuesta y no
+                # necesitan ni internet ni clave, que es la situación normal
+                # en la sala de reuniones de un cliente.
+                st.markdown(f"**{t('srv_followups', lang)}**")
+                for _r in interview.follow_ups(_q["id"], _resp, lang):
+                    st.markdown(f"- {_r}")
+
+                _prov = configured_provider()
+                if not _prov:
+                    st.caption(t("srv_no_ai", lang))
+                elif b2.button(t("srv_ask_ai", lang), key=f"srv_ai_{_q['id']}",
+                               width="stretch",
+                               help=t("srv_ai_warning", lang)):
+                    _extra = interview.ai_follow_ups(_q["id"], _resp, lang)
+                    if _extra:
+                        st.markdown(f"**{t('srv_followups_ai', lang)}** "
+                                    f"({provider_label(_prov)})")
+                        for _r in _extra:
+                            st.markdown(f"- {_r}")
+                    else:
+                        st.info(t("srv_ai_failed", lang))
+
+        st.divider()
+        st.subheader(t("srv_export", lang))
+        _srv_doc = interview.to_document(_srv_cid, lang, _srv_nombre)
+        _srv_base = f"relevamiento_{_srv_cid[:8]}_{lang}"
+        s1, s2, s3, s4 = st.columns(4)
+        s1.download_button(t("tz_dl_html", lang),
+                           doc_export.a_html(_srv_doc).encode("utf-8"),
+                           f"{_srv_base}.html", "text/html", width="stretch")
+        s2.download_button(
+            t("tz_dl_docx", lang), doc_export.a_docx(_srv_doc), f"{_srv_base}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch")
+        s3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_srv_doc),
+                           f"{_srv_base}.pdf", "application/pdf", width="stretch")
+        s4.download_button(t("srv_dl_xlsx", lang),
+                           to_excel_bytes(interview.answers_df(_srv_cid, lang),
+                                          "relevamiento"),
+                           f"{_srv_base}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+
+# --------------------------------------------------------------- Reuniones
+with tab_mtg:
+    st.info(t("mtg_intro", lang))
+    _MTG_FUENTES = {"transcripcion": t("mtg_src_transcript", lang),
+                    "grabar": t("mtg_src_record", lang),
+                    "audio": t("mtg_src_audio", lang),
+                    "pegar": t("mtg_src_paste", lang)}
+    _mtg_fuente = st.radio(t("mtg_source", lang), list(_MTG_FUENTES),
+                           format_func=lambda k: _MTG_FUENTES[k], horizontal=True,
+                           key="mtg_fuente")
+    _mtg_texto = ""
+    _mtg_audio = None
+    _mtg_nombre = "reunion.wav"
+
+    if _mtg_fuente == "transcripcion":
+        # El camino recomendado: la transcripción que YA generó la
+        # plataforma. Ahí el orador viene identificado por el sistema que
+        # sabía quién tenía el micrófono abierto, y el audio nunca sale de
+        # donde ya estaba.
+        st.caption(t("mtg_transcript_help", lang))
+        _mtg_up = st.file_uploader(t("mtg_upload_tr", lang),
+                                   type=["vtt", "srt", "txt", "json", "csv"],
+                                   key="mtg_up_tr")
+        if _mtg_up is not None:
+            _mtg_texto = _mtg_up.getvalue().decode("utf-8", "replace")
+    elif _mtg_fuente == "grabar":
+        st.caption(t("mtg_record_help", lang))
+        _mtg_rec = st.audio_input(t("mtg_record", lang), key="mtg_rec")
+        if _mtg_rec is not None:
+            _mtg_audio = _mtg_rec.getvalue()
+    elif _mtg_fuente == "audio":
+        _mtg_up = st.file_uploader(
+            t("mtg_upload_audio", lang),
+            type=[e.lstrip(".") for e in transcribe.EXTENSIONES], key="mtg_up_au")
+        if _mtg_up is not None:
+            _mtg_audio = _mtg_up.getvalue()
+            _mtg_nombre = _mtg_up.name
+    else:
+        _mtg_texto = st.text_area(t("mtg_paste", lang), height=200, key="mtg_paste_in")
+
+    # Transcribir manda el audio a un tercero. Se pide permiso ACÁ, cada vez,
+    # y no con una casilla en Configuración que alguien marcó hace meses: el
+    # audio de una reunión de un cliente no es un archivo cualquiera.
+    if _mtg_audio:
+        st.audio(_mtg_audio)
+        _mtg_prov = transcribe.proveedor_disponible()
+        if not _mtg_prov:
+            st.warning(transcribe.motivo("sin_proveedor", lang))
+        else:
+            st.warning(t("mtg_ai_warning", lang).format(
+                proveedor=provider_label(_mtg_prov)))
+            if st.checkbox(t("mtg_ai_confirm", lang), key="mtg_ai_ok") and \
+                    st.button(t("mtg_transcribe", lang), type="primary",
+                              key="mtg_do_tr"):
+                with st.spinner(t("mtg_transcribing", lang)):
+                    _mtg_res = transcribe.transcribir(_mtg_audio, _mtg_nombre, lang)
+                if _mtg_res["ok"]:
+                    st.session_state["mtg_texto"] = _mtg_res["texto"]
+                    st.success(t("mtg_transcribed", lang))
+                else:
+                    st.error(_mtg_res["mensaje"])
+    _mtg_texto = _mtg_texto or st.session_state.get("mtg_texto", "")
+
+    _mtg_inter = meetings.parse_transcript(_mtg_texto)
+    if not _mtg_inter:
+        st.caption(t("mtg_empty", lang))
+    else:
+        m1, m2, m3 = st.columns(3)
+        _mtg_tit = m1.text_input(t("mtg_title", lang), key="mtg_titulo")
+        _mtg_fec = m2.text_input(t("mtg_date", lang), key="mtg_fecha")
+        _mtg_par = m3.text_input(t("mtg_people", lang), key="mtg_participantes")
+        _mtg_min = meetings.minutes(_mtg_inter, lang, titulo=_mtg_tit,
+                                    fecha=_mtg_fec, participantes=_mtg_par)
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("mtg_kpi_turns", lang), _mtg_min["intervenciones"])
+        k2.metric(t("mtg_kpi_min", lang), _mtg_min["duracion_min"])
+        k3.metric(t("mtg_kpi_findings", lang), len(_mtg_min["hallazgos"]))
+
+        st.subheader(t("mtg_speakers", lang))
+        st.caption(t("mtg_speakers_note", lang))
+        st.dataframe(_mtg_min["oradores"], width="stretch", hide_index=True)
+
+        st.subheader(t("mtg_findings", lang))
+        _mtg_h = _mtg_min["hallazgos"]
+        if len(_mtg_h):
+            _tipos = sorted(_mtg_h["tipo"].unique().tolist())
+            _sel = st.multiselect(t("mtg_filter_type", lang), _tipos, default=_tipos,
+                                  key="mtg_filtro_tipo")
+            st.dataframe(_mtg_h[_mtg_h["tipo"].isin(_sel)]
+                         [["tipo", "minuto", "orador", "cita"]],
+                         width="stretch", hide_index=True)
+        else:
+            st.caption(t("mtg_no_findings", lang))
+
+        st.subheader(t("mtg_pipeline", lang))
+        st.caption(t("mtg_pipeline_note", lang))
+        _mtg_p = _mtg_min["pipeline"]
+        if len(_mtg_p):
+            st.dataframe(_mtg_p[["n", "etapa", "minuto", "orador", "cita", "pistas"]],
+                         width="stretch", hide_index=True)
+        else:
+            st.caption(t("mtg_no_pipeline", lang))
+
+        with st.expander(t("mtg_transcript", lang)):
+            st.caption(t("mtg_assign_note", lang))
+            st.dataframe(_mtg_min["transcripcion"], width="stretch", hide_index=True)
+
+        st.subheader(t("mtg_export", lang))
+        _mtg_doc = meetings.to_document(_mtg_min, lang)
+        _mtg_base = f"minuta_{lang}"
+        g1, g2, g3, g4 = st.columns(4)
+        g1.download_button(t("tz_dl_html", lang),
+                           doc_export.a_html(_mtg_doc).encode("utf-8"),
+                           f"{_mtg_base}.html", "text/html", width="stretch")
+        g2.download_button(
+            t("tz_dl_docx", lang), doc_export.a_docx(_mtg_doc), f"{_mtg_base}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch")
+        g3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_mtg_doc),
+                           f"{_mtg_base}.pdf", "application/pdf", width="stretch")
+        g4.download_button(t("mtg_dl_xlsx", lang),
+                           to_excel_bytes(_mtg_min["transcripcion"], "transcripcion"),
+                           f"{_mtg_base}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+
 # ---------------------------------------------------------------- Proyecto
 with tab_ws:
     st.info(t("ws_intro", lang))
@@ -2354,6 +2606,20 @@ with tab_h:
     st.caption(t("ia_copilot", lang))
     st.divider()
 
+    # --- Cómo está instalado ------------------------------------------------
+    # Lo único que cambia entre las dos formas de instalar es DÓNDE queda
+    # guardado lo que el usuario hace, y eso no se puede adivinar mirando la
+    # pantalla. En la VM de un cliente es la diferencia entre llevarse el
+    # trabajo y perderlo al cerrar sesión.
+    st.subheader(t("inst_title", lang))
+    _inst = install_mode.descripcion(lang)
+    st.markdown(f"**{_inst['titulo']}**")
+    st.caption(_inst["detalle"])
+    st.caption(f"{t('inst_where', lang)}: `{_inst['datos']}`")
+    if _inst["datos_fuera_de_la_carpeta"]:
+        st.warning(t("inst_fallback", lang))
+    st.divider()
+
     # --- Licencia -----------------------------------------------------------
     st.subheader(t("lic_title", lang))
     _lic = licensing.status()
@@ -2418,6 +2684,61 @@ with tab_h:
             st.markdown(item["a"])
 
 # ---------------------------------------------------------- Entregable final
+with tab_tz:
+    # El recorrido completo del dato, contado dos veces: en criollo para quien
+    # firma la compra y en técnico para quien mantiene el código. La evidencia
+    # de cada etapa sale de ESTA corrida — con lo que el usuario tenga cargado
+    # en este momento, no con números de folleto.
+    st.info(t("tz_intro", lang))
+    _tz_gov = governance_tables(lang, include_samples=incl_samples,
+                                user_datasets=_mis_datasets())
+    _tz_ctx = dict(
+        datasets=_mis_datasets(),
+        catalog=_tz_gov["catalog"], dictionary=_tz_gov["dictionary"],
+        results=_tz_gov["quality_results"], lineage=_tz_gov["lineage"],
+        glossary=_tz_gov["glossary"], policies=_tz_gov["policies"],
+        indice=overall_index(results), tablas_bi=sorted(_tz_gov),
+    )
+    _TZ_VISTAS = {"ambos": t("tz_view_both", lang),
+                  "criollo": t("tz_view_plain", lang),
+                  "tecnico": t("tz_view_tech", lang)}
+    _tz_vista = st.radio(t("tz_view", lang), list(_TZ_VISTAS),
+                         format_func=lambda k: _TZ_VISTAS[k], horizontal=True)
+    _tz_campos = {"ambos": ("criollo", "tecnico", "porque", "impacto"),
+                  "criollo": ("criollo", "impacto"),
+                  "tecnico": ("tecnico", "porque")}[_tz_vista]
+
+    _tz_etapas = pipeline_doc.documentar(lang, **_tz_ctx)
+    _tz_rot = pipeline_doc.etiquetas(lang)
+    _tz_medidas = sum(1 for e in _tz_etapas if e["evidencia"])
+    z1, z2, z3 = st.columns(3)
+    z1.metric(t("tz_kpi_stages", lang), len(_tz_etapas))
+    z2.metric(t("tz_kpi_measured", lang), f"{_tz_medidas} / {len(_tz_etapas)}")
+    z3.metric(t("kpi_quality", lang), f"{_tz_ctx['indice']} / 100")
+
+    for _tz_e in _tz_etapas:
+        st.markdown(f"##### {_tz_e['n']}. {_tz_e['titulo']}")
+        st.caption(f"`{_tz_e['modulo']}`")
+        for _tz_campo in _tz_campos:
+            st.markdown(f"**{_tz_rot[_tz_campo]}** — {_tz_e[_tz_campo]}")
+        if _tz_e["evidencia"]:
+            st.success(f"**{_tz_rot['evidencia']}** · {_tz_e['evidencia']}")
+        st.divider()
+
+    st.subheader(t("tz_export", lang))
+    st.caption(t("tz_export_note", lang))
+    _tz_doc = pipeline_doc.documento(lang, **_tz_ctx)
+    _tz_nombre = f"mvdg_pipeline_{lang}"
+    e1, e2, e3 = st.columns(3)
+    e1.download_button(t("tz_dl_html", lang), doc_export.a_html(_tz_doc).encode("utf-8"),
+                       f"{_tz_nombre}.html", "text/html", width="stretch")
+    e2.download_button(
+        t("tz_dl_docx", lang), doc_export.a_docx(_tz_doc), f"{_tz_nombre}.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        width="stretch")
+    e3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_tz_doc),
+                       f"{_tz_nombre}.pdf", "application/pdf", width="stretch")
+
 with tab_del:
     st.info(t("del_intro", lang))
     _del_keys = case_deliverable.case_keys()

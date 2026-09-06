@@ -51,11 +51,16 @@ async function startServer() {
   serverPort = await sm.freePort();
   const root = sm.serverRoot(process.resourcesPath, REPO_ROOT);
 
+  // El modo (mi equipo / VM del cliente) se resuelve ACA y se le pasa al
+  // motor: es lo unico que cambia entre las dos formas de instalar, y decide
+  // donde queda guardado lo que el usuario hace.
+  const envModo = sm.envDelModo(process.execPath, process.resourcesPath);
+
   if (process.env.MVDG_SERVER_CMD) {
     const { spawn } = require("node:child_process");
     const cmd = process.env.MVDG_SERVER_CMD.replaceAll("{port}", String(serverPort));
     sendStatus("starting", cmd);
-    serverProc = spawn(cmd, { shell: true, cwd: root });
+    serverProc = spawn(cmd, { shell: true, cwd: root, env: { ...process.env, ...envModo } });
   } else {
     sendStatus("searching_python");
     const bin = sm.pythonCandidates(root).find((b) => sm.pythonWorks(b, root));
@@ -64,7 +69,7 @@ async function startServer() {
       return false;
     }
     sendStatus("starting", `${bin} · puerto ${serverPort}`);
-    serverProc = sm.spawnApi(bin, root, serverPort, uiDir());
+    serverProc = sm.spawnApi(bin, root, serverPort, uiDir(), envModo);
   }
 
   serverProc.on("exit", (code) => {

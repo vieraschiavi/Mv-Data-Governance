@@ -250,6 +250,105 @@ jobs:
           path: MVDataGovernance_v${{ steps.ver.outputs.v }}.zip
           retention-days: 90
 
+      # ------------------------------------------ PORTABLE (VM del cliente)
+      #
+      # La segunda forma de instalar, y no es un capricho: en la VM de un
+      # cliente el consultor entra sin permisos de administrador, muchas
+      # veces sin internet, y con un perfil de usuario que puede resetearse
+      # al cerrar sesion. Ahi un instalador no sirve.
+      #
+      # Es EL MISMO build: se rearma `win-unpacked` —lo que el instalador
+      # habria dejado en disco— con dos archivos de texto adentro. Un
+      # segundo `npm run dist-win` daria un binario distinto que nadie
+      # compara, y la version que corre en la maquina del cliente seria
+      # justo la menos probada.
+      #
+      # MODO_VM_CLIENTE.txt es lo que hace que el programa se comporte
+      # distinto: main.js lo busca al lado del .exe y, si esta, guarda todo
+      # en Datos\ ahi mismo en vez del perfil del usuario (ver
+      # mvdg/install_mode.py). El paquete que se bajo ES el modo — no hay
+      # nada que configurar en la VM.
+      - name: Empaquetar PORTABLE para la VM del cliente
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          $origen = "electron\dist_electron\win-unpacked"
+          if (-not (Test-Path $origen)) {
+            throw "No existe $origen : electron-builder no dejo la app desempaquetada"
+          }
+          $destino = "portable\MV Data Governance"
+          New-Item -ItemType Directory -Force -Path $destino | Out-Null
+          Copy-Item "$origen\*" $destino -Recurse -Force
+
+          # El marcador. Se lee: cualquiera que abra la carpeta tiene que
+          # entender que significa sin buscar el manual.
+          @(
+            "MODO: VM O EQUIPO DEL CLIENTE (PORTABLE)",
+            "",
+            "ES: La presencia de este archivo hace que el programa guarde TODO en",
+            "    la carpeta 'Datos' de aca al lado, y nada en el perfil del",
+            "    usuario ni en el registro de Windows. Borras esta carpeta y no",
+            "    queda rastro en la maquina. NO lo borres: sin el, el programa",
+            "    vuelve a guardar en el perfil del usuario.",
+            "",
+            "EN: This file makes the program store EVERYTHING in the 'Datos'",
+            "    folder next to it, and nothing in the user profile or the Windows",
+            "    registry. Delete this folder and nothing is left on the machine.",
+            "    Do NOT delete this file: without it the program goes back to",
+            "    storing things in the user profile.",
+            "",
+            "PT: A presenca deste arquivo faz o programa guardar TUDO na pasta",
+            "    'Datos' ao lado, e nada no perfil do usuario nem no registro do",
+            "    Windows. Apague esta pasta e nao sobra rastro na maquina. NAO",
+            "    apague este arquivo: sem ele o programa volta a guardar no perfil."
+          ) | Out-File -FilePath "$destino\MODO_VM_CLIENTE.txt" -Encoding ascii
+
+          @(
+            "MV Data Governance $v - PORTABLE (VM o equipo del cliente)",
+            "",
+            "ES: No se instala. Copia esta carpeta al equipo o VM del cliente",
+            "    (donde tengas permiso de escribir: Documentos, D:\, un disco de",
+            "    red) y abri 'MV Data Governance.exe'. No pide administrador, no",
+            "    toca el registro y no necesita internet.",
+            "    Todo lo que hagas queda en la subcarpeta 'Datos'. Para llevarte",
+            "    el trabajo, copia esa carpeta. Para no dejar nada, borra la",
+            "    carpeta entera.",
+            "    Arranca en plan demo; pega tu clave en la pestana Licencia.",
+            "",
+            "EN: Nothing is installed. Copy this folder to the client machine or",
+            "    VM (anywhere you can write: Documents, D:\, a network drive) and",
+            "    open 'MV Data Governance.exe'. No administrator rights, no",
+            "    registry, no internet needed.",
+            "    Everything you do stays in the 'Datos' subfolder. To take your",
+            "    work with you, copy that folder. To leave nothing behind, delete",
+            "    the whole folder.",
+            "    Starts in demo; paste your key in the License tab.",
+            "",
+            "PT: Nao instala nada. Copie esta pasta para o equipamento ou VM do",
+            "    cliente (onde voce possa escrever: Documentos, D:\, um disco de",
+            "    rede) e abra 'MV Data Governance.exe'. Sem administrador, sem",
+            "    registro, sem internet.",
+            "    Tudo o que voce faz fica na subpasta 'Datos'. Para levar o",
+            "    trabalho, copie essa pasta. Para nao deixar nada, apague a pasta",
+            "    inteira.",
+            "    Inicia no plano demo; cole sua chave na aba Licenca."
+          ) | Out-File -FilePath "$destino\LEEME.txt" -Encoding ascii
+
+          Compress-Archive -Path $destino -DestinationPath "MVDataGovernance_VM_v$v.zip" -Force
+          $mb = (Get-Item "MVDataGovernance_VM_v$v.zip").Length / 1MB
+          if ($mb -lt 40) {
+            throw ("El portable pesa {0:N1} MB: sospechoso, no se publica" -f $mb)
+          }
+          Write-Host ("Portable listo: {0:N1} MB" -f $mb)
+
+      - uses: actions/upload-artifact@v4
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        with:
+          name: MVDataGovernance_VM_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_VM_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 90
+
       # ------------------------------------------------- Release del cliente
       #
       # El boton de descarga de la landing va a /api/descargar, que redirige a
@@ -273,31 +372,45 @@ jobs:
           v="${{ steps.ver.outputs.v }}"
           exe="salida/INSTALADOR/MVDataGovernance_Setup_$v.exe"
           [ -f "$exe" ] || { echo "No se genero $exe"; exit 1; }
+          # El portable va en la MISMA release: dos formas de instalar, un
+          # solo lugar donde buscarlas. Publicarlo aparte garantizaba que
+          # tarde o temprano una quedara en una version distinta de la otra.
+          vm="MVDataGovernance_VM_v$v.zip"
+          [ -f "$vm" ] || { echo "No se genero $vm"; exit 1; }
 
           notas="$RUNNER_TEMP/notas_cliente.md"
           {
-            echo "Instalador de escritorio (Electron + React) de MV Data"
-            echo "Governance $v."
+            echo "MV Data Governance $v · escritorio (Electron + React)."
             echo
-            echo "Al instalar: elegis carpeta y disco (propone una unidad"
-            echo "distinta de C: si tenes una con espacio), deja acceso directo"
-            echo "en el escritorio y en el menu Inicio, y se desinstala desde"
-            echo "Agregar o quitar programas."
+            echo "**Dos formas de instalar. El mismo programa en las dos.**"
             echo
-            echo "Arranca en plan demo. Si compraste, pega tu clave en la"
-            echo "pestana Licencia: es el MISMO programa, no hay una segunda"
-            echo "descarga."
+            echo "1. \`MVDataGovernance_Setup_$v.exe\` — **instalacion normal**,"
+            echo "   para tu equipo o el de tu consultora. Elegis carpeta y"
+            echo "   disco, deja acceso directo en el escritorio y en el menu"
+            echo "   Inicio, y se desinstala desde Agregar o quitar programas."
+            echo "   Lo que hacés queda guardado en tu perfil de usuario."
             echo
-            echo "Se reemplaza en cada cambio del programa, asi que este link"
-            echo "siempre apunta a la ultima version."
+            echo "2. \`MVDataGovernance_VM_v$v.zip\` — **VM o equipo del"
+            echo "   cliente**. No se instala: descomprimis la carpeta donde"
+            echo "   tengas permiso de escribir y abris el .exe. Sin"
+            echo "   administrador, sin registro, sin internet. Todo queda en"
+            echo "   la subcarpeta \`Datos\`; borras la carpeta y no queda"
+            echo "   rastro en la maquina del cliente."
+            echo
+            echo "Las dos arrancan en plan demo. Si compraste, pega tu clave"
+            echo "en la pestana Licencia: es el MISMO programa, no hay una"
+            echo "segunda descarga."
+            echo
+            echo "Se reemplazan en cada cambio del programa, asi que estos"
+            echo "links siempre apuntan a la ultima version."
           } > "$notas"
 
           if gh release view cliente-latest >/dev/null 2>&1; then
             gh release edit cliente-latest --title "MV Data Governance $v" \
               --notes-file "$notas"
-            gh release upload cliente-latest "$exe" --clobber
+            gh release upload cliente-latest "$exe" "$vm" --clobber
           else
-            gh release create cliente-latest "$exe" \
+            gh release create cliente-latest "$exe" "$vm" \
               --title "MV Data Governance $v" --notes-file "$notas"
           fi
 

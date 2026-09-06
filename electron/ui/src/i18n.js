@@ -139,6 +139,16 @@ const T = {
     en: "Your license is activated for the whole program. These features are used from the full governance panel.",
     pt: "Sua licença fica ativada para todo o programa. Estas funções são usadas no painel completo de governança." },
 
+  // --- Como esta instalado (mi equipo / la VM del cliente) ---
+  inst_titulo: { es: "Cómo está instalado", en: "How this is installed",
+    pt: "Como está instalado" },
+  inst_donde: { es: "Tus datos se guardan en", en: "Your data is stored in",
+    pt: "Seus dados são guardados em" },
+  inst_aviso: {
+    es: "Este paquete es el portable (para la VM del cliente), pero su carpeta no admite escritura, así que se está guardando en tu perfil de usuario. En una VM que se resetea al cerrar sesión, ese trabajo se pierde: mové la carpeta del programa a un lugar donde puedas escribir.",
+    en: "This is the portable package (for the client's VM), but its folder is not writable, so data is going to your user profile instead. On a VM that resets at logoff, that work is lost: move the program folder somewhere you can write.",
+    pt: "Este pacote é o portátil (para a VM do cliente), mas a pasta dele não permite escrita, então os dados estão indo para o seu perfil de usuário. Numa VM que se reinicia ao sair, esse trabalho se perde: mova a pasta do programa para um lugar onde você possa escrever." },
+
   // --- KPIs del panorama ---
   kpi_datasets: { es: "Datasets gobernados", en: "Governed datasets", pt: "Datasets governados" },
   kpi_columnas: { es: "Columnas documentadas", en: "Documented columns", pt: "Colunas documentadas" },
