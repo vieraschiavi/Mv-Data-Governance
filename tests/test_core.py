@@ -3888,7 +3888,8 @@ def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
     assert "SAP" not in html and "Dynamics 365" not in html and "NetSuite" not in html
 
 
-def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma(archivo):
     """No existen /en/ /pt/ como rutas separadas (es un solo HTML con
     traduccion por JS) -- eso significa que un bot que nunca ejecuta JS
     (Google, el unfurl de WhatsApp/LinkedIn) siempre ve el HTML servido en
@@ -3896,13 +3897,27 @@ def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
     alcance sin rehacer el sitio es que, para alguien mirando la pagina ya
     cargada, el <title> y los meta cambien de verdad al tocar el selector de
     idioma -- antes quedaban fijos en espanol aunque el usuario estuviera
-    viendo el contenido en EN/PT."""
-    html = _landing("index.html")
+    viendo el contenido en EN/PT.
+
+    Este test miraba SOLO index.html, y por eso no vio que las otras cuatro
+    paginas no tenian setMetaTags: la pestana del navegador quedaba en
+    espanol mientras el cuerpo estaba en ingles. Cubrirlas a todas es lo
+    que convierte la guarda en una guarda."""
+    import re
+
+    html = _landing(archivo)
     assert "var META={" in html or "var META = {" in html, "falta el diccionario META por idioma"
     assert "function setMetaTags(" in html
-    assert "setMetaTags(lang)" in html, "setLang() no llama a setMetaTags()"
 
-    import re
+    # OJO: `"setMetaTags(lang)" in html` NO sirve para esto -- tambien matchea
+    # la DEFINICION, `function setMetaTags(lang){`. Con esa version el test
+    # pasaba en una pagina que definia la funcion y no la llamaba nunca, que
+    # es exactamente el estado en el que estaban cuatro de las cinco. Hay que
+    # mirar adentro del cuerpo de setLang().
+    cuerpo_setlang = re.search(r"function setLang\((\w+)\)\{(.*?)\n\}", html, re.S)
+    assert cuerpo_setlang, "no se pudo extraer setLang()"
+    assert "setMetaTags(" in cuerpo_setlang.group(2), \
+        f"{archivo}: setLang() no llama a setMetaTags() -- el <title> se queda en espanol"
     bloque = re.search(r"var META=\{(.*?)\n\};", html, re.S)
     assert bloque, "no se pudo extraer el diccionario META"
     cuerpo = bloque.group(1)
@@ -3919,6 +3934,54 @@ def test_landing_meta_tags_se_sincronizan_al_cambiar_de_idioma():
                      'meta[property="og:description"]', 'meta[name="twitter:title"]'):
         assert selector in bloque_fn, f"setMetaTags() no toca {selector}"
     assert "document.title=" in bloque_fn
+
+
+def _claves_del_diccionario(html: str, idioma: str):
+    """Las claves del literal del idioma: `en:{...}` o `I18N.en={...}`."""
+    import re
+
+    m = (re.search(rf"\b{idioma}\s*:\s*\{{", html)
+         or re.search(rf"I18N\.{idioma}\s*=\s*\{{", html))
+    if not m:
+        return None
+    i = html.index("{", m.start())
+    prof, j = 0, i
+    while j < len(html):
+        if html[j] == "{":
+            prof += 1
+        elif html[j] == "}":
+            prof -= 1
+            if prof == 0:
+                break
+        j += 1
+    return set(re.findall(r"(?:^|[,{]\s*)([A-Za-z_]\w*)\s*:", html[i:j]))
+
+
+@pytest.mark.parametrize("archivo", _LANDING_PAGES)
+@pytest.mark.parametrize("idioma", ("en", "pt"))
+def test_landing_todas_las_claves_estan_en_los_tres_idiomas(archivo, idioma):
+    """Cada data-i del HTML tiene que existir en EN y en PT.
+
+    setLang() hace `dict[k]!==undefined ? dict[k] : ES[k]`: si la clave no
+    esta en el diccionario del idioma, el texto se queda en espanol. No tira
+    error, no ensucia la consola, no rompe el build. El sintoma es media
+    pantalla en un idioma y media en otro, y solo se ve mirando la pagina.
+
+    Sin este test la unica defensa era acordarse. No alcanzo: las claves
+    d4t/d4p/d4b entraron sin su version PT y un visitante brasileno leyo esa
+    tarjeta en espanol hasta que alguien la miro."""
+    import re
+
+    html = _landing(archivo)
+    dom = set(re.findall(r'data-i(?:-ph|-al)?="([^"]+)"', html))
+    if not dom:
+        pytest.skip(f"{archivo} no usa data-i")
+    dic = _claves_del_diccionario(html, idioma)
+    assert dic is not None, f"{archivo}: no encontre el diccionario {idioma}"
+    faltan = sorted(dom - dic)
+    assert not faltan, (
+        f"{archivo}: {len(faltan)} clave(s) sin traducir a {idioma} "
+        f"— se quedan en espanol en la pantalla {idioma}: {faltan[:8]}")
 
 
 @pytest.mark.parametrize("archivo", _LANDING_PAGES)
@@ -10571,3 +10634,93 @@ def test_las_dos_interfaces_usan_EL_MISMO_banco_de_preguntas():
         assert q["pregunta"]["es"] not in vista, (
             f"la pregunta {q['id']} está copiada dentro del JavaScript")
     assert not re.search(r"const\s+PREGUNTAS", vista)
+
+
+# ===========================================================================
+# La landing no puede anunciar un número que ya no es
+# ===========================================================================
+
+# Los números se escriben con letra en los tres idiomas. Solo hacen falta los
+# que la landing usa hoy y los vecinos, para que agregar o sacar una tarjeta
+# quede cubierto sin inventar un conversor de números a palabras.
+_EN_LETRA = {
+    8: {"es": "Ocho", "en": "Eight", "pt": "Oito"},
+    9: {"es": "Nueve", "en": "Nine", "pt": "Nove"},
+    10: {"es": "Diez", "en": "Ten", "pt": "Dez"},
+    11: {"es": "Once", "en": "Eleven", "pt": "Onze"},
+    12: {"es": "Doce", "en": "Twelve", "pt": "Doze"},
+    13: {"es": "Trece", "en": "Thirteen", "pt": "Treze"},
+    3: {"es": "Tres", "en": "Three", "pt": "Três"},
+    4: {"es": "Cuatro", "en": "Four", "pt": "Quatro"},
+    5: {"es": "Cinco", "en": "Five", "pt": "Cinco"},
+}
+
+
+def _landing_html() -> str:
+    with open(os.path.join(_repo_root(), "landing", "index.html"),
+              encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _lead_de(html: str, clave: str) -> dict:
+    """El texto del `lead` de una sección, por idioma.
+
+    El español sale del HTML (la landing arma su diccionario ES leyendo el
+    DOM); inglés y portugués, del objeto I18N.
+    """
+    import re
+    es = re.search(rf'data-i="{clave}"[^>]*>(.*?)</p>', html, re.DOTALL)
+    salida = {"es": " ".join(es.group(1).split()) if es else ""}
+    for lang in ("en", "pt"):
+        # Los dos diccionarios tienen la misma clave: se toman en orden.
+        todos = re.findall(rf'\n  {clave}:"([^"]+)"', html)
+        salida[lang] = todos[0 if lang == "en" else 1] if len(todos) >= 2 else ""
+    return salida
+
+
+def test_la_landing_no_promete_mas_modulos_de_los_que_muestra():
+    """El conteo del texto tiene que coincidir con las tarjetas dibujadas.
+
+    Pasó de verdad: se agregaron tres módulos, quedaron nueve tarjetas más
+    tres, y el texto siguió diciendo "Nueve módulos". Un visitante que cuenta
+    las tarjetas encuentra doce y el que lee la bajada lee nueve — y en una
+    página de venta, un número que no cierra es lo primero que se nota.
+    """
+    import re
+    html = _landing_html()
+
+    casos = [
+        # (prefijo de la tarjeta, clave del lead, qué se cuenta)
+        ("f", "p_lead", "módulos de la plataforma"),
+        ("d", "d_lead", "formas de descargar"),
+    ]
+    for prefijo, clave_lead, que in casos:
+        tarjetas = len(set(re.findall(rf'data-i="{prefijo}(\d+)t"', html)))
+        assert tarjetas >= 3, f"no se encontraron las tarjetas de {que}"
+        assert tarjetas in _EN_LETRA, (
+            f"hay {tarjetas} {que} y el test no sabe escribir ese número: "
+            f"agregalo a _EN_LETRA")
+        leads = _lead_de(html, clave_lead)
+        for lang, texto in leads.items():
+            assert texto, f"no se encontró el lead {clave_lead} en {lang}"
+            esperado = _EN_LETRA[tarjetas][lang]
+            assert esperado.lower() in texto.lower(), (
+                f"[{lang}] hay {tarjetas} {que} pero la bajada dice "
+                f"«{texto[:70]}…» — tendría que decir «{esperado}»")
+
+
+def test_la_landing_describe_los_modulos_nuevos_en_los_tres_idiomas():
+    """Una tarjeta sin traducir deja la página en inglés con texto en español.
+
+    El i18n de la landing es en JavaScript y no falla: si falta la clave,
+    `setLang` cae al español sin decir nada. Solo se ve mirando la página.
+    """
+    import re
+    html = _landing_html()
+    # Los módulos que se agregaron con Relevamiento, Reuniones y Trazabilidad.
+    for clave in ("f10t", "f10p", "f11t", "f11p", "f12t", "f12p", "d4t", "d4p"):
+        assert f'data-i="{clave}"' in html, f"falta la tarjeta {clave} en el HTML"
+        traducciones = re.findall(rf'[\s,]{clave}:"', html)
+        assert len(traducciones) == 2, (
+            f"{clave} tiene {len(traducciones)} traducciones y necesita 2 "
+            f"(inglés y portugués): el español sale del propio HTML")

@@ -193,12 +193,36 @@ pt:{sub:"· Avaliações",back:"← Início",count:"avaliações",
   ft:"Sem APK · 100% web e PC · Español · English · Português"}};
 var ES={};
 document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+/* El <title> y la meta descripción NO llevan data-i: no son nodos del body,
+   así que setLang no los tocaba y se quedaban en español para siempre. El
+   resultado era la pestaña del navegador en un idioma y la página en otro
+   —y, en Google, el resultado de búsqueda en español para quien busca en
+   inglés. Mismo mecanismo que index.html. */
+var META={
+  es:{title:"MV Data Governance · Reseñas de usuarios",
+      desc:"Qué dicen quienes ya usan MV Data Governance para catálogo, calidad de datos, linaje y publicación a BI."},
+  en:{title:"MV Data Governance · User reviews",
+      desc:"What people already using MV Data Governance say about catalog, data quality, lineage and publishing to BI."},
+  pt:{title:"MV Data Governance · Avaliações de usuários",
+      desc:"O que dizem quem já usa o MV Data Governance para catálogo, qualidade de dados, linhagem e publicação em BI."}
+};
+function setMetaTags(lang){
+  var m=META[lang]||META.es;
+  document.title=m.title;
+  function setMeta(sel,attr,val){var el=document.querySelector(sel);if(el)el.setAttribute(attr,val);}
+  setMeta('meta[name="description"]','content',m.desc);
+  setMeta('meta[property="og:title"]','content',m.title);
+  setMeta('meta[property="og:description"]','content',m.desc);
+  setMeta('meta[name="twitter:title"]','content',m.title);
+  setMeta('meta[name="twitter:description"]','content',m.desc);
+}
 function setLang(lang){
   var d=lang==='es'?null:I18N[lang];
   document.querySelectorAll('[data-i]').forEach(function(el){
     var k=el.getAttribute('data-i');el.innerHTML=(d&&d[k]!==undefined)?d[k]:ES[k];});
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  setMetaTags(lang);
   render();
 }
 // Escapa TODO lo que se inyecta como HTML. Hoy las reseñas vienen de

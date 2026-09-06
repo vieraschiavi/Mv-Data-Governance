@@ -127,13 +127,39 @@ var ES={checking:"Verificando tu pago…",checking_p:"Un momento, estamos confir
   fail_conn:"Error de conexión verificando el pago."};
 var CUR_LANG='es';
 function T(k){return (I18N[CUR_LANG]&&I18N[CUR_LANG][k]!==undefined)?I18N[CUR_LANG][k]:ES[k];}
+/* El <title> y la meta descripción NO llevan data-i: no son nodos del body,
+   así que setLang no los tocaba y se quedaban en español para siempre. El
+   resultado era la pestaña del navegador en un idioma y la página en otro.
+   Mismo mecanismo que index.html. */
+var META={
+  es:{title:"MV Data Governance · Descarga desbloqueada",
+      desc:"Confirmación de compra y descarga de la licencia de MV Data Governance."},
+  en:{title:"MV Data Governance · Download unlocked",
+      desc:"Purchase confirmation and license download for MV Data Governance."},
+  pt:{title:"MV Data Governance · Download liberado",
+      desc:"Confirmação de compra e download da licença do MV Data Governance."}
+};
+function setMetaTags(lang){
+  var m=META[lang]||META.es;
+  document.title=m.title;
+  function setMeta(sel,attr,val){var el=document.querySelector(sel);if(el)el.setAttribute(attr,val);}
+  setMeta('meta[name="description"]','content',m.desc);
+  setMeta('meta[property="og:title"]','content',m.title);
+  setMeta('meta[property="og:description"]','content',m.desc);
+  setMeta('meta[name="twitter:title"]','content',m.title);
+  setMeta('meta[name="twitter:description"]','content',m.desc);
+}
 function setLang(l){CUR_LANG=l;
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===l);});
   document.documentElement.lang=l;try{localStorage.setItem('mvdg_lang',l);}catch(e){}
+  setMetaTags(l);
   render();
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
-try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es')CUR_LANG=sv;}catch(e){}
+/* Restaurar el idioma acá asigna CUR_LANG sin pasar por setLang, así que el
+   <title> tampoco se enteraba: el que volvía en inglés veía la pestaña en
+   español. Por eso setMetaTags se llama a mano en este camino. */
+try{var sv=localStorage.getItem('mvdg_lang');if(sv&&sv!=='es'){CUR_LANG=sv;setMetaTags(CUR_LANG);}}catch(e){}
 
 var PLAN_NAMES={licencia:'Licencia PC',pro:'Professional'};
 // Escapado completo (&<>"'), igual que en index.html/reviews.html — aunque
