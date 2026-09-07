@@ -397,6 +397,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     </div>
     <p class="hnote" data-i="h_ownfile">
       🔎 ¿Consultor BI? En la demo 1 a 1 subimos tu propio CSV o Excel y en minutos
+      🔎 ¿Consultor BI? Subí tu propio CSV o Excel al abrir la demo y en minutos
       tenés un catálogo de calidad auditado — sin pedirnos acceso ni hablar con nosotros.
     </p>
     <div class="metrics">
@@ -790,6 +791,14 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
            cerrar, un paso mas adentro. La prueba ahora se entrega despues de
            la demo 1 a 1, que es lo que la pagina de acceso coordina. -->
       <a class="trial-link" href="descargas.html" data-i="pl3trial">o pedí una demo guiada · sin tarjeta</a>
+      <a class="btn btn-d" data-mp="pro" href="#" data-i="pl3btn">Suscribirme</a>
+      <button type="button" class="trial-link" id="trialToggle" data-i="pl3trial">o probá 14 días gratis · sin tarjeta</button>
+      <form id="trialForm" class="trial-form" hidden>
+        <input type="email" id="trialEmail" required
+              data-i-ph="pl3trial_ph" placeholder="tu@empresa.com" autocomplete="email">
+        <button type="submit" class="btn btn-od" data-i="pl3trial_go">Empezar prueba de 14 días</button>
+        <p class="trial-msg" id="trialMsg" hidden></p>
+      </form>
     </div>
     <div class="plan">
       <h3 data-i="pl4t">Enterprise</h3><div class="who" data-i="pl4w">Para organizaciones con requisitos regulatorios.</div>
@@ -901,6 +910,8 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
   cta_video:"▶ See the before and after",cta_dl:"Request demo access",
   h_ownfile:"🔎 BI consultant? In the 1:1 demo we load your own CSV or Excel and you get an audited quality catalog in minutes.",
+  cta_video:"▶ Watch the demo",cta_dl:"Download the demo",
+  h_ownfile:"🔎 BI consultant? Upload your own CSV or Excel when you open the demo and get an audited quality catalog in minutes — no access request, no talking to us.",
   m1:"quality dimensions measured",m2:"languages: Spanish · English · Portuguese",
   m3:"compatible BI tools",m4:"web + desktop, no APK",
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
@@ -1055,6 +1066,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
   pl3trial:"or request a guided demo · no credit card",
   pl3sus_ph:"you@company.com",pl3sus_al:"Your email for the subscription",pl3sus_go:"Continue to MercadoPago",
+  pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
   c_eye:"Contact",c_h2:"Let's talk about your data",
@@ -1090,6 +1102,8 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
   cta_video:"▶ Ver o antes e depois",cta_dl:"Pedir acesso à demo",
   h_ownfile:"🔎 Consultor de BI? Na demo 1 a 1 carregamos seu próprio CSV ou Excel e você tem um catálogo de qualidade auditado em minutos.",
+  cta_video:"▶ Ver a demo",cta_dl:"Baixar a demo",
+  h_ownfile:"🔎 Consultor de BI? Envie seu próprio CSV ou Excel ao abrir a demo e tenha um catálogo de qualidade auditado em minutos — sem pedir acesso, sem falar conosco.",
   m1:"dimensões de qualidade medidas",m2:"idiomas: espanhol · inglês · português",
   m3:"ferramentas de BI compatíveis",m4:"web + desktop, sem APK",
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
@@ -1244,6 +1258,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
   pl3trial:"ou peça uma demo guiada · sem cartão",
   pl3sus_ph:"voce@empresa.com",pl3sus_al:"Seu email para a assinatura",pl3sus_go:"Continuar para o MercadoPago",
+  pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
@@ -1522,4 +1537,53 @@ document.getElementById('cform').addEventListener('submit',function(ev){
    cualquiera que escribiera un email, y esa licencia alcanzaba para
    bajar el programa. Hoy la prueba se entrega despues de la demo 1 a 1
    (ver descargas.html). */
+/* --- Trial de 14 días (Professional), sin tarjeta: solo email, sin pasar
+   por MercadoPago. api/trial.js emite la licencia MVDG2 directo. --- */
+(function(){
+  var toggle=document.getElementById('trialToggle');
+  var form=document.getElementById('trialForm');
+  var msg=document.getElementById('trialMsg');
+  if(!toggle||!form)return;
+  toggle.addEventListener('click',function(){
+    form.hidden=!form.hidden;
+    if(!form.hidden)document.getElementById('trialEmail').focus();
+  });
+  var TXT={
+    es:{err:'No se pudo iniciar la prueba. Probá de nuevo en un rato.',
+       ok:'Licencia de prueba (14 días) — activala en la pestaña ❓ Ayuda → Licencia del programa:'},
+    en:{err:'Could not start the trial. Please try again shortly.',
+       ok:'Trial license (14 days) — activate it in the ❓ Help tab → Program license:'},
+    pt:{err:'Não foi possível iniciar o teste. Tente novamente em instantes.',
+       ok:'Licença de teste (14 dias) — ative na aba ❓ Ajuda → Licença do programa:'}};
+  form.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var lang=document.documentElement.lang||'es';
+    var email=document.getElementById('trialEmail').value.trim();
+    var btn=form.querySelector('button[type="submit"]');
+    var original=btn.textContent;
+    btn.disabled=true; btn.textContent='…';
+    msg.hidden=true; msg.className='trial-msg';
+    fetch('/api/trial',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:email})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        btn.disabled=false; btn.textContent=original;
+        if(res.ok&&res.d&&res.d.license_key){
+          msg.hidden=false; msg.className='trial-msg ok';
+          // license_key sale de nuestra propia API (api/trial.js), pero se
+          // escapa igual antes de insertarla: ningun dato que llegue de una
+          // API va directo a innerHTML sin pasar por rvEsc(), sin excepciones.
+          msg.innerHTML=rvEsc((TXT[lang]||TXT.es).ok)+'<br><code>'+rvEsc(res.d.license_key)+'</code>';
+        }else{
+          msg.hidden=false; msg.className='trial-msg err';
+          msg.textContent=(TXT[lang]||TXT.es).err;
+        }
+      })
+      .catch(function(){
+        btn.disabled=false; btn.textContent=original;
+        msg.hidden=false; msg.className='trial-msg err';
+        msg.textContent=(TXT[document.documentElement.lang]||TXT.es).err;
+      });
+  });
+})();
 </script>
