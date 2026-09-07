@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Referencia COBIT 2019 + ISO/IEC 38505 (gobierno de datos).
 

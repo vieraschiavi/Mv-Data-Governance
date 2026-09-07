@@ -48,6 +48,13 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800}
 .mk{width:30px;height:30px;border-radius:8px;display:block}
 .brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
+/* En un celular la barra no entra: logo + selector de idioma + boton de
+   volver suman mas que el ancho, y la pagina se iba de lado (medido:
+   17px de desborde en 390px). Se ocultan las dos cosas redundantes.
+   El boton de volver no se pierde: el LOGO ya linkea a index.html,
+   que es exactamente el mismo destino. index.html oculta su CTA de
+   nav igual, por lo mismo. */
+@media(max-width:640px){.brand small{display:none}.right .btn{display:none}}
 .right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
 .lang button{background:none;border:0;color:var(--faint);font-size:11.5px;font-weight:800;padding:5px 8px;
@@ -186,12 +193,36 @@ pt:{sub:"· Avaliações",back:"← Início",count:"avaliações",
   ft:"Sem APK · 100% web e PC · Español · English · Português"}};
 var ES={};
 document.querySelectorAll('[data-i]').forEach(function(el){ES[el.getAttribute('data-i')]=el.innerHTML;});
+/* El <title> y la meta descripción NO llevan data-i: no son nodos del body,
+   así que setLang no los tocaba y se quedaban en español para siempre. El
+   resultado era la pestaña del navegador en un idioma y la página en otro
+   —y, en Google, el resultado de búsqueda en español para quien busca en
+   inglés. Mismo mecanismo que index.html. */
+var META={
+  es:{title:"MV Data Governance · Reseñas de usuarios",
+      desc:"Qué dicen quienes ya usan MV Data Governance para catálogo, calidad de datos, linaje y publicación a BI."},
+  en:{title:"MV Data Governance · User reviews",
+      desc:"What people already using MV Data Governance say about catalog, data quality, lineage and publishing to BI."},
+  pt:{title:"MV Data Governance · Avaliações de usuários",
+      desc:"O que dizem quem já usa o MV Data Governance para catálogo, qualidade de dados, linhagem e publicação em BI."}
+};
+function setMetaTags(lang){
+  var m=META[lang]||META.es;
+  document.title=m.title;
+  function setMeta(sel,attr,val){var el=document.querySelector(sel);if(el)el.setAttribute(attr,val);}
+  setMeta('meta[name="description"]','content',m.desc);
+  setMeta('meta[property="og:title"]','content',m.title);
+  setMeta('meta[property="og:description"]','content',m.desc);
+  setMeta('meta[name="twitter:title"]','content',m.title);
+  setMeta('meta[name="twitter:description"]','content',m.desc);
+}
 function setLang(lang){
   var d=lang==='es'?null:I18N[lang];
   document.querySelectorAll('[data-i]').forEach(function(el){
     var k=el.getAttribute('data-i');el.innerHTML=(d&&d[k]!==undefined)?d[k]:ES[k];});
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;try{localStorage.setItem('mvdg_lang',lang);}catch(e){}
+  setMetaTags(lang);
   render();
 }
 // Escapa TODO lo que se inyecta como HTML. Hoy las reseñas vienen de
@@ -221,13 +252,19 @@ function render(){
   }
   // tarjetas
   var g=document.getElementById('grid');g.innerHTML='';
-  // Si reviews-data.js no cargo, el grid quedaba vacio y sin explicacion.
+  // Dos casos distintos, y mostrar el equivocado seria mentir:
+  //  - el archivo no cargo (MVDG_REVIEWS indefinido) -> error de carga
+  //  - cargo y esta vacio -> todavia no hay resenas reales, y se dice asi
   if(!R.length){
     var li=document.documentElement.lang||'es';
-    g.innerHTML='<p class="rvempty">'+(li==='en'
-      ?'Reviews could not be loaded right now.'
-      :li==='pt'?'Nao foi possivel carregar as avaliacoes agora.'
-      :'No pudimos cargar las resenas en este momento.')+'</p>';
+    var cargo=Array.isArray(window.MVDG_REVIEWS);
+    g.innerHTML='<p class="rvempty">'+(cargo
+      ?(li==='en'?'No verified customer reviews yet - the product is in beta.'
+        :li==='pt'?'Ainda nao ha avaliacoes verificadas de clientes - o produto esta em beta.'
+        :'Todavia no hay resenas verificadas de clientes: el programa esta en fase beta.')
+      :(li==='en'?'Reviews could not be loaded right now.'
+        :li==='pt'?'Nao foi possivel carregar as avaliacoes agora.'
+        :'No pudimos cargar las resenas en este momento.'))+'</p>';
     return;
   }
   R.forEach(function(r){

@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """Modelo financiero MV Data Governance — 3 escenarios x con/sin inversion redes.
 Todos los montos en USD. Supuestos EDITABLES arriba; nada inventado como 'dato'.
 Modelo services-led (wedge: implementar cobranza + gobernanza sobre la BD/ERP

@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Organigrama → responsables de datos por defecto.
 
@@ -5,7 +7,7 @@ El problema que resuelve: asignar Data Owner y Data Steward a cada dataset
 suele arrancar de una planilla de RRHH o de un organigrama. Este módulo:
 
 1. **Lee el organigrama** desde Excel/CSV (o desde cualquier tabla traída
-   por conexión SQL en 🔎 Mis datos), detectando las columnas por sus
+   por conexión SQL en Mis datos), detectando las columnas por sus
    encabezados en ES/EN/PT (nombre, cargo, área, jefe, email) aunque vengan
    con otros nombres o en otro orden. Para organigramas en **foto/imagen**,
    la extracción usa la IA externa opcional (tu propia API key, opt-in) —

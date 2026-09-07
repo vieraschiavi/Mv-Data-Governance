@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Enforcement de acceso — generador de DDL, no un proxy.
 

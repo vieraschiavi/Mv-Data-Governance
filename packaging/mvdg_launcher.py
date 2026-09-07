@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Lanzador del programa (Windows / cualquier SO).
 
@@ -8,7 +10,6 @@ abre el navegador automáticamente — el usuario solo hace doble clic.
 from __future__ import annotations
 
 import os
-import socket
 import sys
 import threading
 import time
@@ -22,22 +23,123 @@ def _base_dir() -> str:
 
 
 def _puerto_libre() -> int:
-    """Puerto libre para no chocar con otras apps (p. ej. otra en 8501)."""
-    for p in (8641, 8652, 8663, 8674, 8685):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind(("127.0.0.1", p))
-                return p
-            except OSError:
-                continue
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    """Puerto libre para no chocar con otras apps (p. ej. otra en 8501).
+
+    La deteccion vive en mvdg.netports porque la version que estaba aca
+    usaba SO_REUSEADDR, que en Windows permite atarse a un puerto de OTRA
+    aplicacion en vez de detectar que esta ocupado."""
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import elegir_puerto
+    return elegir_puerto("127.0.0.1")
 
 
-def _abrir_navegador(url: str) -> None:
-    """Espera a que el servidor levante y abre el navegador una sola vez."""
+def _puerto_confirmado(port: int, intentos: int = 5) -> int:
+    """Vuelve a chequear el puerto JUSTO antes de arrancar, y re-elige si en
+    el intervalo se lo llevó otro.
+
+    Entre ``elegir_puerto()`` y el ``bind`` real de Streamlit pasa casi un
+    segundo: se abre el navegador, se importa la CLI. En esa ventana otra
+    aplicación puede quedarse con el puerto — y ahí Streamlit muere con el
+    traceback de Tornado ("address already in use"), que en un .exe sin
+    consola es otra vez el doble clic que no hace nada. Esto no elimina la
+    carrera (es inherente: nadie puede reservar un puerto sin ocuparlo),
+    pero la reduce de ~1s a milisegundos y, si igual pierde, reintenta en
+    vez de morir."""
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import elegir_puerto, puerto_libre
+    for _ in range(intentos):
+        if puerto_libre("127.0.0.1", port):
+            return port
+        port = elegir_puerto("127.0.0.1")
+    return port
+
+
+def _puerto_pedido() -> int:
+    """Puerto que el usuario fijo a mano (STREAMLIT_SERVER_PORT), o 0.
+
+    Si lo fijo y OTRA aplicacion ya lo esta usando, no lo cambiamos por
+    atras: eso lo dejaria buscando el programa en una direccion que no es.
+    Se corta con un mensaje que dice que hacer, en vez del traceback de
+    Tornado ("address already in use") que no le dice nada a un usuario de
+    escritorio. Sin la variable definida no hay contrato que respetar y el
+    lanzador elige puerto solo."""
+    crudo = os.environ.get("STREAMLIT_SERVER_PORT", "").strip()
+    if not crudo:
+        return 0
+    try:
+        port = int(crudo)
+    except ValueError:
+        _salir_con_aviso(
+            f"STREAMLIT_SERVER_PORT={crudo!r} no es un numero de puerto.\n"
+            "  ES: dejala sin definir para que el programa elija uno solo.\n"
+            "  EN: leave it unset to let the program pick one.\n"
+            "  PT: deixe-a indefinida para o programa escolher sozinho.")
+    base = _base_dir()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    from mvdg.netports import puerto_libre
+    if not puerto_libre("127.0.0.1", port):
+        _salir_con_aviso(
+            f"El puerto {port} ya esta en uso por otro programa / port {port} "
+            f"is already in use / a porta {port} ja esta em uso.\n"
+            f"  ES: cerra ese programa, usa STREAMLIT_SERVER_PORT=<otro "
+            f"puerto>, o dejala sin definir para que el programa elija.\n"
+            f"  EN: close that program, set STREAMLIT_SERVER_PORT=<other "
+            f"port>, or leave it unset to let the program pick.\n"
+            f"  PT: feche esse programa, use STREAMLIT_SERVER_PORT=<outra "
+            f"porta>, ou deixe-a indefinida para o programa escolher.")
+    return port
+
+
+def _salir_con_aviso(mensaje: str) -> None:
+    """Mensaje accionable y salida limpia (sin traceback en la consola)."""
+    sys.stderr.write(f"\n  [MV Data Governance] {mensaje}\n\n")
+    raise SystemExit(3)
+
+
+def _navegadores_ventana() -> list[str]:
+    """Rutas candidatas a un navegador con modo aplicación (--app).
+
+    En Windows, Edge viene preinstalado en 10/11 — es la garantía de que el
+    modo ventana funciona sin instalar nada. Chrome se prueba después. En
+    Linux/macOS (desarrollo) se buscan los equivalentes en el PATH."""
+    if os.name == "nt":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        return [
+            os.path.join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(pf86, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(local, "Google", "Chrome", "Application", "chrome.exe"),
+        ]
+    import shutil
+    rutas = [shutil.which(n) for n in
+             ("microsoft-edge", "google-chrome", "chromium", "chromium-browser")]
+    return [r for r in rutas if r]
+
+
+def _comando_ventana(url: str, navegador: str) -> list[str]:
+    """El comando que abre la app como VENTANA DE PROGRAMA, no como pestaña.
+
+    ``--app=URL`` es el modo aplicación de Edge/Chrome: ventana propia, sin
+    barra de direcciones ni pestañas, con su entrada en la barra de tareas —
+    lo que un usuario de escritorio espera de un programa instalado."""
+    return [navegador, f"--app={url}", "--window-size=1440,900"]
+
+
+def _abrir_programa(url: str) -> None:
+    """Espera a que el servidor levante y abre la VENTANA del programa.
+
+    Si hay Edge/Chrome, ventana de aplicación (sin cromo de navegador). Si
+    no hay ninguno — raro en Windows, donde Edge viene de fábrica — se cae
+    al navegador por defecto: mejor una pestaña que nada."""
+    import subprocess
     import urllib.request
     for _ in range(120):
         time.sleep(0.5)
@@ -46,6 +148,15 @@ def _abrir_navegador(url: str) -> None:
             break
         except Exception:
             continue
+    for navegador in _navegadores_ventana():
+        if os.path.isfile(navegador):
+            try:
+                subprocess.Popen(_comando_ventana(url, navegador),
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                return
+            except OSError:
+                continue
     webbrowser.open(url)
 
 
@@ -71,7 +182,56 @@ def _dispatch_module_flag() -> bool:
     return False
 
 
+def _log_y_avisar_error(detalle: str) -> str:
+    """Deja el traceback en un log y, en Windows, muestra un diálogo.
+
+    El .exe corre sin consola (console=False en el spec): sin esto, cualquier
+    excepción en el arranque hace que el programa "no haga nada" — la peor
+    experiencia posible de un instalador. El log va al lado del .exe si se
+    puede escribir ahí, o a TEMP si no (Archivos de programa sin admin)."""
+    import tempfile
+    nombre = "mvdg_error.log"
+    for carpeta in (os.path.dirname(os.path.abspath(sys.executable)),
+                    tempfile.gettempdir()):
+        ruta = os.path.join(carpeta, nombre)
+        try:
+            with open(ruta, "a", encoding="utf-8") as fh:
+                fh.write(detalle + "\n" + "-" * 60 + "\n")
+            break
+        except OSError:
+            continue
+    else:
+        ruta = "(no se pudo escribir el log)"
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                "El programa no pudo arrancar.\n"
+                "The program could not start.\n"
+                "O programa nao pode iniciar.\n\n"
+                f"Log: {ruta}",
+                "MV Data Governance", 0x10)  # MB_ICONERROR
+        except Exception:
+            pass
+    return ruta
+
+
 def main() -> None:
+    """Punto de entrada con los errores VISIBLES: si algo explota en el
+    arranque, queda un mvdg_error.log y (en Windows) un diálogo con la ruta
+    — nunca más un doble clic que no hace nada."""
+    try:
+        _main()
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        _log_y_avisar_error(traceback.format_exc())
+        raise
+
+
+def _main() -> None:
     if _dispatch_module_flag():
         return
 
@@ -83,17 +243,26 @@ def main() -> None:
     os.environ.setdefault("STREAMLIT_BROWSER_GATHER_USAGE_STATS", "false")
     os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")
 
-    port = int(os.environ.get("STREAMLIT_SERVER_PORT", 0)) or _puerto_libre()
+    pedido = _puerto_pedido()
+    # Si el usuario NO fijó puerto, se elige uno y se re-confirma antes de
+    # arrancar. Si SÍ lo fijó, _puerto_pedido() ya cortó con aviso si estaba
+    # ocupado — no se lo cambiamos por atrás, que es un contrato suyo.
+    port = pedido or _puerto_confirmado(_puerto_libre())
     url = f"http://127.0.0.1:{port}"
     print(f"MV Data Governance -> {url}")
 
-    threading.Thread(target=_abrir_navegador, args=(url,), daemon=True).start()
+    threading.Thread(target=_abrir_programa, args=(url,), daemon=True).start()
 
     from streamlit.web import cli as stcli
     sys.argv = ["streamlit", "run", app_path,
                 "--server.port", str(port),
                 "--server.address", "127.0.0.1",
                 "--browser.gatherUsageStats", "false",
+                # Sin botón "Deploy" ni opciones de desarrollo: es un
+                # programa instalado, no un proyecto que se publica. (El
+                # menú ⋮ y el pie "Made with Streamlit" no se pueden apagar
+                # por configuración — se ocultan por CSS en app/app.py.)
+                "--client.toolbarMode", "viewer",
                 "--theme.base", "dark",
                 "--theme.primaryColor", "#f2b441",
                 "--theme.backgroundColor", "#081527",

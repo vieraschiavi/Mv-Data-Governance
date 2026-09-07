@@ -37,7 +37,22 @@ Tableau, Purview y Collibra (en las dos direcciones).
 | Gate completo (lint + tests) | `make check` |
 | Un test puntual | `pytest tests/test_core.py::<nombre> -v` |
 | Servir la landing local | `cd landing && python -m http.server 8080` |
+| Verificación end-to-end (servicios reales + Chromium) | `python scripts/e2e_demo.py` (`--api` para saltear el navegador) |
+| E2E de las vistas del .exe (Relevamiento + Reuniones) | `python scripts/e2e_exe_consultoria.py` |
 | Regenerar el video demo | `python assets/video/build_video.py` |
+| Regenerar el video antes/después | `python assets/video/build_antes_despues.py` |
+
+> El E2E (`scripts/e2e_demo.py`) NO corre dentro de pytest: levanta `bi_api`,
+> Streamlit y la landing de verdad y los recorre con Chromium. Cubre lo que
+> pytest no puede ver — una excepción renderizada en una pestaña, un error de
+> JavaScript, una página que desborda a lo ancho. Correlo antes de declarar
+> una versión lista para producción.
+>
+> Los dos guiones de video necesitan `imageio`/`imageio-ffmpeg` y, para la
+> narración, `piper-tts` con `MVDG_VOICE_ONNX_ES/EN/PT` apuntando a los
+> modelos. No están en `requirements`: son herramientas de generación, no
+> dependencias del producto. Los `.mp4` de `assets/video/` están ignorados
+> por git; los que se publican viven en `landing/video/`.
 
 > Linter: **ruff**, configurado en `pyproject.toml` (`make lint`). No hay
 > formateador automático a propósito: reformatear masivamente destruiría el
@@ -66,6 +81,17 @@ Tableau, Purview y Collibra (en las dos direcciones).
 2. **Cambio** — editá el mínimo necesario. Respetá la separación motor (`mvdg/`) vs. UI (`app/app.py`) vs. API (`bi_api/`).
 3. **Test** — `pytest tests/ -v` (`/test`). No declares éxito sin correrlos.
 4. **Ship** — `/ship`: test → commit descriptivo → push → PR draft.
+5. **Después de que el PR se mergea** — la rama de trabajo queda MUERTA. Antes
+   de seguir con lo siguiente: `git fetch origin main && git checkout -B <rama> origin/main`.
+
+> **Por qué el paso 5 no es opcional.** El merge es con *squash*: los commits
+> de la rama se aplastan en uno solo con otro SHA. Si se siguen agregando
+> commits encima de los viejos, la rama arrastra historia que en `main` ya
+> existe con otra identidad, y el próximo PR sale **con conflictos**. El
+> automerge no lo fuerza — dice `No se mergea: el PR #N tiene conflictos` y se
+> queda ahí. Pasó en el PR #81: el CI estaba verde en las dos versiones de
+> Python y aun así no entraba, y el rojo no estaba en ningún lado porque no
+> era un problema de tests.
 
 ## Convenciones
 

@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Etiquetas de sensibilidad (MIP) — acelerador sobre la
 API real de Microsoft, no una reimplementación local.

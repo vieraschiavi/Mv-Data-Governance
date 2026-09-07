@@ -1,3 +1,5 @@
+// © 2026 Martín Viera. Todos los derechos reservados.
+// Software propietario. Ver LICENSE — prohibida su redistribución.
 // One-pager editable como slide-resumen apaisada 16:9, por variante.
 const P = require("pptxgenjs");
 const { variants } = require("./content_i18n.js");

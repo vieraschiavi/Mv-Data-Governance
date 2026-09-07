@@ -1,0 +1,131 @@
+# Emitir una licencia desde un BOTÓN, sin tocar la terminal.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Para qué
+# ────────────────────────────────────────────────────────────────────────────
+# Hasta ahora emitir una licencia exigía correr Python a mano:
+#
+#     python packaging/licencias.py firmar --plan owner --email ...
+#
+# Eso es una barrera real: hay que tener Python, el repo clonado y la clave
+# privada a mano. Este workflow hace lo mismo desde github.com — Actions ->
+# "Emitir licencia" -> Run workflow -> completás email y plan -> la licencia
+# aparece en el resumen de la corrida, lista para copiar.
+#
+# Sirve para: darle su licencia a un cliente que pagó por fuera de la web
+# (transferencia, efectivo), reponer una que se perdió, o emitirte la tuya.
+# El circuito automático de MercadoPago no lo necesita: ese emite solo.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# POR QUÉ SE NIEGA A CORRER SI EL REPO ES PÚBLICO
+# ────────────────────────────────────────────────────────────────────────────
+# Los logs de Actions de un repositorio público los ve CUALQUIERA, sin cuenta
+# y sin permisos. Una licencia impresa ahí queda regalada: el que la copia
+# tiene el programa completo gratis, para siempre.
+#
+# No hay forma de esquivarlo por otro canal: los artefactos de un repo público
+# también son accesibles para cualquiera con acceso de lectura, que en un repo
+# público es todo el mundo.
+#
+# Por eso el primer paso comprueba la visibilidad y corta. Hacer el repo
+# privado es gratis en GitHub y tarda treinta segundos:
+#   Settings -> General -> Danger Zone -> Change repository visibility
+name: Emitir licencia
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email del cliente (queda escrito dentro de la licencia)"
+        required: true
+        type: string
+      plan:
+        description: "Qué compró"
+        required: true
+        default: licencia
+        type: choice
+        options: [licencia, professional, enterprise, trial, owner]
+      dias:
+        description: "Días hasta que venza. 0 = no vence nunca"
+        required: true
+        default: "0"
+        type: string
+      maquina:
+        description: "Opcional: id de máquina para atarla a UNA PC (dejar vacío para las que se venden)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  emitir:
+    runs-on: ubuntu-latest
+    steps:
+      # Primero esto, antes de generar nada: si el repo es público, la
+      # licencia terminaría publicada.
+      - name: Comprobar que el repositorio sea privado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          privado=$(gh api "repos/${{ github.repository }}" --jq .private)
+          echo "repositorio privado: $privado"
+          if [ "$privado" != "true" ]; then
+            echo "::error title=El repositorio es PUBLICO::Los logs de Actions de un repo publico los ve cualquiera, asi que la licencia quedaria regalada. Hacelo privado en Settings > General > Danger Zone > Change repository visibility (es gratis) y volve a intentar."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar lo mínimo para firmar
+        # Solo cryptography: firmar no necesita el motor entero ni la interfaz.
+        run: pip install --disable-pip-version-check "cryptography>=42.0,<52"
+
+      - name: Emitir
+        env:
+          LICENSE_PRIVATE_KEY: ${{ secrets.LICENSE_PRIVATE_KEY }}
+          EMAIL: ${{ inputs.email }}
+          PLAN: ${{ inputs.plan }}
+          DIAS: ${{ inputs.dias }}
+          MAQUINA: ${{ inputs.maquina }}
+        run: |
+          if [ -z "$LICENSE_PRIVATE_KEY" ]; then
+            echo "::error title=Falta LICENSE_PRIVATE_KEY::Cargala en Settings > Secrets and variables > Actions. Es la misma clave privada que va en Vercel."
+            exit 1
+          fi
+
+          args=(--plan "$PLAN" --email "$EMAIL" --dias "$DIAS")
+          [ -n "$MAQUINA" ] && args+=(--maquina "$MAQUINA")
+
+          # La licencia va al RESUMEN de la corrida y no solo al log: el
+          # resumen se lee de un vistazo y se copia sin buscar entre 200
+          # lineas de salida.
+          salida=$(python packaging/licencias.py firmar "${args[@]}")
+          echo "$salida"
+
+          token=$(echo "$salida" | grep -o 'MVDG2\.[A-Za-z0-9_.-]*' | head -1)
+          if [ -z "$token" ]; then
+            echo "::error title=No se emitio ninguna licencia::Mira el log de arriba."
+            exit 1
+          fi
+
+          {
+            echo "## Licencia emitida"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Cliente | \`$EMAIL\` |"
+            echo "| Plan | \`$PLAN\` |"
+            echo "| Vence | $([ "$DIAS" = "0" ] && echo 'nunca' || echo "en $DIAS dias") |"
+            echo
+            echo "Copiala y mandasela al cliente. Se pega en el programa, pestaña **Licencia**."
+            echo
+            echo '```'
+            echo "$token"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

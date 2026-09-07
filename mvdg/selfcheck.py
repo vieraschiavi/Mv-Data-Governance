@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Auto-diagnóstico (health check).
 
@@ -369,7 +371,7 @@ def _check_21():
                 os.environ.pop("MVDG_DATA_DIR", None)
             else:
                 os.environ["MVDG_DATA_DIR"] = prev
-    return "lo traído se guarda en disco y aparece en 🖊️ Curaduría con su origen visible"
+    return "lo traído se guarda en disco y aparece en Curaduría con su origen visible"
 
 @check("Contraseñas de conexión: keyring del SO con respaldo ofuscado")
 def _check_22():
@@ -440,7 +442,7 @@ def _check_25():
     return (f"{len(cat)} datasets (4 demo + {len(samples.sample_keys())} casos reales) en "
             "catálogo, calidad, linaje, glosario, políticas y BI & API — end-to-end")
 
-@check("📦 Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
+@check("Entregable final por caso (laboratorio, banco, gobierno, gastronomía)")
 def _check_26():
     import os
     import tempfile
@@ -851,8 +853,32 @@ def _check_45():
 
 @check("Dashboard importable (sin errores)")
 def _check_46():
+    """Importar app/app.py lo EJECUTA entero (es un script de Streamlit).
+
+    Corriendo fuera de un servidor, Streamlit acumula los contenedores
+    abiertos (``st.form``, ``st.expander``…) en una pila global del proceso.
+    El script no termina de cerrarlos en modo bare, así que esa pila queda
+    sucia y cualquier cosa que use Streamlit DESPUÉS en el mismo proceso
+    hereda el desastre: un ``st.button`` de la barra lateral se cree adentro
+    de un formulario y revienta con "st.button() can't be used in an
+    st.form()". Se restaura la pila para que este chequeo no le deje el
+    piso mojado a lo que venga atrás.
+    """
     import importlib
-    importlib.import_module("app.app")
+    try:
+        from streamlit.delta_generator_singletons import context_dg_stack
+        pila = list(context_dg_stack.get())
+    except ImportError:   # versión de Streamlit sin ese módulo
+        pila = []
+    # Lo que queda sucio NO es la profundidad de la pila sino el `_form_data`
+    # que `st.form` estampa sobre el contenedor raíz: el objeto es el mismo,
+    # mutado. Por eso se guarda el valor de cada uno, no la pila.
+    formularios = [(dg, getattr(dg, "_form_data", None)) for dg in pila]
+    try:
+        importlib.import_module("app.app")
+    finally:
+        for dg, previo in formularios:
+            dg._form_data = previo
     return "app/app.py carga sin errores"
 
 
@@ -861,16 +887,16 @@ def main() -> int:
     results = run_checks()
     ok_all = True
     for name, ok, detail in results:
-        mark = "✓" if ok else "✗"
+        mark = "" if ok else ""
         print(f"  {mark} {name}")
         print(f"      {detail}")
         ok_all &= ok
     print("  " + "─" * 44)
     passed = sum(1 for _, ok, _ in results if ok)
     if ok_all:
-        print(f"  ✅ 100% operativo — {passed}/{len(results)} chequeos OK.\n")
+        print(f"  100% operativo — {passed}/{len(results)} chequeos OK.\n")
         return 0
-    print(f"  ⚠️  {passed}/{len(results)} OK — revisá los ítems con ✗ arriba.\n")
+    print(f"   {passed}/{len(results)} OK — revisá los ítems con arriba.\n")
     return 1
 
 

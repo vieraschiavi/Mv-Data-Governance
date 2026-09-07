@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Generador del video de demo (PIL + imageio-ffmpeg) con
 narración en voz por idioma (Piper TTS): español (es_AR "daniela"), inglés
@@ -314,6 +316,55 @@ def scene_enterprise(p: float) -> Image.Image:
     return img
 
 
+def scene_consultoria(p: float) -> Image.Image:
+    """Lo que pasa ANTES de tocar un dato, y lo que queda escrito después.
+
+    Es la parte del trabajo que ninguna suite cubre y que igual hay que
+    hacer: preguntar, anotar quién respondió, y dejar por escrito qué se le
+    hizo al dato. Va en el video porque es lo que separa un catálogo de un
+    proyecto de gobierno de datos.
+    """
+    img = base_frame()
+    d = ImageDraw.Draw(img)
+    center_text(d, 42, "Antes y después del dato · Before and after the data",
+                font(30), INK)
+    center_text(d, 88, "Relevamiento · Reuniones · Trazabilidad",
+                font(19, False), AMBER)
+
+    tarjetas = [
+        ("Relevamiento", ["38 preguntas por área", "del pipeline, con quién",
+                          "respondió cada una"]),
+        ("Reuniones", ["Zoom, Teams, Meet o", "presencial → minuta con",
+                       "quién dijo qué y cuándo"]),
+        ("Trazabilidad", ["Qué se le hizo al dato,", "en criollo y en técnico,",
+                          "a HTML, Word y PDF"]),
+    ]
+    for i, (titulo, lineas) in enumerate(tarjetas):
+        if ease(p * 2.8 - i * 0.26) <= 0:
+            continue
+        x = 96 + i * 372
+        d.rounded_rectangle([x, 150, x + 340, 400], radius=18, fill=(15, 33, 53),
+                            outline=AMBER, width=2)
+        d.line([x + 26, 182, x + 74, 182], fill=AMBER, width=5)
+        d.text((x + 26, 206), titulo, font=font(25), fill=INK)
+        ty = 258
+        for linea in lineas:
+            d.text((x + 26, ty), linea, font=font(18, False), fill=MUTED)
+            ty += 32
+
+    # El cierre de la escena: las dos formas de instalar, bien separadas.
+    if p > 0.58:
+        d.rounded_rectangle([96, 448, 1184, 596], radius=16, fill=(9, 20, 35),
+                            outline=(42, 65, 96), width=2)
+        d.text((126, 470), "Dos formas de instalar · Two ways to install",
+               font=font(21), fill=AMBER)
+        d.text((126, 512), "Tu equipo: instalador, accesos directos, desinstalador",
+               font=font(19, False), fill=INK)
+        d.text((126, 548), "VM del cliente: portable, sin admin, sin internet, "
+               "sin dejar rastro", font=font(19, False), fill=INK)
+    return img
+
+
 def scene_outro(p: float) -> Image.Image:
     img = base_frame()
     d = ImageDraw.Draw(img)
@@ -400,6 +451,27 @@ SCENES = [
               "etiquetas de sensibilidade e escaneia todas as conexões de uma vez. Tudo "
               "desligado por padrão, ativado só com suas próprias credenciais.",
     }),
+    # La narración es corta a propósito: la pantalla tiene cuatro bloques para
+    # leer y la voz solo tiene que darle el hilo. Una versión más larga dejaba
+    # esta escena en veintiséis segundos — en un video de venta, veintiséis
+    # segundos sobre una sola pantalla es donde el que mira se va.
+    (scene_consultoria, 9.0, {
+        "es": "Y el trabajo que ninguna suite cubre: treinta y ocho preguntas por "
+              "área del pipeline con quién respondió cada una, las reuniones "
+              "convertidas en minuta con quién dijo qué, y todo lo que se le hizo al "
+              "dato explicado en criollo y en técnico. Se instala en tu equipo, o "
+              "portable en la máquina del cliente, sin dejar rastro.",
+        "en": "And the work no suite covers: thirty-eight questions by pipeline area "
+              "with who answered each one, meetings turned into minutes with who said "
+              "what, and everything done to your data explained in plain words and in "
+              "technical terms. It installs on your own machine, or portable on the "
+              "client's, leaving nothing behind.",
+        "pt": "E o trabalho que nenhuma suíte cobre: trinta e oito perguntas por área "
+              "do pipeline com quem respondeu cada uma, as reuniões convertidas em ata "
+              "com quem disse o quê, e tudo o que foi feito com o dado explicado em bom "
+              "português e em termos técnicos. Instala-se no seu equipamento, ou "
+              "portátil na máquina do cliente, sem deixar rastro.",
+    }),
     (scene_outro, 5.0, {
         "es": "MV Data Governance. Tus datos gobernados, tus decisiones confiables. "
               "Descargalo hoy: sin APK, y sin que tus datos salgan de tu empresa.",
@@ -415,9 +487,10 @@ VOICE_LEAD = 0.4  # la voz entra apenas después del corte de escena
 VOICE_TAIL = 0.9  # aire después de cada frase
 
 
-def _synth_narrations(tmpdir: str, lang: str) -> list[str] | None:
+def _synth_narrations(tmpdir: str, lang: str, scenes=None) -> list[str] | None:
     """Genera un WAV por escena con Piper en el idioma dado. None si no hay
     modelo de voz configurado para ese idioma."""
+    scenes = SCENES if scenes is None else scenes
     model = _voice_model(lang)
     if not model:
         return None
@@ -427,7 +500,7 @@ def _synth_narrations(tmpdir: str, lang: str) -> list[str] | None:
         return None
     voice = PiperVoice.load(model)
     paths = []
-    for i, (_, _, narration) in enumerate(SCENES):
+    for i, (_, _, narration) in enumerate(scenes):
         text = narration[lang]
         path = os.path.join(tmpdir, f"nar_{lang}_{i}.wav")
         with wave.open(path, "wb") as w:
@@ -441,10 +514,11 @@ def _wav_duration(path: str) -> float:
         return w.getnframes() / w.getframerate()
 
 
-def _scene_seconds(narrations: list[str] | None) -> list[float]:
+def _scene_seconds(narrations: list[str] | None, scenes=None) -> list[float]:
     """Duración final de cada escena: la visual mínima o la narración + aire."""
+    scenes = SCENES if scenes is None else scenes
     secs = []
-    for i, (_, min_secs, _) in enumerate(SCENES):
+    for i, (_, min_secs, _) in enumerate(scenes):
         if narrations:
             secs.append(max(min_secs,
                             VOICE_LEAD + _wav_duration(narrations[i]) + VOICE_TAIL))
@@ -474,18 +548,24 @@ def _mix_audio_track(narrations: list[str], secs: list[float],
         w.writeframes(total.tobytes())
 
 
-def build_one(lang: str, tmpdir: str) -> tuple[str, bool]:
-    """Genera el video de un idioma. Devuelve (ruta, tiene_voz)."""
-    out = os.path.join(VIDEO_DIR, f"MVDataGovernance_Demo_{lang}.mp4")
-    narrations = _synth_narrations(tmpdir, lang)
-    secs_list = _scene_seconds(narrations)
+def build_one(lang: str, tmpdir: str, scenes=None, nombre: str = "Demo") -> tuple[str, bool]:
+    """Genera el video de un idioma. Devuelve (ruta, tiene_voz).
 
-    video_only = os.path.join(tmpdir, f"video_{lang}.mp4") if narrations else out
+    `scenes` y `nombre` existen para que otro guion pueda reusar todo este
+    pipeline (render, narración por escena, mezcla y mux) sin copiarlo: el
+    video de antes/después es exactamente el mismo motor con otras escenas.
+    """
+    scenes = SCENES if scenes is None else scenes
+    out = os.path.join(VIDEO_DIR, f"MVDataGovernance_{nombre}_{lang}.mp4")
+    narrations = _synth_narrations(tmpdir, lang, scenes)
+    secs_list = _scene_seconds(narrations, scenes)
+
+    video_only = os.path.join(tmpdir, f"video_{nombre}_{lang}.mp4") if narrations else out
     writer = imageio.get_writer(video_only, fps=FPS, codec="libx264",
                                 quality=7, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
     black = Image.new("RGB", (W, H), (0, 0, 0))
-    for (scene, _, _), secs in zip(SCENES, secs_list, strict=True):
+    for (scene, _, _), secs in zip(scenes, secs_list, strict=True):
         n = int(round(secs * FPS))
         for f_i in range(n):
             p = f_i / max(1, n - 1)

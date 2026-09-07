@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Conector inverso (pull) desde Collibra.
 
@@ -101,7 +103,7 @@ def pull_glossary(dry_run: bool = True) -> dict:
 
 def pull_catalog(dry_run: bool = True) -> dict:
     """Trae los assets de tipo Tabla del dominio configurado, con su
-    Definición — para precargar 📚 Catálogo sin tipear de nuevo lo que
+    Definición — para precargar Catálogo sin tipear de nuevo lo que
     Collibra ya tiene documentado."""
     if not table_pull_configured():
         raise RuntimeError("Collibra no configurado para catálogo — falta "

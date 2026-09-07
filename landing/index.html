@@ -8,7 +8,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="google" content="notranslate">
-<meta name="description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo gratis, sin registro.">
+<meta name="description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo guiada a pedido.">
 <link rel="canonical" href="https://mv-data-governance.vercel.app/">
 <!-- Tarjeta social (og: para Facebook/LinkedIn/WhatsApp, twitter: para X).
      La imagen es 1200x630, el tamaño que esperan todas las plataformas. -->
@@ -16,7 +16,7 @@
 <meta property="og:site_name" content="MV Data Governance">
 <meta property="og:url" content="https://mv-data-governance.vercel.app/">
 <meta property="og:title" content="MV Data Governance · Gobierno de datos claro y listo para BI">
-<meta property="og:description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo gratis, sin registro.">
+<meta property="og:description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo guiada a pedido.">
 <meta property="og:image" content="https://mv-data-governance.vercel.app/img/og_cover.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -26,7 +26,7 @@
 <meta property="og:locale:alternate" content="pt_BR">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="MV Data Governance · Gobierno de datos claro y listo para BI">
-<meta name="twitter:description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo gratis, sin registro.">
+<meta name="twitter:description" content="Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo guiada a pedido.">
 <meta name="twitter:image" content="https://mv-data-governance.vercel.app/img/og_cover.jpg">
 <meta name="theme-color" content="#081527">
 <link rel="apple-touch-icon" href="mv_icon.png">
@@ -59,14 +59,33 @@ nav{position:sticky;top:0;z-index:30;background:rgba(8,19,36,.82);backdrop-filte
 /* El nav es sticky (60px): sin esto, al entrar por un ancla del menú el título
    de la sección queda debajo del nav y no se lee. Afecta a todas las secciones. */
 section[id]{scroll-margin-top:76px}
-nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap}
-@media(max-width:640px){.brand small{display:none}}
+/* La barra usa más ancho que la columna de contenido: con 12 enlaces, el
+   menú no entra en 1120px y se salía del marco (barra horizontal en toda
+   la página, y el botón Descargar empujado fuera de la pantalla). */
+nav .wrap{display:flex;align-items:center;gap:16px;height:60px;max-width:1400px}
+/* `min-width:0` + recorte: en un teléfono angosto el nombre de la marca no
+   se parte (nowrap) y, sin esto, empujaba el selector de idioma fuera de la
+   pantalla en vez de ceder ancho él mismo. Ahora cede la marca —que el logo
+   ya identifica— y los controles quedan siempre dentro del marco. */
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;white-space:nowrap;min-width:0}
+.brand span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.right{flex:none}
+/* El subtítulo de la marca cede el ancho antes que los enlaces: repite lo
+   que ya dice el logo, y los enlaces no. */
+@media(max-width:1180px){.brand small{display:none}}
 .mk{width:30px;height:30px;border-radius:8px;display:block}
 .brand b{font-size:15px}.brand small{color:var(--muted);font-weight:600;font-size:12px}
 .nlinks{display:flex;gap:4px;margin-left:14px}
 .nlinks a{color:var(--muted);font-size:13.5px;font-weight:600;padding:7px 11px;border-radius:8px}
 .nlinks a:hover{color:#fff;background:rgba(255,255,255,.06)}
+/* Menú por niveles. Los 12 enlaces no entran en una pantalla normal: en vez
+   de dejar que se desborden (que es lo que pasaba), los secundarios se
+   retiran a medida que falta lugar, del menos al más importante para quien
+   está evaluando comprar. Ninguna sección queda inalcanzable: todas siguen
+   en la página y en el pie. */
+@media(max-width:1900px){.nlinks a.n4{display:none}}
+@media(max-width:1720px){.nlinks a.n3{display:none}}
+@media(max-width:1300px){.nlinks a.n2{display:none}}
 @media(max-width:900px){.nlinks{display:none}}
 .right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .lang{display:flex;gap:2px;background:rgba(255,255,255,.06);border:1px solid var(--line2);border-radius:8px;padding:3px}
@@ -192,18 +211,35 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
   border:1px solid rgba(242,180,65,.25);border-radius:8px;padding:8px 10px;margin-bottom:14px;overflow-x:auto;white-space:nowrap}
 
 /* SHOTS (capturas reales) */
-.shgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+/* align-items:start a propósito: sin esto, la grilla estira cada tarjeta a
+   la altura de la más alta de su fila (comportamiento por defecto), y con
+   capturas de 1300px al lado de una de 4800px (BI & API creció mucho desde
+   que se sacaron estas capturas) la más chica queda con un colchón vacío
+   enorme abajo — no es texto tapado, pero tampoco es "el marco ajustado al
+   contenido" que se pidió. */
+.shgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px;align-items:start}
 @media(max-width:760px){.shgrid{grid-template-columns:1fr}}
 .shot{background:var(--tint);border:1px solid var(--line-d);border-radius:16px;overflow:hidden;margin:0}
-.shot a{display:block;max-height:340px;overflow:hidden}
-.shot img{width:100%;display:block;border-bottom:1px solid var(--line-d);transition:transform .25s}
+/* Antes esto recortaba la captura a 340px con overflow:hidden — una altura
+   fija sobre capturas que van de 990px a 1640px de alto. Según cuál fuera
+   la pestaña, el recorte cortaba la mitad del contenido a mitad de un
+   gráfico, sin ningún indicio visual de que faltaba algo debajo. El marco
+   ahora se ajusta a la imagen entera (ancho fijo por la grilla, alto
+   natural) en vez de al revés. */
+.shot a{display:block}
+.shot img{width:100%;display:block;height:auto;border-bottom:1px solid var(--line-d);transition:transform .25s}
 .shot a:hover img{transform:scale(1.02)}
 .shot figcaption{padding:12px 16px;font-size:13.5px;color:var(--muted-d);font-weight:600}
 
 /* STATS (franja oscura de resultados) */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:30px}
 @media(max-width:860px){.stats{grid-template-columns:1fr 1fr}}
-.stat{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:22px;text-align:center}
+/* Una sola columna en pantallas muy angostas: a dos columnas, el padding y
+   el gap dejan menos de 120px por tarjeta y la frase más larga desbordaba. */
+@media(max-width:400px){.stats{grid-template-columns:1fr}}
+/* `1fr` no baja del ancho mínimo de su contenido salvo que se le diga: sin
+   esto, una palabra larga estira la columna y saca la grilla del marco. */
+.stat{background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:16px;padding:22px;text-align:center;min-width:0;overflow-wrap:anywhere}
 .stat .v{font-size:34px;font-weight:850;color:var(--amber);letter-spacing:-.01em}
 .stat .l{color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.45}
 
@@ -275,16 +311,6 @@ nav .wrap{display:flex;align-items:center;gap:16px;height:60px}
 @media(max-width:560px){.pgrid.four{grid-template-columns:1fr}}
 .paynote{color:var(--muted-d);font-size:13px;margin:20px 0 0;text-align:center}
 .uyu{color:var(--faint);font-size:12px;font-weight:600;margin-top:3px}
-.crcard .uyu{margin:-2px 0 8px}
-.crgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px}
-@media(max-width:760px){.crgrid{grid-template-columns:1fr}}
-.crcard{background:var(--tint);border:1px solid var(--line-d);border-radius:18px;padding:24px;text-align:center;display:flex;flex-direction:column;position:relative}
-.crcard.pop{border-color:var(--amber);box-shadow:0 16px 40px rgba(242,180,65,.14)}
-.crcard .crtag{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--amber);color:var(--amber-ink);font-size:11px;font-weight:800;padding:4px 12px;border-radius:20px;white-space:nowrap}
-.crcard .crn{font-size:20px;font-weight:850;color:var(--ink-d)}
-.crcard .cramt{font-size:32px;font-weight:850;color:var(--ink-d);margin:8px 0 4px}
-.crcard .crx{color:var(--muted-d);font-size:13px;margin-bottom:16px;flex:1}
-.crcard .btn{width:100%}
 .plan{background:var(--paper);border:1px solid var(--line-d);border-radius:18px;padding:26px;display:flex;flex-direction:column}
 .plan.pop{border-color:var(--amber);box-shadow:0 20px 46px rgba(242,180,65,.16);position:relative}
 .plan.pop .tag{position:absolute;top:-11px;left:24px;background:var(--amber);color:var(--amber-ink);font-size:11px;
@@ -333,14 +359,14 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </a>
   <div class="nlinks">
     <a href="guia.html" data-i="nav_guide">¿Qué es?</a>
-    <a href="#resenas" data-i="nav_reviews">Reseñas</a>
-    <a href="#video" data-i="nav_video">Video</a>
+    <a class="n3" href="#resenas" data-i="nav_reviews">Reseñas</a>
+    <a class="n3" href="#video" data-i="nav_video">Video</a>
     <a href="#tableros" data-i="nav_shots">Tableros</a>
-    <a href="#plataforma" data-i="nav_platform">Plataforma</a>
-    <a href="#enterprise" data-i="nav_enterprise">Enterprise</a>
-    <a href="#bi" data-i="nav_bi">BI</a>
-    <a href="#implementacion" data-i="nav_impl">Implementación</a>
-    <a href="#descargas" data-i="nav_downloads">Descargas</a>
+    <a class="n2" href="#plataforma" data-i="nav_platform">Plataforma</a>
+    <a class="n4" href="#enterprise" data-i="nav_enterprise">Enterprise</a>
+    <a class="n4" href="#bi" data-i="nav_bi">BI</a>
+    <a class="n4" href="#implementacion" data-i="nav_impl">Implementación</a>
+    <a class="n2" href="#descargas" data-i="nav_downloads">Descargas</a>
     <a href="#honesta" data-i="nav_honest">Comparativa</a>
     <a href="#precios" data-i="nav_pricing">Precios</a>
     <a href="#contacto" data-i="nav_contact">Contacto</a>
@@ -362,10 +388,15 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <p class="lead" data-i="lead">Catálogo, calidad, linaje, glosario y políticas en una sola plataforma —
       con exportación directa a Power BI, Tableau, Looker, MicroStrategy y cualquier otra herramienta de BI.</p>
     <div class="hcta">
-      <a class="btn btn-a" href="#video" data-i="cta_video">▶ Ver la demo</a>
-      <a class="btn btn-o" href="descargas.html" data-i="cta_dl">Descargar la demo</a>
+      <!-- El botón primario apunta al antes/después, no a la demo: el que
+           decide la compra quiere ver qué cambia antes que qué botones hay.
+           La demo narrada queda a un scroll (es la sección siguiente) y en
+           el menú, así que no se pierde. -->
+      <a class="btn btn-a" href="#antes-despues" data-i="cta_video">▶ Ver el antes y después</a>
+      <a class="btn btn-o" href="descargas.html" data-i="cta_dl">Pedir acceso a la demo</a>
     </div>
     <p class="hnote" data-i="h_ownfile">
+      🔎 ¿Consultor BI? En la demo 1 a 1 subimos tu propio CSV o Excel y en minutos
       🔎 ¿Consultor BI? Subí tu propio CSV o Excel al abrir la demo y en minutos
       tenés un catálogo de calidad auditado — sin pedirnos acceso ni hablar con nosotros.
     </p>
@@ -396,6 +427,37 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   </div>
 </div></section>
 
+<!-- VIDEO ANTES / DESPUÉS -->
+<!-- Va ANTES de la demo a propósito: la demo muestra qué hace el producto,
+     y esto muestra qué cambia. Un gerente decide con lo segundo. Las cifras
+     no están escritas en el video: las calcula el motor de reglas al
+     generarlo (assets/video/build_antes_despues.py), del mismo caso que
+     publica la guía. -->
+<section class="vsec vsec-ad" id="antes-despues"><div class="wrap">
+  <div class="eyebrow" data-i="ad_eye">Caso medido · 40 segundos · ES / EN / PT</div>
+  <h2 class="h2 h2w" data-i="ad_h2">Antes y después, con números</h2>
+  <p class="lead-w" data-i="ad_lead">La misma cartera de datos, sin gobernar y gobernada.
+    Índice de calidad, reglas en verde y filas con problemas — medido por el mismo motor
+    que va a correr en tu PC, no por una presentación.</p>
+  <div class="vbox">
+    <video id="adVideo" data-vbase="MVDataGovernance_AntesDespues" data-errbox="adVideoError"
+           controls preload="metadata" playsinline>
+      <source src="video/MVDataGovernance_AntesDespues_es.mp4" type="video/mp4">
+      <source src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_AntesDespues_es.mp4" type="video/mp4">
+      <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
+    </video>
+    <div id="adVideoError" class="vfail" hidden role="status">
+      <b data-i="v_err_t">No pudimos cargar el video</b>
+      <span data-i="ad_err_d">Puede ser tu conexión o un bloqueador. Los mismos números están medidos y explicados en la guía.</span>
+      <a class="btn btn-a" href="guia.html#caso" data-i="ad_err_cta">Ver el caso medido</a>
+    </div>
+  </div>
+  <p class="v-real">
+    <span data-i="ad_repro">Reproducible en tu PC: </span>
+    <a href="guia.html#caso" data-i="ad_repro_link">cómo se mide este antes y después</a>
+  </p>
+</div></section>
+
 <!-- VIDEO -->
 <section class="vsec" id="video"><div class="wrap">
   <div class="eyebrow" data-i="v_eye">Demo narrada · 1 minuto · ES / EN / PT</div>
@@ -405,7 +467,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   <div class="vbox">
     <!-- poster="" era una referencia vacía: algunos navegadores intentan
          cargarla y pintan un primer cuadro roto. Sin atributo, no hay poster. -->
-    <video id="demoVideo" controls preload="metadata" playsinline>
+    <video id="demoVideo" data-vbase="MVDataGovernance_Demo" data-errbox="videoError"
+           controls preload="metadata" playsinline>
       <source id="demoSrc" src="video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
       <source id="demoSrcCdn" src="https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/MVDataGovernance_Demo_es.mp4" type="video/mp4">
       <span data-i="v_fallback">Tu navegador no soporta la reproducción de video HTML5.</span>
@@ -415,8 +478,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
          Sin esto el usuario se queda mirando un recuadro negro sin explicación. -->
     <div id="videoError" class="vfail" hidden role="status">
       <b data-i="v_err_t">No pudimos cargar el video</b>
-      <span data-i="v_err_d">Puede ser tu conexión o un bloqueador. Podés ver lo mismo en las capturas de acá abajo, o probar la demo directamente.</span>
-      <a class="btn btn-a" href="descargas.html" data-i="v_err_cta">Probar la demo</a>
+      <span data-i="v_err_d">Puede ser tu conexión o un bloqueador. Podés ver lo mismo en las capturas de acá abajo, o pedir una demo guiada.</span>
+      <a class="btn btn-a" href="descargas.html" data-i="v_err_cta">Pedir la demo</a>
     </div>
   </div>
   <p class="v-real">
@@ -433,13 +496,13 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
   <p class="lead-d" data-i="sh_lead">Capturas reales del programa — no maquetas. Esto es lo que ve
     tu equipo desde el primer día, en el navegador o en el programa de escritorio.</p>
   <div class="shgrid">
-    <figure class="shot"><a href="img/tab_panorama.jpg" data-shot="tab_panorama" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" data-shot="tab_panorama" loading="lazy" decoding="async" width="1100" height="1460" alt="Pestaña Panorama: KPIs de gobierno, índice de calidad y estado de los datasets"></a>
+    <figure class="shot"><a href="img/tab_panorama.jpg" data-shot="tab_panorama" target="_blank" rel="noopener"><img src="img/tab_panorama.jpg" data-shot="tab_panorama" loading="lazy" decoding="async" width="1100" height="1942" alt="Pestaña Panorama: KPIs de gobierno, índice de calidad y estado de los datasets"></a>
       <figcaption data-i="sh_c1">📊 Panorama ejecutivo: KPIs de gobierno, calidad por dominio y evolución de 12 meses</figcaption></figure>
-    <figure class="shot"><a href="img/tab_calidad.jpg" data-shot="tab_calidad" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" data-shot="tab_calidad" loading="lazy" decoding="async" width="1100" height="1640" alt="Pestaña Calidad: reglas por dimensión con umbral, resultado y filas afectadas"></a>
+    <figure class="shot"><a href="img/tab_calidad.jpg" data-shot="tab_calidad" target="_blank" rel="noopener"><img src="img/tab_calidad.jpg" data-shot="tab_calidad" loading="lazy" decoding="async" width="1100" height="2742" alt="Pestaña Calidad: reglas por dimensión con umbral, resultado y filas afectadas"></a>
       <figcaption data-i="sh_c2">✅ Motor de calidad: 44 reglas con estados, umbrales y sugerencias de corrección con IA</figcaption></figure>
-    <figure class="shot"><a href="img/tab_linaje.jpg" data-shot="tab_linaje" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" data-shot="tab_linaje" loading="lazy" decoding="async" width="1100" height="990" alt="Pestaña Linaje: grafo de origen a BI, de la tabla fuente al informe"></a>
+    <figure class="shot"><a href="img/tab_linaje.jpg" data-shot="tab_linaje" target="_blank" rel="noopener"><img src="img/tab_linaje.jpg" data-shot="tab_linaje" loading="lazy" decoding="async" width="1100" height="1315" alt="Pestaña Linaje: grafo de origen a BI, de la tabla fuente al informe"></a>
       <figcaption data-i="sh_c3">🧬 Linaje interactivo: de la fuente al tablero de BI, aguas arriba y aguas abajo</figcaption></figure>
-    <figure class="shot"><a href="img/tab_bi.jpg" data-shot="tab_bi" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" data-shot="tab_bi" loading="lazy" decoding="async" width="1100" height="1480" alt="Pestaña BI y API: tablas de gobierno publicadas para Power BI y Tableau"></a>
+    <figure class="shot"><a href="img/tab_bi.jpg" data-shot="tab_bi" target="_blank" rel="noopener"><img src="img/tab_bi.jpg" data-shot="tab_bi" loading="lazy" decoding="async" width="1100" height="4805" alt="Pestaña BI y API: tablas de gobierno publicadas para Power BI y Tableau"></a>
       <figcaption data-i="sh_c4">📤 Exportación y API: CSV, Excel, JSON, Parquet y endpoints para tu BI en un clic</figcaption></figure>
   </div>
 </div></section>
@@ -448,7 +511,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
 <section class="panel" id="plataforma"><div class="wrap">
   <div class="eyebrow" data-i="p_eye">La plataforma</div>
   <h2 class="h2" data-i="p_h2">Todo el gobierno de datos, sin fricción</h2>
-  <p class="lead-d" data-i="p_lead">Nueve módulos que trabajan juntos sobre los mismos metadatos,
+  <p class="lead-d" data-i="p_lead">Doce módulos que trabajan juntos sobre los mismos metadatos,
     disponibles en la web y en el programa de escritorio.</p>
   <div class="fgrid">
     <div class="feat"><div class="ic">📚</div><h3 data-i="f1t">Catálogo de datos</h3>
@@ -469,6 +532,12 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
       <p data-i="f8p">Toda definición sale pre-establecida por IA; el Data Owner o Steward la valida o la corrige — con nombre, cargo y fecha, igual que Purview o Collibra.</p></div>
     <div class="feat"><div class="ic">👥</div><h3 data-i="f9t">Organigrama → responsables</h3>
       <p data-i="f9p">Subí el organigrama (Excel, SQL o foto) y el programa asigna Data Owner y Steward por dataset automáticamente — editable siempre.</p></div>
+    <div class="feat"><div class="ic">🗂️</div><h3 data-i="f10t">Relevamiento por área</h3>
+      <p data-i="f10p">38 preguntas repartidas por área del pipeline, cada una con por qué se pregunta y a quién preguntarle. Anotás quién respondió y el programa te dice qué repreguntar cuando la respuesta quedó a medias — sin internet.</p></div>
+    <div class="feat"><div class="ic">🎧</div><h3 data-i="f11t">Reuniones → minuta</h3>
+      <p data-i="f11p">La transcripción de Zoom, Teams, Meet o WebEx se vuelve una minuta: quién habló y cuánto, decisiones y compromisos con la cita textual y el minuto, y qué le toca a cada etapa del pipeline.</p></div>
+    <div class="feat"><div class="ic">🧭</div><h3 data-i="f12t">Trazabilidad del pipeline</h3>
+      <p data-i="f12p">Las 12 etapas en el orden real en que ocurren, contadas dos veces: en criollo para quien decide y en técnico para quien mantiene. Con los números de TU corrida, exportable a HTML, Word y PDF.</p></div>
   </div>
 </div></section>
 
@@ -527,11 +596,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center;justif
     <span class="bib"><i>📗</i>Excel</span>
   </div>
   <div class="code">
-<span class="c"># API REST · JSON o CSV / REST API · JSON or CSV</span><br>
+<span class="c" data-i="bi_code_api"># API REST · JSON o CSV</span><br>
 GET http://127.0.0.1:8600/api/catalog?lang=es<br>
 GET http://127.0.0.1:8600/api/quality_results?lang=en&amp;format=csv<br>
 GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
-<span class="c"># Power BI → Obtener datos → Web · Tableau → Data → Web Data Connector</span>
+<span class="c" data-i="bi_code_menu"># Power BI → Obtener datos → Web · Tableau → Datos → Web Data Connector</span>
   </div>
   <p class="lead-d" style="margin-top:18px;margin-bottom:0" data-i="bi_guide">
     Guía paso a paso por herramienta en <b>docs/BI_INTEGRATION.md</b>.</p>
@@ -563,13 +632,18 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <section class="dsec" id="descargas"><div class="wrap">
   <div class="eyebrow" style="color:var(--amber)" data-i="d_eye">Descargas</div>
   <h2 class="h2 h2w" data-i="d_h2">De la web al escritorio en un clic</h2>
-  <p class="lead-w" style="margin:0 0 6px" data-i="d_lead">Tres maneras de usar MV Data Governance. Sin APK: 100% web y PC.</p>
+  <p class="lead-w" style="margin:0 0 6px" data-i="d_lead">Cuatro maneras de usar MV Data Governance. Sin APK: 100% web y PC.</p>
   <div class="dgrid">
     <div class="dcard"><div class="ic">🪟</div>
-      <h3 data-i="d1t">Instalador Windows (.exe)</h3>
-      <p data-i="d1p">Programa standalone: no requiere Python. Doble clic, acceso directo en el escritorio y listo. Se construye con <b>packaging/build_exe.bat</b> (PyInstaller + Inno Setup).</p>
-      <div class="mono">packaging\build_exe.bat</div>
+      <h3 data-i="d1t">Instalación normal (.exe)</h3>
+      <p data-i="d1p">Para tu equipo o el de tu consultora. Programa standalone: no requiere Python. Doble clic, acceso directo en el escritorio, entrada en el menú inicio y desinstalador. Arranca en plan demo y se desbloquea con la licencia que recibís al comprar — es el mismo instalador, no hay otro que bajar.</p>
+      <div class="mono">MVDataGovernance_Setup.exe</div>
       <a class="btn btn-a" href="descargas.html" data-i="d1b">⬇ Descargar (gratis)</a></div>
+    <div class="dcard"><div class="ic">💼</div>
+      <h3 data-i="d4t">Equipo o VM del cliente</h3>
+      <p data-i="d4p">Para trabajar en la máquina del cliente. No se instala: descomprimís la carpeta y abrís el programa. Sin permisos de administrador, sin tocar el registro y sin internet. Todo lo que hacés queda en la subcarpeta «Datos»: te la llevás si querés el trabajo, borrás la carpeta y no queda rastro en la máquina.</p>
+      <div class="mono">MVDataGovernance_VM.zip</div>
+      <a class="btn btn-a" href="descargas.html" data-i="d4b">⬇ Descargar (gratis)</a></div>
     <div class="dcard"><div class="ic">⚡</div>
       <h3 data-i="d2t">Versión portable (.bat)</h3>
       <p data-i="d2p">Con Python instalado alcanza un doble clic: crea el entorno, instala dependencias la primera vez y abre el programa en tu navegador.</p>
@@ -593,7 +667,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     <div class="feat"><div class="ic">🌎</div><h3 data-i="df2t">Trilingüe de verdad</h3><p data-i="df2p">ES/EN/PT en todo: programa, web, API, instalador, glosario y documentación.</p></div>
     <div class="feat"><div class="ic">🩺</div><h3 data-i="df3t">Auto-diagnóstico 100% operativo</h3><p data-i="df3p">Un comando (<b>python -m mvdg.selfcheck</b>) verifica que todo funcione: 30 chequeos, cero bugs.</p></div>
     <div class="feat"><div class="ic">🔌</div><h3 data-i="df4t">Compatible con cualquier BI</h3><p data-i="df4p">Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — por archivo o API REST.</p></div>
-    <div class="feat"><div class="ic">🖥️</div><h3 data-i="df5t">Web + PC, sin APK</h3><p data-i="df5p">Tres formas de desplegar (.exe, .bat, web) según lo que permita la TI de cada empresa.</p></div>
+    <div class="feat"><div class="ic">🖥️</div><h3 data-i="df5t">Web + PC, sin APK</h3><p data-i="df5p">Cuatro formas de desplegar (instalación normal, portable para la VM del cliente, .bat y web) según lo que permita la TI de cada empresa.</p></div>
     <div class="feat"><div class="ic">🎙️</div><h3 data-i="df6t">Cierra el círculo humano</h3><p data-i="df6p">Fichas de clientes y speeches IA para lo que ningún software automatiza: dueños, definiciones, adopción.</p></div>
   </div>
 </div></section>
@@ -614,7 +688,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <th data-i="cmp_c4">BI cloud<br><small>(Purview, Atlan)</small></th>
     </tr></thead>
     <tbody>
-      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia USD 149 · USD 390/mes</td><td class="no" data-i="cmp_r1b">USD 60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">USD 40k+/año</td></tr>
+      <tr><td data-i="cmp_r1">Precio de entrada</td><td class="yes" data-i="cmp_r1a">Gratis · Licencia USD 149 · Professional USD 390</td><td class="no" data-i="cmp_r1b">USD 60k–500k/año</td><td data-i="cmp_r1c">Gratis (+ equipo)</td><td data-i="cmp_r1d">USD 40k+/año</td></tr>
       <tr><td data-i="cmp_r2">Datos 100% locales</td><td class="yes">✓</td><td>Parcial</td><td class="yes">✓</td><td class="no">✗ (nube)</td></tr>
       <tr><td data-i="cmp_r3">Listo para usar sin equipo técnico</td><td class="yes">✓</td><td>Parcial</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td data-i="cmp_r4">Trilingüe ES/EN/PT</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
@@ -655,6 +729,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <tr><td data-i="hon_h11">Clasificación de datos sensibles</td><td class="yes" data-i="hon_h11_a">✅ clasificadores gestionados + etiquetas MIP</td><td class="part" data-i="hon_h11_b">🟡 heurística de PII + MIP real, solo en OneDrive/SharePoint</td></tr>
       <tr><td data-i="hon_h12">Enforcement de acceso (bloquear consultas)</td><td class="yes" data-i="hon_h12_a">✅ Purview, dentro del stack Azure</td><td class="part" data-i="hon_h12_b">🟡 genera el DDL (GRANT/REVOKE + enmascarado); lo ejecuta un DBA</td></tr>
       <tr><td data-i="hon_h13">Precio y despliegue</td><td data-i="hon_h13_a">Suscripción cloud por capacidad; requiere tenant e infra</td><td class="yes" data-i="hon_h13_b">Licencia única o suscripción chica; corre en una notebook, sin nube</td></tr>
+      <tr><td data-i="hon_h14">Relevamiento del cliente y minutas de reunión</td><td class="no" data-i="hon_h14_a">➖ fuera de alcance: son suites de metadatos</td><td class="yes" data-i="hon_h14_b">✅ 38 preguntas por área + minuta con quién dijo qué, atadas al mismo pipeline</td></tr>
     </tbody>
   </table>
   </div>
@@ -666,18 +741,18 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
 <section class="panel" id="precios"><div class="wrap">
   <div class="eyebrow" data-i="pr_eye">Precios</div>
   <h2 class="h2" data-i="pr_h2">Planes simples, sin sorpresas</h2>
-  <p class="lead-d" data-i="pr_lead">Probá gratis con datos sintéticos. Comprá la licencia de PC con un pago único por MercadoPago, o escalá al plan mensual para equipos.</p>
+  <p class="lead-d" data-i="pr_lead">Probá gratis con datos sintéticos. Comprá la licencia de PC o el plan Professional para equipos, con un pago único por MercadoPago.</p>
   <div class="pgrid four">
     <div class="plan">
-      <h3 data-i="pl1t">Gratis</h3><div class="who" data-i="pl1w">Para conocer la plataforma con datos de demo.</div>
-      <div class="amt">USD 0</div><div class="per" data-i="pl1per">Para siempre</div>
+      <h3 data-i="pl1t">Demo guiada</h3><div class="who" data-i="pl1w">Para ver la plataforma sobre tu propio caso.</div>
+      <div class="amt">USD 0</div><div class="per" data-i="pl1per">A pedido · 30 minutos</div>
       <ul>
-        <li data-i="pl1a">Demo completa con datos sintéticos</li>
-        <li data-i="pl1b">3 idiomas incluidos</li>
-        <li data-i="pl1c">Exportación CSV / Excel / JSON</li>
-        <li data-i="pl1d">Programa Windows (.bat)</li>
+        <li data-i="pl1a">Sesión 1 a 1, sobre tus datos</li>
+        <li data-i="pl1b">Recorrido completo de la plataforma</li>
+        <li data-i="pl1c">Licencia de prueba al terminar</li>
+        <li data-i="pl1d">Sin tarjeta ni compromiso</li>
       </ul>
-      <a class="btn btn-od" href="descargas.html" data-i="pl1btn">Descargar demo</a>
+      <a class="btn btn-od" href="descargas.html" data-i="pl1btn">Pedir la demo</a>
     </div>
     <div class="plan pop"><span class="tag" data-i="pl2tag">Mejor valor</span>
       <h3 data-i="pl2t">Licencia PC</h3><div class="who" data-i="pl2w">Pago único, tuya para siempre. Descarga por MercadoPago.</div>
@@ -691,14 +766,31 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
       <a class="btn btn-a" data-mp="licencia" href="#" data-i="pl2btn">Comprar con MercadoPago</a>
     </div>
     <div class="plan">
-      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (mensual).</div>
-      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios</div>
+      <h3 data-i="pl3t">Professional</h3><div class="who" data-i="pl3w">Para equipos que gobiernan en serio (suscripción mensual).</div>
+      <div class="amt">USD <span id="pricePro">390</span><small data-i="pl_mo2">/mes</small></div><div class="uyu" id="uyuPro"></div><div class="per" data-i="pl3per">Hasta 25 usuarios · se cancela cuando quieras</div>
       <ul>
         <li data-i="pl3a">API REST para BI ilimitada</li>
         <li data-i="pl3b">Instalador Windows (.exe)</li>
         <li data-i="pl3c">Alertas de calidad y SLA</li>
         <li data-i="pl3d">Soporte prioritario</li>
       </ul>
+      <a class="btn btn-d" data-mp="pro" data-mp-form="susForm" href="#" data-i="pl3btn">Suscribirme</a>
+      <!-- La suscripción de MercadoPago (preapproval) EXIGE el email del
+           pagador para crearse. Sin este campo el botón mandaba {plan:'pro'}
+           pelado y la compra moría en 400: no era un detalle de UX, era el
+           plan mensual entero sin forma de comprarse. -->
+      <form id="susForm" class="trial-form" hidden>
+        <input type="email" id="susEmail" required
+              data-i-ph="pl3sus_ph" placeholder="tu@empresa.com" autocomplete="email"
+              data-i-al="pl3sus_al" aria-label="Tu email para la suscripción">
+        <button type="submit" class="btn btn-d" data-i="pl3sus_go">Continuar a MercadoPago</button>
+      </form>
+      <!-- Antes habia acá una prueba de 14 dias que se emitia sola con solo
+           dejar un email. Salio junto con la descarga abierta: una licencia
+           que cualquiera se auto-emite es la misma puerta que se acaba de
+           cerrar, un paso mas adentro. La prueba ahora se entrega despues de
+           la demo 1 a 1, que es lo que la pagina de acceso coordina. -->
+      <a class="trial-link" href="descargas.html" data-i="pl3trial">o pedí una demo guiada · sin tarjeta</a>
       <a class="btn btn-d" data-mp="pro" href="#" data-i="pl3btn">Suscribirme</a>
       <button type="button" class="trial-link" id="trialToggle" data-i="pl3trial">o probá 14 días gratis · sin tarjeta</button>
       <form id="trialForm" class="trial-form" hidden>
@@ -722,31 +814,6 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
   </div>
   <p class="paynote" data-i="pr_pay">Pagá con MercadoPago: tarjeta, débito, efectivo o dinero en cuenta. Al confirmar el pago se habilita la descarga.</p>
 
-  <!-- CREDITOS -->
-  <div class="eyebrow" style="margin-top:44px" data-i="cr_eye">Créditos (opcional)</div>
-  <h2 class="h2" data-i="cr_h2">Potenciá con créditos IA y packs</h2>
-  <p class="lead-d" data-i="cr_lead">Comprá créditos por MercadoPago y usalos cuando quieras en funciones de IA (sugerencias avanzadas, definiciones de glosario, análisis) o para desbloquear packs embebidos: ZIPs de ejemplos, datasets y plantillas de gobierno.</p>
-  <div class="crgrid">
-    <div class="crcard">
-      <div class="crn"><span id="cr100c">100</span> <span data-i="cr_credits">créditos</span></div>
-      <div class="cramt">USD <span id="cr100p">9</span></div><div class="uyu" id="uyu100"></div>
-      <div class="crx" data-i="cr100x">Para probar la IA y bajar un pack de ejemplo.</div>
-      <a class="btn btn-od" data-mp="cred100" href="#" data-i="cr_buy">Comprar</a>
-    </div>
-    <div class="crcard pop"><span class="crtag" data-i="cr_best">+10% bonus</span>
-      <div class="crn"><span id="cr550c">550</span> <span data-i="cr_credits2">créditos</span></div>
-      <div class="cramt">USD <span id="cr550p">39</span></div><div class="uyu" id="uyu550"></div>
-      <div class="crx" data-i="cr550x">El más elegido para uso regular.</div>
-      <a class="btn btn-a" data-mp="cred550" href="#" data-i="cr_buy2">Comprar</a>
-    </div>
-    <div class="crcard">
-      <div class="crn"><span id="cr2500c">2.500</span> <span data-i="cr_credits3">créditos</span></div>
-      <div class="cramt">USD <span id="cr2500p">149</span></div><div class="uyu" id="uyu2500"></div>
-      <div class="crx" data-i="cr2500x">Mejor precio por crédito, para equipos.</div>
-      <a class="btn btn-od" data-mp="cred2500" href="#" data-i="cr_buy3">Comprar</a>
-    </div>
-  </div>
-  <p class="paynote" data-i="cr_use">Ejemplos de consumo: 1 sugerencia IA = 1 crédito · auto-definición de glosario = 2 créditos · pack de ejemplo (ZIP) = 20 créditos. Los créditos no vencen.</p>
 </div></section>
 
 <!-- RESEÑAS -->
@@ -781,7 +848,7 @@ GET http://127.0.0.1:8600/api/lineage?lang=pt<br>
     <details><summary data-i="fq5q">¿En qué idiomas está?</summary>
       <div class="a" data-i="fq5a">Español, inglés y portugués — en toda la superficie: el programa, esta web, la API (?lang=es|en|pt), el instalador de Windows y la documentación. El glosario guarda cada definición en los tres idiomas.</div></details>
     <details><summary data-i="fq6q">¿Puedo probarlo gratis? ¿Cuánto tarda ver resultados?</summary>
-      <div class="a" data-i="fq6a">Sí: el plan Starter es gratis para siempre con datos de demo, y podés perfilar tus propios archivos desde el primer día. El índice de calidad real lo ves el día 1; el gobierno completo andando, en unos 90 días (mirá el plan de implementación acá arriba).</div></details>
+      <div class="a" data-i="fq6a">Sí, pero no es de descarga libre: pedís la demo, hacemos una sesión 1 a 1 de 30 minutos sobre tu caso y al terminar te enviamos tu licencia de prueba para seguir por tu cuenta con tus propios archivos. El índice de calidad real lo ves el día 1; el gobierno completo andando, en unos 90 días (mirá el plan de implementación acá arriba).</div></details>
   </div>
 </div></section>
 
@@ -821,7 +888,7 @@ en:{
   cmp_eye:"Why MV",cmp_h2:"How we compare",
   cmp_lead:"Data governance for those who can't pay an enterprise suite nor run an open-source tool without a dedicated technical team.",
   cmp_c0:"Feature",cmp_c2:"Enterprise suites<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Entry price",cmp_r1a:"Free · License USD 149 · USD 390/mo",cmp_r1b:"USD 60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"USD 40k+/yr",
+  cmp_r1:"Entry price",cmp_r1a:"Free · License USD 149 · Professional USD 390",cmp_r1b:"USD 60k–500k/yr",cmp_r1c:"Free (+ team)",cmp_r1d:"USD 40k+/yr",
   cmp_r2:"100% local data",cmp_r3:"Ready to use without a tech team",cmp_r4:"Trilingual ES/EN/PT",cmp_r5:"Results on day 1",cmp_r6:"Steward service included",cmp_r7:"No APK · web + PC",
   cmp_r8:"Migrates to and from Purview / Collibra",cmp_r8a:"✓ (real API)",cmp_r8b:"Not applicable (they're the destination)",cmp_r8c:"Partial",cmp_r8d:"Not applicable (they're the destination)",
   nav_guide:"What is it?",
@@ -834,13 +901,15 @@ en:{
   df2t:"Truly trilingual",df2p:"ES/EN/PT everywhere: program, website, API, installer, glossary and docs.",
   df3t:"100%-operational self-check",df3p:"One command (<b>python -m mvdg.selfcheck</b>) verifies everything works: 30 checks, zero bugs.",
   df4t:"Works with any BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — by file or REST API.",
-  df5t:"Web + PC, no APK",df5p:"Three ways to deploy (.exe, .bat, web) depending on each company's IT policy.",
+  df5t:"Web + PC, no APK",df5p:"Four ways to deploy (normal install, portable for the client's VM, .bat and web) depending on each company's IT policy.",
   df6t:"Closes the human loop",df6p:"Client records and AI speeches for what no software automates: owners, definitions, adoption.",
 nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platform:"Platform",nav_enterprise:"Enterprise",nav_bi:"BI",
   nav_impl:"Rollout",nav_downloads:"Downloads",nav_pricing:"Pricing",nav_contact:"Contact",nav_cta:"Download",
   kick:"100% Web + Desktop app · ES / EN / PT",
   h1_a:"Your data, governed.\nYour decisions, trustworthy.",
   lead:"Catalog, quality, lineage, glossary and policies in a single platform — with direct export to Power BI, Tableau, Looker, MicroStrategy and any other BI tool.",
+  cta_video:"▶ See the before and after",cta_dl:"Request demo access",
+  h_ownfile:"🔎 BI consultant? In the 1:1 demo we load your own CSV or Excel and you get an audited quality catalog in minutes.",
   cta_video:"▶ Watch the demo",cta_dl:"Download the demo",
   h_ownfile:"🔎 BI consultant? Upload your own CSV or Excel when you open the demo and get an audited quality catalog in minutes — no access request, no talking to us.",
   m1:"quality dimensions measured",m2:"languages: Spanish · English · Portuguese",
@@ -848,6 +917,11 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   mock_live:"Live monitoring",mock_k1:"Quality index",mock_k2:"Datasets",mock_k3:"Rules",
   mb1:"Completeness",mb2:"Uniqueness",mb3:"Validity",mb4:"Consistency",mb5:"Timeliness",mb6:"Accuracy",
   mock_foot:"✓ Catalog up to date · 2 quality alerts assigned to the steward",
+  ad_eye:"Measured case · 40 seconds · ES / EN / PT",ad_h2:"Before and after, with numbers",
+  ad_lead:"The same data portfolio, ungoverned and governed. Quality index, rules passing and rows with problems — measured by the same engine that will run on your PC, not by a slide deck.",
+  ad_err_d:"It may be your connection or a blocker. The same numbers are measured and explained in the guide.",
+  ad_err_cta:"See the measured case",
+  ad_repro:"Reproducible on your PC: ",ad_repro_link:"how this before and after is measured",
   v_eye:"Narrated demo · 1 minute · ES / EN / PT",v_h2:"Watch MV Data Governance in action",
   v_lead:"One minute, with voice-over in your language (Spanish, English or Portuguese): from catalog to BI dashboard, quality measured across 6 dimensions, end-to-end lineage and one-click export.",
   v_fallback:"Your browser does not support HTML5 video playback.",
@@ -890,6 +964,7 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   hon_h12:"Access enforcement (blocking queries)",
   hon_h12_a:"✅ Purview, inside the Azure stack",
   hon_h12_b:"🟡 generates the DDL (GRANT/REVOKE + masking); a DBA runs it",
+  hon_h14:"Client discovery and meeting minutes",hon_h14_a:"➖ out of scope: they are metadata suites",hon_h14_b:"✅ 38 questions by area + minutes with who said what, tied to the same pipeline",
   hon_h13:"Price and deployment",
   hon_h13_a:"Cloud subscription by capacity; needs a tenant and infra",
   hon_h13_b:"One-off licence or small subscription; runs on a laptop, no cloud",
@@ -898,8 +973,8 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   hon_g2_b:"✅ trilingual ES/EN/PT",
   hon_g2:"Business glossary",
   v_err_t:"We couldn't load the video",
-  v_err_d:"It may be your connection or a blocker. You can see the same thing in the screenshots below, or try the demo directly.",
-  v_err_cta:"Try the demo",
+  v_err_d:"It may be your connection or a blocker. You can see the same thing in the screenshots below, or request a guided demo.",
+  v_err_cta:"Request the demo",
   v_real_txt:"Prefer something without narration or editing? This is a ",
   v_real_link:"30s real screencast",
   v_real_txt2:", recorded automatically against the app running (catalog → quality → lineage → BI), no cuts.",
@@ -941,9 +1016,9 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   fq5q:"Which languages is it in?",
   fq5a:"Spanish, English and Portuguese — across the whole surface: the program, this website, the API (?lang=es|en|pt), the Windows installer and the documentation. The glossary stores every definition in all three languages.",
   fq6q:"Can I try it for free? How soon do I see results?",
-  fq6a:"Yes: the Starter plan is free forever with demo data, and you can profile your own files from day one. You see your real quality index on day 1; full governance running takes about 90 days (see the rollout plan above).",
+  fq6a:"Yes, but it is not a free download: you request the demo, we run a 30-minute 1:1 session on your case, and afterwards we send you your trial license to continue on your own with your own files. You see your real quality index on day 1; full governance running takes about 90 days (see the rollout plan above).",
   p_eye:"The platform",p_h2:"All of data governance, without friction",
-  p_lead:"Nine modules working together on the same metadata, available on the web and in the desktop app.",
+  p_lead:"Twelve modules working together on the same metadata, available on the web and in the desktop app.",
   f1t:"Data catalog",f1p:"Single inventory with owner, steward, domain, classification (PII included), freshness and column dictionary.",
   f2t:"Quality across 6 dimensions",f2p:"Rule engine: completeness, uniqueness, validity, consistency, timeliness and accuracy, with thresholds and alerts.",
   f3t:"End-to-end lineage",f3p:"From source to dashboard: interactive graph with upstream and downstream traversal for every asset.",
@@ -953,6 +1028,9 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   f7t:"MDM & golden record",f7p:"Finds rows that likely represent the same entity and builds the golden record that unifies them — no false positives from common names.",
   f8t:"Curation with an owner",f8p:"Every definition ships pre-established by AI; the Data Owner or Steward validates or corrects it — with name, role and date, same pattern as Purview or Collibra.",
   f9t:"Org chart → responsibles",f9p:"Upload the org chart (Excel, SQL or a photo) and the program assigns Data Owner and Steward per dataset automatically — always editable.",
+  f10t:"Discovery by area",f10p:"38 questions split by pipeline area, each with why it is asked and who to ask. You record who answered, and the program tells you what to ask next when an answer was left half-open — with no internet.",
+  f11t:"Meetings → minutes",f11p:"The transcript from Zoom, Teams, Meet or WebEx becomes minutes: who spoke and how much, decisions and commitments with the verbatim quote and the timestamp, and what each pipeline stage has to do about it.",
+  f12t:"Pipeline traceability",f12p:"The 12 stages in the real order they happen, told twice: in plain words for whoever decides and in technical terms for whoever maintains it. With the numbers from YOUR run, exportable to HTML, Word and PDF.",
   ent_eye:"Enterprise migration & integration",ent_h2:"Connects to Purview and Collibra — never locks you in",
   ent_lead:"Capabilities that until now only came with suites costing tens of thousands of dollars a year, now inside MV Data Governance: real API migration, cloud-scale discovery and technical enforcement. Everything off by default — it only turns on with your own credentials, which we never see or store.",
   ent1t:"Migration to Microsoft Purview",ent1p:"Push your catalog, glossary and PII classifications straight to Purview via its real API (Atlas). You do the heavy lifting here; Purview stays the corporate source of truth — an accelerator, not a black box.",
@@ -965,32 +1043,32 @@ nav_sub:"· Data governance",nav_video:"Video",nav_shots:"Dashboards",nav_platfo
   bi_eye:"Works with your BI",bi_h2:"Connect any BI tool",
   bi_lead:"Every governance table (catalog, quality, lineage, glossary, policies and KPIs) exports as CSV, Excel, JSON or Parquet, and is also served over a REST API — your tool picks the format, not us.",
   bi_guide:"Step-by-step guide per tool in docs/BI_INTEGRATION.md.",
+  bi_code_api:"# REST API · JSON or CSV",
+  bi_code_menu:"# Power BI → Get data → Web · Tableau → Data → Web Data Connector",
   d_eye:"Downloads",d_h2:"From the web to the desktop in one click",
-  d_lead:"Three ways to use MV Data Governance. No APK: 100% web and PC.",
-  d1t:"Windows installer (.exe)",d1p:"Standalone program: no Python required. Double-click, desktop shortcut, done. Built with packaging/build_exe.bat (PyInstaller + Inno Setup).",
+  d_lead:"Four ways to use MV Data Governance. No APK: 100% web and PC.",
+  d1t:"Normal install (.exe)",d1p:"For your own machine or your consultancy's. Standalone program: no Python required. Double-click, desktop shortcut, Start-menu entry and uninstaller. It starts in demo mode and unlocks with the licence you get when you buy — same installer, there is no other one to download.",
   d1b:"⬇ Download (free)",
+  d4t:"Client machine or VM",d4p:"To work on the client's machine. Nothing is installed: you unzip the folder and open the program. No administrator rights, no registry, no internet. Everything you do stays in the \"Datos\" subfolder: take it with you if you want the work, delete the folder and nothing is left on the machine.",
+  d4b:"⬇ Download (free)",
   d2t:"Portable version (.bat)",d2p:"With Python installed, a double-click is enough: it creates the environment, installs dependencies on first run and opens the program in your browser.",
   d2b:"⬇ Download (free)",
   d3t:"100% Web",d3p:"The same platform running on your company server, only on IT-authorized hosts. Launch with MV_DataGovernance_Server.bat / run_server.sh.",
   d3b:"⬇ Download (free)",
   pr_eye:"Pricing",pr_h2:"Simple plans, no surprises",
-  pr_lead:"Try it free on synthetic data. Buy the PC license with a one-time payment via MercadoPago, or scale to the monthly team plan.",
+  pr_lead:"Try it free on synthetic data. Buy the PC license or the Professional team plan, with a one-time payment via MercadoPago.",
   pr_pay:"Pay with MercadoPago: card, debit, cash or account money. The download unlocks once the payment is confirmed.",
-  pl1t:"Free",pl1w:"To explore the platform with demo data.",pl1per:"Forever",
-  pl1a:"Full demo with synthetic data",pl1b:"3 languages included",pl1c:"CSV / Excel / JSON export",pl1d:"Windows program (.bat)",pl1btn:"Download demo",
+  pl1t:"Guided demo",pl1w:"To see the platform on your own case.",pl1per:"On request · 30 minutes",
+  pl1a:"1:1 session, on your data",pl1b:"Full walkthrough of the platform",pl1c:"Trial license afterwards",pl1d:"No card, no commitment",pl1btn:"Request the demo",
   pl2tag:"Best value",pl2t:"PC License",pl2w:"One-time payment, yours forever. Download via MercadoPago.",pl2per:"One-time · 1 machine",
   pl2a:"The full program with no time limit",pl2b:"Database connectors",pl2c:"Company records and BI export",pl2d:"Minor updates included",pl2btn:"Buy with MercadoPago",
-  pl3t:"Professional",pl3w:"For teams governing for real (monthly).",pl_mo2:"/mo",pl3per:"Up to 25 users",
+  pl3t:"Professional",pl3w:"For teams governing for real (monthly subscription).",pl_mo2:"/mo",pl3per:"Up to 25 users · cancel anytime",
   pl3a:"Unlimited BI REST API",pl3b:"Windows installer (.exe)",pl3c:"Quality alerts and SLA",pl3d:"Priority support",pl3btn:"Subscribe",
+  pl3trial:"or request a guided demo · no credit card",
+  pl3sus_ph:"you@company.com",pl3sus_al:"Your email for the subscription",pl3sus_go:"Continue to MercadoPago",
   pl3trial:"or try 14 days free · no credit card",pl3trial_ph:"you@company.com",pl3trial_go:"Start 14-day trial",
   pl4t:"Enterprise",pl4w:"For organizations with regulatory requirements.",pl4amt:"Custom",pl4per:"Unlimited users",
   pl4a:"On-premise or private cloud",pl4b:"SSO and full audit",pl4c:"Compliance (GDPR / LGPD / local laws)",pl4d:"Custom integrations",pl4btn:"Contact us",
-  cr_eye:"Credits (optional)",cr_h2:"Boost with AI credits and packs",
-  cr_lead:"Buy credits via MercadoPago and use them anytime on AI features (advanced suggestions, glossary definitions, analysis) or to unlock embedded packs: example ZIPs, datasets and governance templates.",
-  cr_credits:"credits",cr_credits2:"credits",cr_credits3:"credits",cr_best:"+10% bonus",
-  cr100x:"To try the AI and download an example pack.",cr550x:"The most popular for regular use.",cr2500x:"Best price per credit, for teams.",
-  cr_buy:"Buy",cr_buy2:"Buy",cr_buy3:"Buy",
-  cr_use:"Usage examples: 1 AI suggestion = 1 credit · glossary auto-definition = 2 credits · example pack (ZIP) = 20 credits. Credits never expire.",
   c_eye:"Contact",c_h2:"Let's talk about your data",
   c_lead:"Tell us what you need to govern and we'll reply with a concrete proposal.",
   c_name:"Name",c_mail:"Email",c_msg:"Message",c_send:"Send",
@@ -1002,7 +1080,7 @@ pt:{
   cmp_eye:"Por que MV",cmp_h2:"Como nos comparamos",
   cmp_lead:"Governança de dados para quem não pode pagar uma suíte enterprise nem operar uma ferramenta open source sem equipe técnica dedicada.",
   cmp_c0:"Característica",cmp_c2:"Suítes enterprise<br><small>(Collibra, Alation…)</small>",cmp_c3:"Open source<br><small>(DataHub, OpenMetadata)</small>",cmp_c4:"BI cloud<br><small>(Purview, Atlan)</small>",
-  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença USD 149 · USD 390/mês",cmp_r1b:"USD 60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"USD 40k+/ano",
+  cmp_r1:"Preço de entrada",cmp_r1a:"Grátis · Licença USD 149 · Professional USD 390",cmp_r1b:"USD 60k–500k/ano",cmp_r1c:"Grátis (+ equipe)",cmp_r1d:"USD 40k+/ano",
   cmp_r2:"Dados 100% locais",cmp_r3:"Pronto para usar sem equipe técnica",cmp_r4:"Trilíngue ES/EN/PT",cmp_r5:"Resultados no dia 1",cmp_r6:"Serviço de steward incluído",cmp_r7:"Sem APK · web + PC",
   cmp_r8:"Migra para e desde Purview / Collibra",cmp_r8a:"✓ (API real)",cmp_r8b:"Não se aplica (são o destino)",cmp_r8c:"Parcial",cmp_r8d:"Não se aplica (são o destino)",
   nav_guide:"O que é?",
@@ -1015,13 +1093,15 @@ pt:{
   df2t:"Trilíngue de verdade",df2p:"ES/EN/PT em tudo: programa, site, API, instalador, glossário e documentação.",
   df3t:"Autodiagnóstico 100% operacional",df3p:"Um comando (<b>python -m mvdg.selfcheck</b>) verifica que tudo funciona: 30 checagens, zero bugs.",
   df4t:"Compatível com qualquer BI",df4p:"Power BI, Tableau, Looker, MicroStrategy, Qlik, Excel — por arquivo ou API REST.",
-  df5t:"Web + PC, sem APK",df5p:"Três formas de implantar (.exe, .bat, web) conforme a política de TI de cada empresa.",
+  df5t:"Web + PC, sem APK",df5p:"Quatro formas de implantar (instalação normal, portátil para a VM do cliente, .bat e web) conforme a política de TI de cada empresa.",
   df6t:"Fecha o ciclo humano",df6p:"Fichas de clientes e speeches IA para o que nenhum software automatiza: donos, definições, adoção.",
 nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_platform:"Plataforma",nav_enterprise:"Enterprise",nav_bi:"BI",
   nav_impl:"Implantação",nav_downloads:"Downloads",nav_pricing:"Preços",nav_contact:"Contato",nav_cta:"Baixar",
   kick:"100% Web + Programa PC · ES / EN / PT",
   h1_a:"Seus dados, governados.\nSuas decisões, confiáveis.",
   lead:"Catálogo, qualidade, linhagem, glossário e políticas em uma única plataforma — com exportação direta para Power BI, Tableau, Looker, MicroStrategy e qualquer outra ferramenta de BI.",
+  cta_video:"▶ Ver o antes e depois",cta_dl:"Pedir acesso à demo",
+  h_ownfile:"🔎 Consultor de BI? Na demo 1 a 1 carregamos seu próprio CSV ou Excel e você tem um catálogo de qualidade auditado em minutos.",
   cta_video:"▶ Ver a demo",cta_dl:"Baixar a demo",
   h_ownfile:"🔎 Consultor de BI? Envie seu próprio CSV ou Excel ao abrir a demo e tenha um catálogo de qualidade auditado em minutos — sem pedir acesso, sem falar conosco.",
   m1:"dimensões de qualidade medidas",m2:"idiomas: espanhol · inglês · português",
@@ -1029,6 +1109,11 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   mock_live:"Monitoramento ao vivo",mock_k1:"Índice de qualidade",mock_k2:"Datasets",mock_k3:"Regras",
   mb1:"Completude",mb2:"Unicidade",mb3:"Validade",mb4:"Consistência",mb5:"Pontualidade",mb6:"Exatidão",
   mock_foot:"✓ Catálogo atualizado · 2 alertas de qualidade atribuídos ao steward",
+  ad_eye:"Caso medido · 40 segundos · ES / EN / PT",ad_h2:"Antes e depois, com números",
+  ad_lead:"A mesma carteira de dados, sem governança e governada. Índice de qualidade, regras em verde e linhas com problemas — medido pelo mesmo motor que vai rodar no seu PC, não por uma apresentação.",
+  ad_err_d:"Pode ser a sua conexão ou um bloqueador. Os mesmos números estão medidos e explicados no guia.",
+  ad_err_cta:"Ver o caso medido",
+  ad_repro:"Reproduzível no seu PC: ",ad_repro_link:"como se mede este antes e depois",
   v_eye:"Demo narrada · 1 minuto · ES / EN / PT",v_h2:"Veja o MV Data Governance em ação",
   v_lead:"Um minuto, com narração no seu idioma (espanhol, inglês ou português): do catálogo ao painel de BI, qualidade medida em 6 dimensões, linhagem de ponta a ponta e exportação em um clique.",
   v_fallback:"Seu navegador não suporta a reprodução de vídeo HTML5.",
@@ -1071,6 +1156,7 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   hon_h12:"Enforcement de acesso (bloquear consultas)",
   hon_h12_a:"✅ Purview, dentro do stack Azure",
   hon_h12_b:"🟡 gera o DDL (GRANT/REVOKE + mascaramento); um DBA executa",
+  hon_h14:"Levantamento do cliente e atas de reunião",hon_h14_a:"➖ fora de escopo: são suítes de metadados",hon_h14_b:"✅ 38 perguntas por área + ata com quem disse o quê, ligadas ao mesmo pipeline",
   hon_h13:"Preço e implantação",
   hon_h13_a:"Assinatura cloud por capacidade; exige tenant e infra",
   hon_h13_b:"Licença única ou assinatura pequena; roda num notebook, sem nuvem",
@@ -1079,8 +1165,8 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   hon_g2_b:"✅ trilíngue ES/EN/PT",
   hon_g2:"Glossário de negócio",
   v_err_t:"Não conseguimos carregar o vídeo",
-  v_err_d:"Pode ser sua conexão ou um bloqueador. Você pode ver o mesmo nas capturas abaixo, ou testar a demo diretamente.",
-  v_err_cta:"Testar a demo",
+  v_err_d:"Pode ser sua conexão ou um bloqueador. Você pode ver o mesmo nas capturas abaixo, ou pedir uma demo guiada.",
+  v_err_cta:"Pedir a demo",
   v_real_txt:"Prefere algo sem narração nem edição? Este é um ",
   v_real_link:"screencast real de 30s",
   v_real_txt2:", gravado automaticamente contra o app rodando (catálogo → qualidade → linhagem → BI), sem cortes.",
@@ -1122,9 +1208,9 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   fq5q:"Em quais idiomas está?",
   fq5a:"Espanhol, inglês e português — em toda a superfície: o programa, este site, a API (?lang=es|en|pt), o instalador do Windows e a documentação. O glossário guarda cada definição nos três idiomas.",
   fq6q:"Posso testar grátis? Quando vejo resultados?",
-  fq6a:"Sim: o plano Starter é grátis para sempre com dados de demo, e você pode perfilar seus próprios arquivos desde o primeiro dia. O índice de qualidade real você vê no dia 1; a governança completa funcionando, em cerca de 90 dias (veja o plano de implantação acima).",
+  fq6a:"Sim, mas não é download livre: você pede a demo, fazemos uma sessão 1 a 1 de 30 minutos sobre o seu caso e no final enviamos sua licença de teste para continuar por conta própria com seus próprios arquivos. O índice de qualidade real você vê no dia 1; a governança completa funcionando, em cerca de 90 dias (veja o plano de implantação acima).",
   p_eye:"A plataforma",p_h2:"Toda a governança de dados, sem atrito",
-  p_lead:"Nove módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
+  p_lead:"Doze módulos que trabalham juntos sobre os mesmos metadados, disponíveis na web e no programa de desktop.",
   f1t:"Catálogo de dados",f1p:"Inventário único com dono, steward, domínio, classificação (PII incluída), atualidade e dicionário de colunas.",
   f2t:"Qualidade em 6 dimensões",f2p:"Motor de regras: completude, unicidade, validade, consistência, pontualidade e exatidão, com limites e alertas.",
   f3t:"Linhagem de ponta a ponta",f3p:"Da fonte ao dashboard: grafo interativo com navegação a montante e a jusante para cada ativo.",
@@ -1134,6 +1220,9 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   f7t:"MDM e golden record",f7p:"Encontra linhas que provavelmente são a mesma entidade e monta o registro dourado que as unifica — sem falsos positivos por nomes comuns.",
   f8t:"Curadoria com dono",f8p:"Toda definição sai pré-estabelecida por IA; o Data Owner ou Steward valida ou corrige — com nome, cargo e data, mesmo padrão do Purview ou Collibra.",
   f9t:"Organograma → responsáveis",f9p:"Envie o organograma (Excel, SQL ou foto) e o programa atribui Data Owner e Steward por dataset automaticamente — sempre editável.",
+  f10t:"Levantamento por área",f10p:"38 perguntas divididas por área do pipeline, cada uma com por que se pergunta e a quem perguntar. Você anota quem respondeu e o programa diz o que reperguntar quando a resposta ficou pela metade — sem internet.",
+  f11t:"Reuniões → ata",f11p:"A transcrição do Zoom, Teams, Meet ou WebEx vira uma ata: quem falou e quanto, decisões e compromissos com a citação textual e o minuto, e o que cabe a cada etapa do pipeline.",
+  f12t:"Rastreabilidade do pipeline",f12p:"As 12 etapas na ordem real em que ocorrem, contadas duas vezes: em bom português para quem decide e em termos técnicos para quem mantém. Com os números da SUA execução, exportável para HTML, Word e PDF.",
   ent_eye:"Migração e integração enterprise",ent_h2:"Conecta com Purview e Collibra — nunca te prende",
   ent_lead:"Capacidades que até agora só vinham em suítes de dezenas de milhares de dólares por ano, agora dentro do MV Data Governance: migração real por API, descoberta em escala de nuvem e enforcement técnico. Tudo desligado por padrão — só liga com suas próprias credenciais, que nunca vemos nem guardamos.",
   ent1t:"Migração para o Microsoft Purview",ent1p:"Envie seu catálogo, glossário e classificações de PII direto para o Purview pela API real (Atlas). Você faz o trabalho pesado aqui; o Purview fica como fonte de verdade corporativa — acelerador, não caixa-preta.",
@@ -1146,32 +1235,32 @@ nav_sub:"· Governança de dados",nav_video:"Vídeo",nav_shots:"Painéis",nav_pl
   bi_eye:"Compatível com seu BI",bi_h2:"Conecte qualquer ferramenta de BI",
   bi_lead:"Todas as tabelas de governança (catálogo, qualidade, linhagem, glossário, políticas e KPIs) são exportadas como CSV, Excel, JSON ou Parquet, e também servidas por API REST — o formato quem escolhe é a sua ferramenta.",
   bi_guide:"Guia passo a passo por ferramenta em docs/BI_INTEGRATION.md.",
+  bi_code_api:"# API REST · JSON ou CSV",
+  bi_code_menu:"# Power BI → Obter dados → Web · Tableau → Dados → Web Data Connector",
   d_eye:"Downloads",d_h2:"Da web ao desktop em um clique",
-  d_lead:"Três maneiras de usar o MV Data Governance. Sem APK: 100% web e PC.",
-  d1t:"Instalador Windows (.exe)",d1p:"Programa standalone: não requer Python. Duplo clique, atalho na área de trabalho e pronto. Construído com packaging/build_exe.bat (PyInstaller + Inno Setup).",
+  d_lead:"Quatro maneiras de usar o MV Data Governance. Sem APK: 100% web e PC.",
+  d1t:"Instalação normal (.exe)",d1p:"Para o seu equipamento ou o da sua consultoria. Programa standalone: não requer Python. Duplo clique, atalho na área de trabalho, entrada no menu iniciar e desinstalador. Abre em plano demo e é desbloqueado com a licença que você recebe ao comprar — é o mesmo instalador, não há outro para baixar.",
   d1b:"⬇ Baixar (grátis)",
   d2t:"Versão portátil (.bat)",d2p:"Com Python instalado, basta um duplo clique: cria o ambiente, instala as dependências na primeira execução e abre o programa no navegador.",
   d2b:"⬇ Baixar (grátis)",
+  d4t:"Equipamento ou VM do cliente",d4p:"Para trabalhar na máquina do cliente. Não instala nada: você descompacta a pasta e abre o programa. Sem permissões de administrador, sem tocar no registro e sem internet. Tudo o que você faz fica na subpasta «Datos»: leve com você se quiser o trabalho, apague a pasta e não sobra rastro na máquina.",
+  d4b:"⬇ Baixar (grátis)",
   d3t:"100% Web",d3p:"A mesma plataforma rodando num servidor da sua empresa, só em hosts autorizados pela TI. Inicie com MV_DataGovernance_Server.bat / run_server.sh.",
   d3b:"⬇ Baixar (grátis)",
   pr_eye:"Preços",pr_h2:"Planos simples, sem surpresas",
-  pr_lead:"Teste grátis com dados sintéticos. Compre a licença de PC com um pagamento único via MercadoPago, ou escale ao plano mensal para equipes.",
+  pr_lead:"Teste grátis com dados sintéticos. Compre a licença de PC ou o plano Professional para equipes, com um pagamento único via MercadoPago.",
   pr_pay:"Pague com MercadoPago: cartão, débito, dinheiro ou saldo em conta. O download é liberado assim que o pagamento é confirmado.",
-  pl1t:"Grátis",pl1w:"Para conhecer a plataforma com dados de demo.",pl1per:"Para sempre",
-  pl1a:"Demo completa com dados sintéticos",pl1b:"3 idiomas incluídos",pl1c:"Exportação CSV / Excel / JSON",pl1d:"Programa Windows (.bat)",pl1btn:"Baixar demo",
+  pl1t:"Demo guiada",pl1w:"Para ver a plataforma sobre o seu caso.",pl1per:"Sob pedido · 30 minutos",
+  pl1a:"Sessão 1 a 1, sobre seus dados",pl1b:"Percurso completo da plataforma",pl1c:"Licença de teste ao final",pl1d:"Sem cartão nem compromisso",pl1btn:"Pedir a demo",
   pl2tag:"Melhor valor",pl2t:"Licença PC",pl2w:"Pagamento único, sua para sempre. Download via MercadoPago.",pl2per:"Pagamento único · 1 equipamento",
   pl2a:"O programa completo sem limite de tempo",pl2b:"Conectores a bancos de dados",pl2c:"Fichas de empresas e exportação para BI",pl2d:"Atualizações menores incluídas",pl2btn:"Comprar com MercadoPago",
-  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários",
+  pl3t:"Professional",pl3w:"Para equipes que governam de verdade (assinatura mensal).",pl_mo2:"/mês",pl3per:"Até 25 usuários · cancele quando quiser",
   pl3a:"API REST para BI ilimitada",pl3b:"Instalador Windows (.exe)",pl3c:"Alertas de qualidade e SLA",pl3d:"Suporte prioritário",pl3btn:"Assinar",
+  pl3trial:"ou peça uma demo guiada · sem cartão",
+  pl3sus_ph:"voce@empresa.com",pl3sus_al:"Seu email para a assinatura",pl3sus_go:"Continuar para o MercadoPago",
   pl3trial:"ou teste 14 dias grátis · sem cartão",pl3trial_ph:"voce@empresa.com",pl3trial_go:"Começar teste de 14 dias",
   pl4t:"Enterprise",pl4w:"Para organizações com requisitos regulatórios.",pl4amt:"Sob medida",pl4per:"Usuários ilimitados",
   pl4a:"On-premise ou nuvem privada",pl4b:"SSO e auditoria completa",pl4c:"Conformidade (GDPR / LGPD / leis locais)",pl4d:"Integrações sob medida",pl4btn:"Entrar em contato",
-  cr_eye:"Créditos (opcional)",cr_h2:"Potencialize com créditos IA e packs",
-  cr_lead:"Compre créditos via MercadoPago e use quando quiser em funções de IA (sugestões avançadas, definições de glossário, análises) ou para desbloquear packs embarcados: ZIPs de exemplos, datasets e modelos de governança.",
-  cr_credits:"créditos",cr_credits2:"créditos",cr_credits3:"créditos",cr_best:"+10% bônus",
-  cr100x:"Para testar a IA e baixar um pack de exemplo.",cr550x:"O mais escolhido para uso regular.",cr2500x:"Melhor preço por crédito, para equipes.",
-  cr_buy:"Comprar",cr_buy2:"Comprar",cr_buy3:"Comprar",
-  cr_use:"Exemplos de consumo: 1 sugestão IA = 1 crédito · autodefinição de glossário = 2 créditos · pack de exemplo (ZIP) = 20 créditos. Os créditos não expiram.",
   c_eye:"Contato",c_h2:"Vamos falar dos seus dados",
   c_lead:"Conte o que você precisa governar e responderemos com uma proposta concreta.",
   c_name:"Nome",c_mail:"E-mail",c_msg:"Mensagem",c_send:"Enviar",
@@ -1190,6 +1279,9 @@ ES.alt_tab_bi="Pestaña BI y API: tablas de gobierno publicadas para Power BI y 
 /* Igual que los alt de las capturas: el placeholder del email del trial no
    sale de un [data-i] (vive en el atributo placeholder, no en el texto). */
 document.querySelectorAll('[data-i-ph]').forEach(function(el){ES[el.getAttribute('data-i-ph')]=el.placeholder;});
+/* aria-label traducible: un placeholder NO es nombre accesible — un lector de
+   pantalla no lo anuncia como etiqueta y ademas desaparece al tipear. */
+document.querySelectorAll('[data-i-al]').forEach(function(el){ES[el.getAttribute('data-i-al')]=el.getAttribute('aria-label');});
 /* title + meta social por idioma. Antes setLang() cambiaba el texto visible
    pero dejaba <title> y los meta (description/og/twitter) siempre en
    español — quien compartía el link estando en EN/PT igual mandaba una
@@ -1201,7 +1293,7 @@ document.querySelectorAll('[data-i-ph]').forEach(function(el){ES[el.getAttribute
    página cargada en su idioma. */
 var META={
   es:{title:"MV Data Governance · Gobierno de datos claro y listo para BI",
-      desc:"Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo gratis, sin registro."},
+      desc:"Catálogo, calidad (6 dimensiones), linaje, glosario y políticas de datos, listos para Power BI y Tableau. Integra con Purview y Collibra. Demo guiada a pedido."},
   en:{title:"MV Data Governance · Clear data governance, ready for BI",
       desc:"Catalog, quality (6 dimensions), lineage, glossary and data policies, ready for Power BI and Tableau. Integrates with Purview and Collibra. Free demo, no signup."},
   pt:{title:"MV Data Governance · Governança de dados clara e pronta para BI",
@@ -1230,6 +1322,10 @@ function setLang(lang){
   document.querySelectorAll('[data-i-ph]').forEach(function(el){
     var k=el.getAttribute('data-i-ph');
     el.placeholder=(dict&&dict[k]!==undefined)?dict[k]:ES[k];
+  });
+  document.querySelectorAll('[data-i-al]').forEach(function(el){
+    var k=el.getAttribute('data-i-al');
+    el.setAttribute('aria-label',(dict&&dict[k]!==undefined)?dict[k]:ES[k]);
   });
   document.querySelectorAll('.lang button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-lang')===lang);});
   document.documentElement.lang=lang;
@@ -1263,7 +1359,14 @@ function setShots(lang){
    NO cubre un 404 ni la red caída. Escuchamos el error real y mostramos un
    panel con salida, en vez de dejar un recuadro negro sin explicación. */
 function watchVideo(){
-  var vid=document.getElementById('demoVideo'),box=document.getElementById('videoError');
+  /* Cada <video> dice cuál es su panel de error con data-errbox. Antes esto
+     miraba un único id: al agregar un segundo video, ese quedaba sin red de
+     contención y un 404 volvía a ser un recuadro negro mudo. */
+  document.querySelectorAll('video[data-errbox]').forEach(function(vid){
+    vigilarUnVideo(vid,document.getElementById(vid.getAttribute('data-errbox')));
+  });
+}
+function vigilarUnVideo(vid,box){
   if(!vid||!box)return;
   function fail(){box.hidden=false;vid.style.display='none';}
   function ok(){box.hidden=true;vid.style.display='';}
@@ -1282,17 +1385,23 @@ function watchVideo(){
   vid.addEventListener('loadeddata',ok);
   vid.addEventListener('loadedmetadata',ok);
 }
-/* La demo narrada se sirve en el idioma elegido (voz en off ES/EN/PT). */
+/* Los videos narrados se sirven en el idioma elegido (voz en off ES/EN/PT).
+   Cada <video> declara su nombre base en data-vbase; el sufijo de idioma y
+   las dos fuentes (archivo local + CDN de respaldo) se arman acá. Así agregar
+   un video es agregar markup, no tocar este código. */
+var CDN_VIDEO='https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/';
 function setVideoLang(lang){
-  var vid=document.getElementById('demoVideo');if(!vid)return;
-  var s1=document.getElementById('demoSrc'),s2=document.getElementById('demoSrcCdn');
-  var file='MVDataGovernance_Demo_'+lang+'.mp4';
-  if(s1&&s1.getAttribute('src').indexOf(file)!==-1)return; // ya es el idioma actual
-  var wasPlaying=!vid.paused&&!vid.ended;
-  if(s1)s1.src='video/'+file;
-  if(s2)s2.src='https://cdn.jsdelivr.net/gh/vieraschiavi/Mv-Data-Governance@main/landing/video/'+file;
-  vid.load();
-  if(wasPlaying){var pr=vid.play();if(pr&&pr.catch)pr.catch(function(){});}
+  document.querySelectorAll('video[data-vbase]').forEach(function(vid){
+    var file=vid.getAttribute('data-vbase')+'_'+lang+'.mp4';
+    var fuentes=vid.querySelectorAll('source');
+    if(!fuentes.length)return;
+    if(fuentes[0].getAttribute('src').indexOf(file)!==-1)return; // ya está en ese idioma
+    var sonaba=!vid.paused&&!vid.ended;
+    fuentes[0].src='video/'+file;
+    if(fuentes[1])fuentes[1].src=CDN_VIDEO+file;
+    vid.load();
+    if(sonaba){var pr=vid.play();if(pr&&pr.catch)pr.catch(function(){});}
+  });
 }
 document.querySelectorAll('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.getAttribute('data-lang'));});});
 
@@ -1312,12 +1421,18 @@ function renderReviews(){
   document.getElementById('rvCount').textContent='· '+n+' '+word;
   var top=R.slice().sort(function(a,b){return b.rating-a.rating;}).slice(0,3);
   var g=document.getElementById('rvGrid');g.innerHTML='';
-  // Si reviews-data.js no cargó, antes quedaba un hueco vacío sin explicación.
+  // Dos casos distintos, y mostrar el equivocado sería mentir:
+  //  - el archivo no cargó (MVDG_REVIEWS indefinido) → error de carga
+  //  - cargó y está vacío → todavía no hay reseñas reales, y se dice así
   if(!n){
-    g.innerHTML='<p class="rvempty">'+(l==='en'
-      ?'Reviews could not be loaded right now.'
-      :l==='pt'?'Não foi possível carregar as avaliações agora.'
-      :'No pudimos cargar las reseñas en este momento.')+'</p>';
+    var cargo=Array.isArray(window.MVDG_REVIEWS);
+    g.innerHTML='<p class="rvempty">'+(cargo
+      ?(l==='en'?'No verified customer reviews yet — the product is in beta.'
+        :l==='pt'?'Ainda não há avaliações verificadas de clientes — o produto está em beta.'
+        :'Todavía no hay reseñas verificadas de clientes: el programa está en fase beta.')
+      :(l==='en'?'Reviews could not be loaded right now.'
+        :l==='pt'?'Não foi possível carregar as avaliações agora.'
+        :'No pudimos cargar las reseñas en este momento.'))+'</p>';
     return;
   }
   top.forEach(function(r){
@@ -1367,35 +1482,61 @@ document.getElementById('cform').addEventListener('submit',function(ev){
     e.textContent='≈ $ '+v+' UYU'+(unit||'');
   }
   if(pr.licencia){setTxt('priceLic',pr.licencia.amount);uyu('uyuLic',pr.licencia.amount);}
-  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount,'/mes');}
-  if(pr.cred100){setTxt('cr100p',pr.cred100.amount);setTxt('cr100c',pr.cred100.credits);uyu('uyu100',pr.cred100.amount);}
-  if(pr.cred550){setTxt('cr550p',pr.cred550.amount);setTxt('cr550c',pr.cred550.credits);uyu('uyu550',pr.cred550.amount);}
-  if(pr.cred2500){setTxt('cr2500p',pr.cred2500.amount);setTxt('cr2500c',(pr.cred2500.credits||0).toLocaleString('es-UY'));uyu('uyu2500',pr.cred2500.amount);}
+  if(pr.pro){setTxt('pricePro',pr.pro.amount);uyu('uyuPro',pr.pro.amount);}
 
   var MP_ERR={es:'No se pudo iniciar el pago. Probá de nuevo en un rato.',
     en:'Could not start the payment. Please try again shortly.',
     pt:'Não foi possível iniciar o pagamento. Tente novamente em instantes.'};
+  /* Un solo camino al checkout, con o sin email. `email` va solo si hay: los
+     planes de pago único no lo piden y mandar null les cambiaría el cuerpo. */
+  function iniciarPago(plan,email,btn){
+    var original=btn.textContent;
+    btn.setAttribute('aria-busy','true'); btn.style.opacity='.7'; btn.textContent='…';
+    function falla(){
+      btn.removeAttribute('aria-busy'); btn.style.opacity=''; btn.textContent=original;
+      alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
+    }
+    var cuerpo={plan:plan};
+    if(email)cuerpo.email=email;
+    fetch('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cuerpo)})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d && d.url){ window.location.href=d.url; return; }
+        falla();
+      })
+      .catch(falla);
+  }
+
   document.querySelectorAll('[data-mp]').forEach(function(btn){
+    var plan=btn.getAttribute('data-mp');
+    /* Los planes que se cobran todos los meses (suscripción de MercadoPago)
+       necesitan el email del pagador ANTES de llamar al checkout. El botón
+       abre su formulario y el envío del formulario es el que paga. */
+    var form=document.getElementById(btn.getAttribute('data-mp-form')||'');
     btn.addEventListener('click',function(ev){
       ev.preventDefault();
-      var plan=btn.getAttribute('data-mp');
-      var original=btn.textContent;
-      btn.setAttribute('aria-busy','true'); btn.style.opacity='.7'; btn.textContent='…';
-      fetch('/api/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan:plan})})
-        .then(function(r){return r.json();})
-        .then(function(d){
-          if(d && d.url){ window.location.href=d.url; return; }
-          btn.style.opacity=''; btn.textContent=original;
-          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
-        })
-        .catch(function(){
-          btn.style.opacity=''; btn.textContent=original;
-          alert(MP_ERR[document.documentElement.lang]||MP_ERR.es);
-        });
+      if(form){
+        form.hidden=!form.hidden;
+        if(!form.hidden)form.querySelector('input[type="email"]').focus();
+        return;
+      }
+      iniciarPago(plan,null,btn);
     });
+    if(form){
+      form.addEventListener('submit',function(ev){
+        ev.preventDefault();
+        var campo=form.querySelector('input[type="email"]');
+        iniciarPago(plan,campo.value.trim(),form.querySelector('button[type="submit"]'));
+      });
+    }
   });
 })();
 
+/* El trial autoservicio (POST /api/trial) se elimino junto con la
+   descarga abierta: emitia una licencia Professional de 14 dias a
+   cualquiera que escribiera un email, y esa licencia alcanzaba para
+   bajar el programa. Hoy la prueba se entrega despues de la demo 1 a 1
+   (ver descargas.html). */
 /* --- Trial de 14 días (Professional), sin tarjeta: solo email, sin pasar
    por MercadoPago. api/trial.js emite la licencia MVDG2 directo. --- */
 (function(){

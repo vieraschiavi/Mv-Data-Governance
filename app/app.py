@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Dashboard de escritorio (Streamlit).
 
@@ -21,6 +23,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from mvdg import APP_NAME, BRAND, __version__
+from mvdg import dataeng
 from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
 from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
@@ -41,10 +44,16 @@ from mvdg import collibra_pull
 from mvdg import curation
 from mvdg import enforcement
 from mvdg import insights
+from mvdg import install_mode
+from mvdg import interview
+from mvdg import meetings
 from mvdg import mip_labels
 from mvdg import orgchart
 from mvdg import dmbok
+from mvdg import doc_export
 from mvdg import mdm
+from mvdg import pipeline_doc
+from mvdg import transcribe
 from mvdg import glossary_auto
 from mvdg import purview_export
 from mvdg import purview_pull
@@ -57,6 +66,7 @@ from mvdg import server as mvdg_server
 from mvdg import workspace as ws
 from mvdg.remediation import suggest_fix
 from mvdg.ai_provider import ai_suggest_fix, configured_provider, provider_label
+from mvdg import ai_settings, mcp_presets
 from mvdg.demo_data import load_demo_tables
 from mvdg.exporters import (bi_bundle_xlsx, governance_tables, to_csv_bytes,
                             to_excel_bytes, to_json_bytes, to_parquet_bytes)
@@ -75,7 +85,7 @@ from mvdg.quality import (open_issues, overall_index, quality_by_dimension,
                           run_rules)
 
 # ----------------------------------------------------------------- página
-st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
+st.set_page_config(page_title=APP_NAME, page_icon="", layout="wide")
 
 # Guardián de integridad: si la carpeta se actualizó a medias (app.py nuevo con
 # mvdg/ viejo o al revés), mostramos un cartel claro en vez de un traceback.
@@ -89,6 +99,20 @@ if _missing:
 
 st.markdown(f"""
 <style>
+/* --- Que parezca un PROGRAMA, no una app de Streamlit -----------------
+   El cliente compra software de gobierno de datos, no una demo. Tres cosas
+   delataban el framework: la barra blanca del header (que encima rompía el
+   tema oscuro), el menú ⋮ con opciones de desarrollo ("Rerun", "Record a
+   screencast", "Report a bug" al repo de Streamlit) y el pie "Made with
+   Streamlit". El botón Deploy lo saca --client.toolbarMode; el resto no se
+   puede apagar por configuración, así que va por CSS.
+   El header se hace TRANSPARENTE en vez de display:none a propósito: ahí
+   vive el botón que despliega la barra lateral cuando está colapsada, y
+   ocultarlo dejaría al usuario sin forma de recuperarla. */
+header[data-testid="stHeader"] {{ background: transparent !important; }}
+[data-testid="stToolbar"], [data-testid="stMainMenu"], #MainMenu,
+[data-testid="stStatusWidget"], [data-testid="stDecoration"],
+footer {{ display: none !important; visibility: hidden !important; }}
 .stApp {{ background: linear-gradient(160deg, {BRAND['navy']} 0%, #0a1a2f 100%); }}
 h1, h2, h3 {{ color: {BRAND['ink']}; }}
 [data-testid="stMetricValue"] {{ color: {BRAND['amber']}; }}
@@ -123,11 +147,91 @@ def _lab(lang: str):
     return lab_measure(lang)
 
 
+# ------------------------------------------ los datasets que carga el usuario
+# Antes, lo que el usuario subía en "Mis datos" se guardaba en
+# ``current_dataset`` y lo leía UNA sola pestaña (Proyecto, para guardarlo).
+# El resto del programa seguía mostrando la demo, así que quien probaba el
+# producto con su propio Excel veía su archivo perfilado en una pestaña y
+# datos ajenos en las otras diecinueve. Esto lo convierte en un registro que
+# se acumula y que alimenta a todas.
+def _mis_datasets() -> dict:
+    return st.session_state.setdefault("mvdg_user_datasets", {})
+
+
+def _registrar_dataset(nombre: str, df) -> None:
+    """Deja el dataset disponible para TODO el programa, no solo para la
+    pestaña donde se cargó.
+
+    El ``st.rerun()`` no es un detalle: Streamlit ejecuta el script de arriba
+    abajo, y el sidebar y las demás pestañas se dibujan ANTES de que llegue
+    el turno de "Mis datos". Sin volver a correr, el dataset queda guardado
+    pero nadie lo ve hasta la próxima interacción del usuario — que es
+    exactamente el síntoma que se reportó: el archivo cargaba y el resto del
+    programa seguía mostrando la demo.
+
+    El registro de vistos evita el bucle: cada archivo dispara UN rerun. Se
+    indexa por (nombre, filas, columnas) y no por identidad del DataFrame,
+    porque ``pd.read_csv`` devuelve un objeto nuevo en cada pasada — comparar
+    objetos haría que el rerun se dispare siempre.
+    """
+    if df is None or not len(df) or not nombre:
+        return
+    _mis_datasets()[nombre] = df
+    # Se mantiene ``current_dataset`` porque la pestaña Proyecto lo usa para
+    # guardar "el último": son dos cosas distintas y las dos hacen falta.
+    st.session_state["current_dataset"] = df
+    st.session_state["current_dataset_name"] = nombre
+
+    vistos = st.session_state.setdefault("_mvdg_user_vistos", set())
+    clave = (nombre, len(df), len(df.columns))
+    if clave not in vistos:
+        vistos.add(clave)
+        st.rerun()
+
+
+def _firma_datasets(lang: str) -> tuple:
+    """Identidad barata de lo cargado, para no recalcular en cada rerun.
+
+    Streamlit vuelve a ejecutar el script entero ante cualquier interacción
+    (cambiar de pestaña incluido). Correr las reglas de calidad de un archivo
+    grande en cada una de esas pasadas se nota; el nombre y la forma alcanzan
+    para saber si cambió algo.
+    """
+    return (lang,) + tuple(sorted((n, len(d), len(d.columns))
+                                  for n, d in _mis_datasets().items()))
+
+
+def _tablas_usuario(lang: str) -> dict:
+    """Catálogo, diccionario, calidad y linaje de lo que cargó el usuario."""
+    firma = _firma_datasets(lang)
+    if st.session_state.get("_mvdg_user_firma") == firma:
+        return st.session_state["_mvdg_user_tablas"]
+    ud = _mis_datasets()
+    tablas = {
+        "catalog": gov_scope.user_catalog(ud, lang),
+        "dictionary": gov_scope.user_dictionary(ud, lang),
+        "results": gov_scope.user_results(ud, lang),
+    }
+    st.session_state["_mvdg_user_firma"] = firma
+    st.session_state["_mvdg_user_tablas"] = tablas
+    return tablas
+
+
+def _con_usuario(base, clave: str, lang: str):
+    """Le suma al DataFrame base las filas de los datasets del usuario."""
+    extra = _tablas_usuario(lang)[clave]
+    if extra.empty:
+        return base
+    if clave == "catalog":
+        extra = gov_scope.user_catalog(_mis_datasets(), lang, columnas=base.columns)
+    return pd.concat([base, extra], ignore_index=True)
+
+
 # ---------------------------------------------------------------- sidebar
 with st.sidebar:
-    st.markdown(f"## 🛡️ {APP_NAME}")
+    st.markdown(f"## {APP_NAME}")
     lang = st.radio(
-        f"🌐 {t('language', 'es')} / Language / Idioma",
+        f"{t('language', 'es')} / Language / Idioma",
         LANGS, format_func=lambda code: LANG_NAMES[code], horizontal=True,
         key="lang",
     )
@@ -135,6 +239,21 @@ with st.sidebar:
     st.divider()
     incl_samples = st.toggle(t("scope_toggle", lang), value=True, key="scope_samples")
     st.caption(t("scope_hint", lang))
+    # Qué datasets propios están alimentando al programa ahora mismo. Sin
+    # esto no hay forma de saber, mirando una pestaña cualquiera, si lo que
+    # se está viendo incluye lo que uno cargó o sigue siendo la demo.
+    if _mis_datasets():
+        st.divider()
+        st.success(t("scope_user_badge", lang).format(
+            n=len(_mis_datasets()), nombres=", ".join(_mis_datasets())))
+        if st.button(t("scope_user_clear", lang), key="scope_user_clear_btn"):
+            st.session_state["mvdg_user_datasets"] = {}
+            # También el registro de "ya lo vi": si no, volver a subir el
+            # mismo archivo no refrescaría las otras pestañas.
+            for _k in ("_mvdg_user_firma", "_mvdg_user_vistos",
+                       "current_dataset", "current_dataset_name"):
+                st.session_state.pop(_k, None)
+            st.rerun()
     st.divider()
     st.caption(f"v{__version__} · {t('demo_note', lang)}")
 
@@ -148,7 +267,7 @@ if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
     _tables()
     _results(lang)
     st.markdown("<span class='mv-badge'>MV · Data Governance Suite</span>", unsafe_allow_html=True)
-    st.title(f"🔒 {t('auth_title', lang)}")
+    st.title(f"{t('auth_title', lang)}")
     st.caption(t("auth_intro", lang))
     _auth_pwd = st.text_input(t("auth_prompt", lang), type="password", key="auth_pwd_input")
     if st.button(t("auth_button", lang), type="primary"):
@@ -169,17 +288,25 @@ def _results_combined(lang: str):
     return gov_scope.combined_results(lang, _results(lang))
 
 
-results = _results_combined(lang) if incl_samples else _results(lang)
-tables = _tables()
+# Los datasets del usuario NO dependen del toggle "incluir casos de ejemplo":
+# ese toggle decide si se muestran los 4 casos que trae el programa. Lo que
+# cargó el usuario es suyo y va siempre.
+results = _con_usuario(_results_combined(lang) if incl_samples else _results(lang),
+                       "results", lang)
+tables = dict(_tables())
+tables.update(_mis_datasets())
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
- tab_p, tab_pr, tab_bi, tab_del, tab_pbi, tab_tab, tab_cl, tab_ws, tab_h) = st.tabs([
+ tab_p, tab_pr, tab_bi, tab_tz, tab_del, tab_pbi, tab_tab, tab_cl, tab_srv, tab_mtg,
+ tab_ws, tab_h) = st.tabs([
     t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_contracts", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
-    t("tab_bi", lang), t("tab_deliverable", lang), t("tab_pbi", lang), t("tab_tableau", lang),
-    t("tab_clients", lang), t("tab_workspace", lang), t("tab_help", lang),
+    t("tab_bi", lang), t("tab_trace", lang), t("tab_deliverable", lang),
+    t("tab_pbi", lang), t("tab_tableau", lang),
+    t("tab_clients", lang), t("tab_survey", lang), t("tab_meetings", lang),
+    t("tab_workspace", lang), t("tab_help", lang),
 ])
 
 _DIM_LABEL = {d: t(f"dim_{d}", lang) for d in
@@ -193,13 +320,13 @@ def _error(exc: Exception, lang: str, contexto: str = "generico",
            prefijo: str = "") -> None:
     """Muestra un error que se entiende y dice qué hacer.
 
-    Antes esto era ``st.error(f"⚠️ {exc}")`` repartido por toda la pantalla:
+    Antes esto era ``st.error(f"{exc}")`` repartido por toda la pantalla:
     al usuario le llegaba el texto crudo de pandas o de sqlalchemy ("Error
     tokenizing data. C error: Expected 1 fields in line 3, saw 2"), sin
     traducir y sin decirle qué corregir. El detalle técnico sigue disponible,
     plegado, para poder reportarlo."""
     mensaje, detalle = friendly_error(exc, lang, contexto)
-    st.error(f"{prefijo}{mensaje}" if prefijo else mensaje, icon="⚠️")
+    st.error(f"{prefijo}{mensaje}" if prefijo else mensaje)
     with st.expander(t("err_detalle", lang)):
         st.code(detalle, language=None)
 
@@ -212,11 +339,11 @@ def _licencia_ok(funcion: str, lang: str) -> bool:
     (mvdg/licensing.py, FUNCIONES_PAGAS) — acá solo se consulta."""
     if licensing.has_feature(funcion):
         return True
-    st.info(t("lic_locked", lang).format(tab=t("tab_help", lang)), icon="🔒")
+    st.info(t("lic_locked", lang).format(tab=t("tab_help", lang)))
     return False
 
 
-def _render_fixes(results_df, lang):
+def _render_fixes(results_df, lang, ns=""):
     """Por cada regla en warn/fail: sugerencia local para corregirla, al
     lado de la falla — causa probable, corto plazo y prevención. Si el
     usuario configuró su propia API key (Claude/ChatGPT/Gemini), además se
@@ -229,21 +356,38 @@ def _render_fixes(results_df, lang):
         st.caption(t("fix_note", lang))
     broken = results_df[results_df["status"] != "pass"]
     if broken.empty:
-        st.success(t("fix_none", lang), icon="✅")
+        st.success(t("fix_none", lang))
         return
+    # Las keys de los widgets tienen que ser únicas en TODA la corrida, no solo
+    # dentro de este bloque: Streamlit ejecuta el script entero en cada rerun y
+    # las pestañas NO son perezosas, así que las tres llamadas a _render_fixes
+    # conviven en la misma pasada. Con "Mis datos" activado, el mismo dataset y
+    # la misma regla aparecen en más de una, y la key chocaba.
+    #
+    # El error estuvo latente desde siempre: estos botones solo se dibujan si
+    # hay un proveedor de IA configurado, y hasta que se pudo configurar uno
+    # desde la interfaz nadie los veía. `ns` distingue el bloque; el resto
+    # distingue la fila.
+    vistas = {}
     for _, row in broken.iterrows():
-        icon = "🟠" if row["status"] == "warn" else "🔴"
+        icon = "🟡" if row["status"] == "warn" else "🔴"
         with st.expander(f"{icon} {row['rule_id']} — {row['description']}", expanded=False):
             fix = suggest_fix(row["rule_id"], row["dimension"], row["column"],
                               int(row["affected_rows"]), lang)
-            st.markdown(f"🖥️ **{t('fix_local_title', lang)}**")
+            st.markdown(f"**{t('fix_local_title', lang)}**")
             st.markdown(f"**{t('fix_root', lang)}:** {fix['root_cause']}")
             st.markdown(f"**{t('fix_short', lang)}:** {fix['short_term']}")
             st.markdown(f"**{t('fix_long', lang)}:** {fix['long_term']}")
             st.caption(f"{t('fix_owner', lang)}: {fix['owner']}")
 
             if provider:
-                cache_key = f"ai_fix_{row['dataset']}_{row['rule_id']}_{lang}"
+                # dataset+regla no alcanza: una misma regla puede evaluarse
+                # sobre varias columnas. Y si aun asi se repite, se agrega un
+                # sufijo — vale mas una key fea que una pantalla que revienta.
+                base = (f"ai_fix_{ns}_{row['dataset']}_{row['rule_id']}"
+                        f"_{row['column']}_{lang}")
+                vistas[base] = vistas.get(base, 0) + 1
+                cache_key = base if vistas[base] == 1 else f"{base}#{vistas[base]}"
                 if st.button(t("fix_ai_button", lang).format(provider=provider_label(provider)),
                             key=f"btn_{cache_key}"):
                     with st.spinner(t("fix_ai_loading", lang)):
@@ -253,10 +397,10 @@ def _render_fixes(results_df, lang):
                             lang, provider) or "error"
                 cached = st.session_state.get(cache_key)
                 if cached == "error":
-                    st.warning(t("fix_ai_error", lang), icon="⚠️")
+                    st.warning(t("fix_ai_error", lang))
                 elif cached:
                     st.divider()
-                    st.markdown(f"✨ **{t('fix_ai_title', lang).format(provider=provider_label(provider))}**")
+                    st.markdown(f"**{t('fix_ai_title', lang).format(provider=provider_label(provider))}**")
                     st.markdown(f"**{t('fix_root', lang)}:** {cached['root_cause']}")
                     st.markdown(f"**{t('fix_short', lang)}:** {cached['short_term']}")
                     st.markdown(f"**{t('fix_long', lang)}:** {cached['long_term']}")
@@ -264,8 +408,10 @@ def _render_fixes(results_df, lang):
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
-    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
-    dic = gov_scope.combined_dictionary(lang) if incl_samples else dictionary_df(lang)
+    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
+                       else catalog_df(lang, tables), "catalog", lang)
+    dic = _con_usuario(gov_scope.combined_dictionary(lang) if incl_samples
+                       else dictionary_df(lang), "dictionary", lang)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("kpi_datasets", lang), len(cat))
     c2.metric(t("kpi_columns", lang), len(dic))
@@ -338,7 +484,7 @@ with tab_ov:
     g6.metric(t("gi_curation", lang), f"{_gi['curation_pct']}%")
     with st.expander(t("gi_detail", lang), expanded=False):
         _gi_df = insights.governance_coverage(lang)
-        _B = {True: "✅", False: "—"}
+        _B = {True: "", False: "—"}
         st.dataframe(
             _gi_df.assign(owner_named=_gi_df["owner_named"].map(_B),
                           steward_named=_gi_df["steward_named"].map(_B),
@@ -356,7 +502,7 @@ with tab_ov:
 
 # ------------------------------------------------------------ Laboratorio
 with tab_lab:
-    st.info(t("lab_intro", lang), icon="🧪")
+    st.info(t("lab_intro", lang))
     steps = {s["step_id"]: s for s in lab_steps(lang)}
     lab = _lab(lang)
 
@@ -367,7 +513,7 @@ with tab_lab:
         tc1.markdown(f"**{t('lab_plain', lang)}**  \n{s['plain']}")
         tc2.markdown(f"**{t('lab_tech', lang)}**  \n{s['tech']}")
         if s["dmbok_area"]:
-            st.caption(f"🔗 {t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
+            st.caption(f"{t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
 
     # 0. Contexto
     _theory("contexto")
@@ -481,7 +627,7 @@ with tab_dk:
         t("dk_subtab_dmbok", lang), t("dk_subtab_cobit", lang), t("dk_subtab_iso", lang)])
 
     with dk_sub1:
-        st.info(t("dk_intro", lang), icon="📘")
+        st.info(t("dk_intro", lang))
 
         # --- Teoría: qué es el DMBOK ---
         st.subheader(t("dk_what", lang))
@@ -580,7 +726,7 @@ with tab_dk:
         st.plotly_chart(fig, width="stretch", key="dk_quality_dims")
 
     with dk_sub2:
-        st.info(t("co_intro", lang), icon="🎯")
+        st.info(t("co_intro", lang))
 
         st.subheader(t("co_radar", lang))
         ccov = cobit_iso.cobit_coverage_summary()
@@ -611,7 +757,7 @@ with tab_dk:
                 st.caption(ob["note"])
 
     with dk_sub3:
-        st.info(t("iso_intro", lang), icon="🌐")
+        st.info(t("iso_intro", lang))
 
         st.subheader(t("iso_radar", lang))
         icov = cobit_iso.iso_coverage_summary()
@@ -647,8 +793,9 @@ with tab_dk:
 
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
-    st.info(t("cat_intro", lang), icon="📚")
-    cat = gov_scope.combined_catalog(lang, tables) if incl_samples else catalog_df(lang, tables)
+    st.info(t("cat_intro", lang))
+    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
+                       else catalog_df(lang, tables), "catalog", lang)
     f1, f2 = st.columns([2, 1])
     query = f1.text_input(t("cat_search", lang), "")
     domains = [t("cat_all", lang)] + sorted(cat["domain"].unique().tolist())
@@ -670,9 +817,15 @@ with tab_cat:
     }), width="stretch", hide_index=True)
 
     st.subheader(t("cat_detail", lang))
-    _cat_ds_opts = dataset_names() + (ext_samples.sample_keys() if incl_samples else [])
+    _cat_ds_opts = (list(_mis_datasets()) + dataset_names()
+                    + (ext_samples.sample_keys() if incl_samples else []))
+    # Los datasets del usuario van PRIMEROS en la lista: si cargó algo, es lo
+    # que vino a mirar.
     ds = st.selectbox(t("cat_pick", lang), _cat_ds_opts)
-    dic = gov_scope.combined_dictionary(lang, ds) if incl_samples else dictionary_df(lang, ds)
+    dic = _con_usuario(gov_scope.combined_dictionary(lang, ds) if incl_samples
+                       else dictionary_df(lang, ds), "dictionary", lang)
+    if ds:
+        dic = dic[dic["dataset"] == ds].reset_index(drop=True)
     st.dataframe(dic.rename(columns={
         "column": t("col_column", lang), "type": t("col_type", lang),
         "pii": t("col_pii", lang), "business_term": t("col_term", lang),
@@ -681,23 +834,34 @@ with tab_cat:
 
 # --------------------------------------------------------------------- MDM
 with tab_mdm:
-    st.info(t("mdm_intro", lang), icon="🔗")
+    st.info(t("mdm_intro", lang))
     st.caption(t("mdm_warning", lang))
 
+    # Deduplicar es de las cosas más útiles que se le pueden hacer a un
+    # archivo propio; que MDM solo ofreciera la demo dejaba afuera justo el
+    # caso que le interesa a quien está evaluando el producto.
+    _mdm_usuario = dict(_mis_datasets())
     _mdm_demo_options = {"dim_customers": tables["dim_customers"]}
     _mdm_sample_keys = ext_samples.sample_keys()
-    mdm_source_names = list(_mdm_demo_options.keys()) + list(_mdm_sample_keys)
+    mdm_source_names = (list(_mdm_usuario) + list(_mdm_demo_options)
+                        + list(_mdm_sample_keys))
 
     def _mdm_label(key):
+        if key in _mdm_usuario:
+            return f"{key} ({t('scope_user_domain', lang)})"
         if key in _mdm_demo_options:
-            return f"🏠 dim_customers ({t('mdm_src_demo', lang)})"
+            return f"dim_customers ({t('mdm_src_demo', lang)})"
         meta = ext_samples.sample_meta(key, lang)
-        return f"🧪 {meta['name']}"
+        return f"{meta['name']}"
 
     mdm_pick = st.selectbox(t("mdm_pick_dataset", lang), mdm_source_names,
                             format_func=_mdm_label, key="mdm_pick_dataset")
-    mdm_df = _mdm_demo_options[mdm_pick] if mdm_pick in _mdm_demo_options \
-        else ext_samples.load_sample_table(mdm_pick)
+    if mdm_pick in _mdm_usuario:
+        mdm_df = _mdm_usuario[mdm_pick]
+    elif mdm_pick in _mdm_demo_options:
+        mdm_df = _mdm_demo_options[mdm_pick]
+    else:
+        mdm_df = ext_samples.load_sample_table(mdm_pick)
     st.caption(f"{len(mdm_df):,} {t('mdm_rows_label', lang)} × {len(mdm_df.columns)} {t('mdm_cols_label', lang)}")
 
     all_cols = mdm_df.columns.tolist()
@@ -730,7 +894,7 @@ with tab_mdm:
     mdm_clusters = st.session_state.get("mdm_clusters")
     if mdm_report is not None and st.session_state.get("mdm_df_key") == mdm_pick:
         if mdm_report.empty:
-            st.success(t("mdm_none_found", lang), icon="✅")
+            st.success(t("mdm_none_found", lang))
         else:
             st.subheader(t("mdm_results", lang).format(n=len(mdm_report)))
             st.dataframe(mdm_report.drop(columns="row_indices").rename(columns={
@@ -739,7 +903,7 @@ with tab_mdm:
             }), width="stretch", hide_index=True)
 
             for _mc in mdm_clusters:
-                _title = (f"🔗 {len(_mc.row_indices)} {t('mdm_rows_label', lang)} · "
+                _title = (f"{len(_mc.row_indices)} {t('mdm_rows_label', lang)} · "
                          f"{round(_mc.confidence * 100, 1)}% · {', '.join(_mc.matched_on) or '—'}")
                 with st.expander(_title):
                     st.dataframe(mdm_df.loc[_mc.row_indices], width="stretch")
@@ -749,7 +913,7 @@ with tab_mdm:
 
 # ---------------------------------------------------------------- Calidad
 with tab_q:
-    st.info(t("q_intro", lang), icon="✅")
+    st.info(t("q_intro", lang))
     if st.button(t("q_run", lang)):
         _results.clear()
         results = _results(lang)
@@ -765,7 +929,7 @@ with tab_q:
         "affected_rows": t("q_affected", lang),
     }), width="stretch", hide_index=True)
 
-    _render_fixes(results, lang)
+    _render_fixes(results, lang, ns="calidad")
 
     matrix = quality_matrix(results)
     matrix.columns = [_DIM_LABEL[c] for c in matrix.columns]
@@ -777,11 +941,18 @@ with tab_q:
 
 # ----------------------------------------------------------------- Linaje
 with tab_lin:
-    st.info(t("lin_intro", lang), icon="🧬")
+    st.info(t("lin_intro", lang))
     if incl_samples:
         _lin_nodes, _lin_edges = gov_scope.combined_lineage(lang)
     else:
         _lin_nodes, _lin_edges = NODES, None
+    # El linaje honesto de lo que cargó el usuario: origen → dataset → BI.
+    # Sin esto, su dataset aparecía en el catálogo y en calidad pero el grafo
+    # seguía siendo el de la demo, como si su archivo no existiera.
+    if _mis_datasets():
+        _lin_nodes, _lin_edges = gov_scope.user_lineage(
+            _mis_datasets(), lang, nodes=_lin_nodes, edges=_lin_edges)
+    _lin_propio = _lin_edges is not None
     labels = {n["id"]: n["label"] for n in _lin_nodes}
     focus = st.selectbox(t("lin_focus", lang),
                          ["—"] + list(labels.keys()),
@@ -792,16 +963,19 @@ with tab_lin:
         "bi": t("lin_layer_bi", lang),
     }
     fig = lineage_figure(None if focus == "—" else focus, layer_titles,
-                         nodes=_lin_nodes if incl_samples else None,
+                         nodes=_lin_nodes if _lin_propio else None,
                          edges=_lin_edges)
     st.plotly_chart(fig, width="stretch")
     with st.expander(t("tbl_lineage", lang)):
-        st.dataframe(gov_scope.combined_lineage_df(lang) if incl_samples else lineage_df(),
+        # La tabla se arma del MISMO grafo que el dibujo: si se recalculara
+        # aparte, el diagrama mostraría el dataset del usuario y la tabla no.
+        st.dataframe(gov_scope.lineage_to_df(_lin_nodes, _lin_edges)
+                     if _lin_propio else lineage_df(),
                      width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Glosario
 with tab_g:
-    st.info(t("g_intro", lang), icon="📖")
+    st.info(t("g_intro", lang))
     gdf = gov_scope.combined_glossary(lang) if incl_samples else glossary_df(lang)
     gq = st.text_input(t("g_search", lang), "")
     if gq:
@@ -814,7 +988,7 @@ with tab_g:
 
     st.divider()
     st.subheader(t("ga_title", lang))
-    st.info(t("ga_intro", lang), icon="🗄️")
+    st.info(t("ga_intro", lang))
     _ga_conns = load_connections()
     if not _ga_conns:
         st.caption(t("ga_no_conn", lang))
@@ -861,7 +1035,7 @@ with tab_g:
 
 # --------------------------------------------------------------- Curaduría
 with tab_cu:
-    st.info(t("cu_intro", lang), icon="🖊️")
+    st.info(t("cu_intro", lang))
     _cu_sum = curation.summary(lang)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("cu_total", lang), _cu_sum["total"])
@@ -980,7 +1154,7 @@ with tab_cu:
 
 # ------------------------------------------------------------- Responsables
 with tab_resp:
-    st.info(t("rs_intro", lang), icon="👥")
+    st.info(t("rs_intro", lang))
 
     _RS_SRC = {"file": t("rs_src_file", lang), "photo": t("rs_src_photo", lang),
                "saved": t("rs_src_saved", lang)}
@@ -1080,11 +1254,13 @@ with tab_resp:
 
 # --------------------------------------------------------------- Políticas
 with tab_p:
-    st.info(t("p_intro", lang), icon="🛡️")
+    st.info(t("p_intro", lang))
     if incl_samples:
         pdf = policies_df(lang, results,
-                          catalog=gov_scope.combined_catalog(lang, tables),
-                          dictionary=gov_scope.combined_dictionary(lang))
+                          catalog=_con_usuario(gov_scope.combined_catalog(lang, tables),
+                                               "catalog", lang),
+                          dictionary=_con_usuario(gov_scope.combined_dictionary(lang),
+                                                  "dictionary", lang))
     else:
         pdf = policies_df(lang, results)
     status_label = {"compliant": t("p_compliant", lang),
@@ -1098,19 +1274,148 @@ with tab_p:
     }), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------- Mis datos
+def _render_dataeng(user_df, dataset_name: str, lang: str):
+    """Motor completo de ingeniería de datos (mvdg/dataeng.py) sobre el
+    MISMO DataFrame que _render_profile ya perfiló arriba — no arma una
+    fuente paralela: reusa lo que el usuario ya cargó, sea archivo o tabla
+    de base de datos. Gratis, igual que el resto de esta pestaña: no está
+    en FUNCIONES_PAGAS.
+
+    El texto de contenido (issues, roles, fuga, features) sale de
+    `dataeng.traducir_resultado()`, el mismo que usa bi_api para el .exe —
+    un solo lugar traduce los códigos, no dos que puedan desalinearse.
+    """
+    with st.expander(t("de_titulo", lang), expanded=False):
+        st.caption(t("de_bajada_streamlit", lang))
+        cols_disponibles = [""] + [str(c) for c in user_df.columns]
+        c1, c2 = st.columns(2)
+        target = c1.selectbox(t("de_target", lang), cols_disponibles,
+                              key=f"de_target_{dataset_name}")
+        columna_tiempo = c2.selectbox(t("de_tiempo_col", lang), cols_disponibles,
+                                      key=f"de_tcol_{dataset_name}")
+        res_key = f"de_res_{dataset_name}"
+        if st.button(t("de_analizar", lang), key=f"de_btn_{dataset_name}"):
+            with st.spinner(t("de_leyendo", lang)):
+                crudo = dataeng.analizar_tabla(
+                    dataset_name, user_df, target=target or None,
+                    columna_tiempo=columna_tiempo or None)
+                st.session_state[res_key] = dataeng.traducir_resultado(crudo, lang)
+
+        res = st.session_state.get(res_key)
+        if not res:
+            return
+
+        if res["muestreado"]:
+            st.caption(t("de_muestreado", lang))
+
+        cal = res["calidad"]
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric(t("de_kpi_filas", lang), res["perfil"]["filas"])
+        k2.metric(t("de_kpi_columnas", lang), res["perfil"]["columnas"])
+        k3.metric(t("de_kpi_score", lang), cal["score"])
+        criticos = sum(1 for i in cal["issues"] if i["severidad"] == "critico")
+        k4.metric(t("de_kpi_criticos", lang), criticos)
+
+        st.subheader(t("de_dimensiones_titulo", lang))
+        dims = pd.DataFrame([{"dimension": cal["dimensiones_texto"][k], "quality_index": v}
+                             for k, v in cal["dimensiones"].items()])
+        fig = px.bar(dims, x="dimension", y="quality_index", text="quality_index",
+                    color_discrete_sequence=[BRAND["amber"]])
+        fig.update_traces(texttemplate="%{text:.1f}")
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101], xaxis_title=None,
+                          yaxis_title=None, height=260)
+        st.plotly_chart(fig, width="stretch", key=f"de_dims_{dataset_name}")
+
+        if res["cambios_tipo"]:
+            st.subheader(t("de_tipos_titulo", lang))
+            st.dataframe(pd.DataFrame(res["cambios_tipo"]).rename(columns={
+                "columna": t("de_tipos_col", lang), "de": t("de_tipos_de", lang),
+                "a": t("de_tipos_a", lang)}), width="stretch", hide_index=True)
+
+        st.subheader(t("de_perfil_titulo", lang))
+        perfil_df = pd.DataFrame(res["perfil"]["detalle"])
+        if not perfil_df.empty:
+            cols_mostrar = [c for c in ("columna", "dtype", "rol_texto", "nulos_pct", "unicos")
+                            if c in perfil_df.columns]
+            st.dataframe(perfil_df[cols_mostrar].rename(columns={
+                "columna": t("col_column", lang), "dtype": t("col_type", lang),
+                "rol_texto": t("de_perfil_rol", lang), "nulos_pct": t("de_perfil_nulos", lang),
+                "unicos": t("de_perfil_unicos", lang)}), width="stretch", hide_index=True)
+
+        st.subheader(t("de_issues_titulo", lang))
+        if cal["issues"]:
+            issues_df = pd.DataFrame(cal["issues"])
+            st.dataframe(issues_df[["severidad_texto", "columna", "detalle", "accion"]].rename(columns={
+                "severidad_texto": t("de_issues_severidad", lang),
+                "columna": t("de_issues_columna", lang),
+                "detalle": t("de_issues_detalle", lang), "accion": t("de_issues_accion", lang)}),
+                width="stretch", hide_index=True)
+        else:
+            st.caption(t("de_issues_sin", lang))
+
+        st.subheader(t("de_claves_titulo", lang))
+        if res["claves"]["pk"]:
+            pk_df = pd.DataFrame(res["claves"]["pk"])[["columna", "tipo_texto", "confianza_texto"]]
+            st.dataframe(pk_df.rename(columns={
+                "columna": t("de_pk_columna", lang), "tipo_texto": t("de_pk_tipo", lang),
+                "confianza_texto": t("de_pk_confianza", lang)}), width="stretch", hide_index=True)
+        else:
+            st.caption(t("de_claves_ninguna", lang))
+
+        if res["tiempo"]:
+            tiempo = res["tiempo"]
+            st.subheader(t("de_tiempo_titulo", lang))
+            tc1, tc2, tc3 = st.columns(3)
+            tc1.metric(t("de_tiempo_dias_cubiertos", lang), tiempo["dias_cubiertos"])
+            tc2.metric(t("de_tiempo_dias_faltantes", lang), tiempo["dias_faltantes"])
+            tc3.metric(t("de_tiempo_frescura", lang), tiempo["frescura_dias"])
+            if tiempo.get("huecos_texto"):
+                st.caption(tiempo["huecos_texto"])
+            if tiempo.get("futuras_texto"):
+                st.warning(tiempo["futuras_texto"])
+
+        if res["target"]:
+            tg = res["target"]
+            st.subheader(t("de_target_titulo", lang))
+            if tg.get("fugas"):
+                st.error(t("de_fuga_titulo", lang))
+                for f in tg["fugas"]:
+                    st.markdown(f"- **{f['variable']}** — {f['texto']}")
+            if tg.get("ranking"):
+                st.subheader(t("de_ranking_titulo", lang))
+                st.dataframe(pd.DataFrame(tg["ranking"]).rename(columns={
+                    "variable": t("de_ranking_variable", lang),
+                    "metrica": t("de_ranking_metrica", lang),
+                    "valor": t("de_ranking_valor", lang),
+                    "fuerza": t("de_ranking_fuerza", lang)}), width="stretch", hide_index=True)
+
+        if res["dicc_features"]:
+            st.subheader(t("de_features_titulo", lang))
+            feats = pd.DataFrame(res["dicc_features"])
+            feats["apto_texto"] = feats["apto_series_temporales"].map(
+                lambda v: t("apto_cuidado", lang) if v == "cuidado" else t("apto_si", lang))
+            st.dataframe(feats[["feature", "origen", "etiqueta", "apto_texto"]].rename(columns={
+                "feature": t("de_features_feature", lang), "origen": t("de_features_origen", lang),
+                "etiqueta": t("de_features_calculo", lang),
+                "apto_texto": t("de_features_apto", lang)}), width="stretch", hide_index=True)
+
+        if res["ddl"]:
+            st.subheader(t("de_ddl_titulo", lang))
+            st.code(res["ddl"], language="sql")
+
+
 def _render_profile(user_df, dataset_name: str | None = None):
     """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
     Además lo deja disponible en session_state para guardarlo en el proyecto
-    del cliente (pestaña 📁 Proyecto), así el trabajo no se pierde."""
+    del cliente (pestaña Proyecto), así el trabajo no se pierde."""
     if user_df is None or not len(user_df):
         return
     if dataset_name:
-        st.session_state["current_dataset"] = user_df
-        st.session_state["current_dataset_name"] = dataset_name
+        _registrar_dataset(dataset_name, user_df)
     info = summary(user_df)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("col_rows", lang), f"{info['rows']:,}")
-    c2.metric(t("col_column", lang), info["columns"])
+    c2.metric(t("col_columns_count", lang), info["columns"])
     c3.metric(t("pr_dupes", lang), info["duplicate_rows"])
     c4.metric(t("pr_nulls", lang), f"{info['null_cells_pct']}%")
     st.subheader(t("pr_col_profile", lang))
@@ -1120,6 +1425,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
         "possible_pii": t("col_pii", lang),
     }), width="stretch", hide_index=True)
     if info["pii_columns"]:
+        st.warning(t("pr_pii_hint", lang))
         st.warning(t("pr_pii_hint", lang), icon="🔐")
 
     # Catálogo de calidad de verdad, no solo perfilado: las reglas se generan
@@ -1128,6 +1434,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
     # via mvdg.auto_rules (completitud + unicidad; el resto de las 6
     # dimensiones DAMA depende de reglas de negocio que no se pueden adivinar
     # de un archivo cualquiera, así que no se fingen).
+    st.subheader(f"{t('pr_auto_quality', lang)}")
     st.subheader(f"✅ {t('pr_auto_quality', lang)}")
     ares = auto_quality_results(user_df, dataset_name or t("pr_upload", lang), lang)
     if ares.empty:
@@ -1156,6 +1463,7 @@ def _render_profile(user_df, dataset_name: str | None = None):
                           yaxis_title=None, height=260)
         st.plotly_chart(fig, width="stretch",
                         key=f"pr_auto_dims_{dataset_name or 'sinnombre'}")
+        _render_fixes(ares, lang, ns="analisis")
         _render_fixes(ares, lang)
 
     st.subheader(t("pr_suggestions", lang))
@@ -1163,9 +1471,30 @@ def _render_profile(user_df, dataset_name: str | None = None):
     for s in suggest_rules(user_df, lang):
         st.markdown(f"- {s}")
 
+    # El motor completo de ingeniería de datos, sobre el mismo DataFrame que
+    # ya se perfiló arriba. Solo con dataset_name (archivo o base): la
+    # comparación genérica de los ejemplos no lo necesita, y sin nombre no
+    # hay bajo qué guardar el resultado en session_state.
+    if dataset_name:
+        _render_dataeng(user_df, dataset_name, lang)
+
+    # El cierre del recorrido comercial: lo que se ve en pantalla, en un
+    # Excel para el cliente del consultor. Solo con dataset_name (archivo o
+    # base) — la comparación genérica de los ejemplos no lo necesita.
+    if dataset_name:
+        from mvdg.file_report import file_report_xlsx
+        st.download_button(
+            t("frep_btn", lang),
+            file_report_xlsx(user_df, dataset_name, lang),
+            f"mvdg_informe_{dataset_name.rsplit('.', 1)[0]}_{lang}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"frep_dl_{dataset_name}",
+        )
+        st.caption(t("frep_caption", lang))
+
 
 with tab_pr:
-    st.info(t("pr_intro", lang), icon="🔎")
+    st.info(t("pr_intro", lang))
     _SRC_LABEL = {"example": t("pr_src_example", lang),
                   "file": t("pr_src_file", lang), "db": t("pr_src_db", lang)}
     source = st.radio(t("pr_source", lang),
@@ -1180,7 +1509,7 @@ with tab_pr:
         meta = ext_samples.sample_meta(skey, lang)
 
         # --- 1. Ficha del dataset (catálogo: dueño, steward, clasificación) ---
-        st.subheader(f"📇 {t('pr_example_card', lang)}")
+        st.subheader(f"{t('pr_example_card', lang)}")
         st.markdown(f"**{meta['name']}** — {meta['description']}")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(t("cat_domain", lang), meta["domain"])
@@ -1193,12 +1522,12 @@ with tab_pr:
         c6.markdown(f"**{t('pr_example_license_lbl', lang)}:** {meta['license']} · "
                    f"**{t('col_freshness', lang)}:** {meta['refresh']}")
         if meta.get("classification_note"):
-            st.caption(f"ℹ️ {meta['classification_note']}")
-        with st.expander("👁️ " + t("pr_example_data", lang), expanded=False):
+            st.caption(f"ℹ {meta['classification_note']}")
+        with st.expander("" + t("pr_example_data", lang), expanded=False):
             st.dataframe(ext_samples.load_sample_table(skey).head(20), width="stretch", hide_index=True)
 
         # --- 2. Métricas: reglas de calidad con umbral/estado (no perfilado genérico) ---
-        st.subheader(f"✅ {t('pr_example_metrics', lang)}")
+        st.subheader(f"{t('pr_example_metrics', lang)}")
         sres = ext_samples.sample_quality_results(skey, lang)
         s_show = sres.copy()
         s_show["dimension"] = s_show["dimension"].map(lambda d: _DIM_LABEL.get(d, d))
@@ -1222,10 +1551,10 @@ with tab_pr:
                           yaxis_title=None, height=300)
         st.plotly_chart(fig, width="stretch", key=f"pr_example_dims_{skey}")
 
-        _render_fixes(sres, lang)
+        _render_fixes(sres, lang, ns="misdatos")
 
         # --- 3. Definiciones (glosario) ---
-        st.subheader(f"📖 {t('pr_example_glossary_title', lang)}")
+        st.subheader(f"{t('pr_example_glossary_title', lang)}")
         sgloss = ext_samples.sample_glossary_df(skey, lang)
         st.dataframe(sgloss.drop(columns=["term_id"]).rename(columns={
             "term": t("g_term", lang), "definition": t("g_definition", lang),
@@ -1233,7 +1562,7 @@ with tab_pr:
         }), width="stretch", hide_index=True)
 
         # --- 4. Exportar / conectar a BI (Power BI, Tableau, API) ---
-        st.subheader(f"📤 {t('pr_example_bi_title', lang)}")
+        st.subheader(f"{t('pr_example_bi_title', lang)}")
         st.caption(t("pr_example_bi_note", lang))
         gov_s = ext_samples.sample_governance_tables(skey, lang)
         bt_labels = {"data": t("pr_example_data", lang), "dictionary": t("tbl_dictionary", lang),
@@ -1272,7 +1601,11 @@ with tab_pr:
             except Exception as exc:  # archivo corrupto / formato raro
                 _error(exc, lang, "generico")
                 user_df = None
-            _render_profile(user_df, dataset_name=up.name if up is not None else None)
+            # Sin la extensión: ahora este nombre es el del dataset en el
+            # catálogo, en el linaje y en el bundle de BI, no una etiqueta
+            # suelta de una pestaña. "ventas_2026" es un dataset;
+            # "ventas_2026.xlsx" es un archivo.
+            _render_profile(user_df, dataset_name=os.path.splitext(up.name)[0])
     else:
         st.markdown(t("db_intro", lang))
         existing = load_connections()
@@ -1293,7 +1626,26 @@ with tab_pr:
         is_cloud = engine in CLOUD_ENGINES
         extra_raw = ""
         if is_sqlite:
-            database = st.text_input(t("db_sqlite_path", lang), (editing or {}).get("database", ""))
+            # SQLite es un archivo, no un servidor: pedir la ruta escrita
+            # solo sirve si el .db está en esta misma máquina. Subirlo
+            # funciona también desde el navegador y en modo servidor.
+            _db_up = st.file_uploader(t("db_sqlite_upload", lang),
+                                      type=["db", "sqlite", "sqlite3", "db3"],
+                                      key="db_sqlite_up")
+            if _db_up is not None:
+                import tempfile
+                _dbdir = tempfile.mkdtemp(prefix="mvdg_sqlite_")
+                _dbpath = os.path.join(_dbdir, _db_up.name)
+                with open(_dbpath, "wb") as _fh:
+                    _fh.write(_db_up.getbuffer())
+                st.session_state["db_sqlite_subida"] = _dbpath
+            _subida = st.session_state.get("db_sqlite_subida", "")
+            if _subida:
+                st.caption(f"{t('db_sqlite_uploaded', lang)}: {os.path.basename(_subida)}")
+            with st.expander(t("db_sqlite_expander", lang)):
+                _escrita = st.text_input(t("db_sqlite_path", lang),
+                                         (editing or {}).get("database", ""))
+            database = _escrita.strip() or _subida
             host, port, user, pwd = "", None, "", ""
         else:
             if is_cloud:
@@ -1357,15 +1709,25 @@ with tab_pr:
         # Traer tablas: usa la conexión guardada (o la que se está probando)
         active = editing or (profile if (database or host or extra_parsed) else None)
         if active is not None:
+            # Nombre propio: `tables` es el diccionario global de datasets
+            # gobernados que usan las otras pestañas. Reusarlo acá lo pisaba
+            # con una lista de nombres de tablas de la base para lo que
+            # quedara del rerun.
             try:
-                tables = list_tables(active, password=pwd or None)
+                _db_tables = list_tables(active, password=pwd or None)
             except Exception as exc:  # noqa: BLE001
-                tables = []
+                _db_tables = []
                 _error(exc, lang, "conexion")
-            if tables:
-                lim = st.number_input(t("db_limit", lang), 100, 100000, 10000, step=100)
+            if _db_tables:
+                # El máximo era 100.000 y no se podía subir: quien tenía una
+                # tabla de 3 millones de filas no tenía forma de traerlas.
+                # 0 = sin límite, que es lo que hay que poner para gobernar
+                # la tabla entera; el default sigue siendo chico para que la
+                # primera consulta a una base desconocida no traiga todo.
+                lim = st.number_input(t("db_limit", lang), 0, 100_000_000, 10000,
+                                      step=1000, help=t("db_limit_help", lang))
                 p1, p2 = st.columns([2, 1])
-                table = p1.selectbox(t("db_pick_table", lang), tables)
+                table = p1.selectbox(t("db_pick_table", lang), _db_tables)
                 if p2.button(t("db_load", lang)):
                     try:
                         _render_profile(load_table(active, table, int(lim), password=pwd or None),
@@ -1384,8 +1746,9 @@ with tab_pr:
 
 # ---------------------------------------------------------------- BI & API
 with tab_bi:
-    st.info(t("bi_intro", lang), icon="📤")
-    gov = governance_tables(lang, include_samples=incl_samples)
+    st.info(t("bi_intro", lang))
+    gov = governance_tables(lang, include_samples=incl_samples,
+                            user_datasets=_mis_datasets())
 
     st.subheader(t("bi_files", lang))
     table_labels = {
@@ -1430,7 +1793,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("mig_title", lang))
-    st.info(t("mig_intro", lang), icon="🔀")
+    st.info(t("mig_intro", lang))
 
     def _curation_lookup_factory(prefix):
         def lookup(term_id):
@@ -1488,12 +1851,12 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("enf_title", lang))
-    st.warning(t("enf_intro", lang), icon="🔒")
+    st.warning(t("enf_intro", lang))
     e1, e2 = st.columns(2)
     enf_engine = e1.selectbox(t("enf_engine", lang), enforcement.SUPPORTED_MASKING_ENGINES,
                               format_func=lambda k: "PostgreSQL" if k == "postgresql" else "SQL Server")
     _CLASS_OPTS = sorted(_mig_cat["classification"].unique().tolist())
-    with st.expander(f"❓ {t('enf_roles', lang)}", expanded=False):
+    with st.expander(f"{t('enf_roles', lang)}", expanded=False):
         st.markdown(t("enf_roles_explain", lang))
     enf_roles_raw = st.text_area(
         t("enf_roles", lang),
@@ -1519,7 +1882,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("mip_title", lang))
-    st.info(t("mip_intro", lang), icon="🏷️")
+    st.info(t("mip_intro", lang))
     _mip_ready = mip_labels.configured()
     st.caption(t("mip_env", lang) if not _mip_ready else t("mig_configured", lang))
     st.caption(t("mip_scope_note", lang))
@@ -1583,7 +1946,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("azd_title", lang))
-    st.info(t("azd_intro", lang), icon="☁️")
+    st.info(t("azd_intro", lang))
     _azd_ready = azure_discovery.configured()
     st.caption(t("azd_env", lang) if not _azd_ready else t("mig_configured", lang))
     if _azd_ready and st.button(t("azd_run", lang), type="primary"):
@@ -1603,7 +1966,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("cbp_title", lang))
-    st.info(t("cbp_intro", lang), icon="⬇️")
+    st.info(t("cbp_intro", lang))
     _cbp_ready = collibra_export.configured()
     st.caption(t("cbp_env", lang) if not _cbp_ready else t("mig_configured", lang))
     if _cbp_ready and st.button(t("cbp_run", lang), type="primary"):
@@ -1623,7 +1986,7 @@ with tab_bi:
             st.download_button(t("cbp_download_terms", lang), to_csv_bytes(_cbp_terms_df),
                                "collibra_terminos.csv", "text/csv")
         if _cbp_res["catalog"].get("skipped_reason"):
-            st.caption(f"📚 {t('cbp_catalog_skipped', lang)}: {_cbp_res['catalog']['skipped_reason']}")
+            st.caption(f"{t('cbp_catalog_skipped', lang)}: {_cbp_res['catalog']['skipped_reason']}")
         elif _cbp_res["catalog"]["tables"]:
             _cbp_tables_df = pd.DataFrame(_cbp_res["catalog"]["tables"])
             st.dataframe(_cbp_tables_df, width="stretch", hide_index=True)
@@ -1637,7 +2000,7 @@ with tab_bi:
 
     st.divider()
     st.subheader(t("pvp_title", lang))
-    st.info(t("pvp_intro", lang), icon="⬇️")
+    st.info(t("pvp_intro", lang))
     _pvp_ready = purview_pull.configured()
     st.caption(t("pvp_env", lang) if not _pvp_ready else t("mig_configured", lang))
     if _pvp_ready and st.button(t("pvp_run", lang), type="primary"):
@@ -1680,7 +2043,7 @@ with tab_bi:
 
 # ---------------------------------------------------------------- Empresas
 with tab_cl:
-    st.info(t("cl_intro", lang), icon="🏢")
+    st.info(t("cl_intro", lang))
 
     _R_LABEL = {"exe_ok": t("cl_r_exe", lang),
                 "no_exe_python_ok": t("cl_r_noexe", lang),
@@ -1789,12 +2152,264 @@ with tab_cl:
                            width="stretch")
     st.caption(t("cl_where", lang).format(path=data_dir()))
 
+# ------------------------------------------------------------ Relevamiento
+with tab_srv:
+    # Las preguntas que hay que hacerle al cliente, partidas por área del
+    # pipeline. Lo que se responde queda guardado en la carpeta de ESE
+    # cliente: las respuestas de una empresa no viajan con las de otra.
+    st.info(t("srv_intro", lang))
+    _srv_clients = load_clients()
+    if not _srv_clients:
+        st.warning(t("srv_no_client", lang).format(tab=t("tab_clients", lang)))
+    else:
+        _srv_opts = {f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})": c
+                     for c in _srv_clients}
+        _srv_pick = st.selectbox(t("srv_client", lang), list(_srv_opts.keys()),
+                                 key="srv_pick_client")
+        _srv_cli = _srv_opts[_srv_pick]
+        _srv_cid = _srv_cli["client_id"]
+        _srv_nombre = _srv_cli.get("company", _srv_cid)
+
+        # Cobertura: qué área quedó sin tocar. Es lo que se mira antes de
+        # cerrar una reunión — un 90% en ingesta y 0% en políticas no es la
+        # mitad del relevamiento, es todo el riesgo todavía adelante.
+        _srv_prog = interview.progress(_srv_cid, lang)
+        v1, v2, v3 = st.columns(3)
+        v1.metric(t("srv_coverage", lang), f"{interview.overall_coverage(_srv_cid)}%")
+        v2.metric(t("srv_kpi_questions", lang), len(interview.questions(lang)))
+        v3.metric(t("srv_kpi_areas", lang), len(interview.areas(lang)))
+        st.dataframe(_srv_prog, width="stretch", hide_index=True)
+
+        _srv_areas = interview.areas(lang)
+        _srv_labels = {a["key"]: f"{a['n']}. {a['titulo']} ({a['preguntas']})"
+                       for a in _srv_areas}
+        _srv_area = st.selectbox(t("srv_area", lang), list(_srv_labels),
+                                 format_func=lambda k: _srv_labels[k],
+                                 key="srv_pick_area")
+
+        _srv_guardadas = interview.load_answers(_srv_cid)
+        _SRV_ESTADO = {"pendiente": t("srv_st_pending", lang),
+                       "respondida": t("srv_st_answered", lang),
+                       "no_aplica": t("srv_st_na", lang)}
+
+        for _q in interview.questions(lang, _srv_area):
+            _prev = _srv_guardadas.get(_q["id"], {})
+            _hecho = _prev.get("estado") == "respondida"
+            with st.expander(f"{_q['id']} · {_q['pregunta']}", expanded=not _hecho):
+                st.caption(f"**{t('srv_why', lang)}:** {_q['porque']}")
+                st.caption(f"**{t('srv_ask_whom', lang)}:** {_q['a_quien']}")
+                q1, q2 = st.columns(2)
+                _resp_nom = q1.text_input(t("srv_who", lang),
+                                          value=_prev.get("responsable", ""),
+                                          key=f"srv_who_{_q['id']}")
+                _resp_area = q2.text_input(t("srv_who_area", lang),
+                                           value=_prev.get("area_responsable", ""),
+                                           key=f"srv_area_{_q['id']}")
+                _resp = st.text_area(t("srv_answer", lang),
+                                     value=_prev.get("respuesta", ""),
+                                     key=f"srv_ans_{_q['id']}", height=90)
+                # El estado tiene que decir lo que se va a GUARDAR. Antes
+                # arrancaba siempre en el valor con el que se abrió la
+                # pregunta, así que escribir la respuesta y apretar Guardar
+                # la dejaba "pendiente": la cobertura no subía nunca y no
+                # había forma de notarlo sin mirar el JSON. "No aplica" es
+                # una decisión explícita y no se pisa.
+                _sugerido = _prev.get("estado", "pendiente")
+                if _sugerido != "no_aplica":
+                    _sugerido = "respondida" if _resp.strip() else "pendiente"
+                _estado = st.radio(
+                    t("srv_state", lang), list(_SRV_ESTADO),
+                    format_func=lambda k: _SRV_ESTADO[k], horizontal=True,
+                    index=list(_SRV_ESTADO).index(_sugerido),
+                    key=f"srv_st_{_q['id']}")
+
+                b1, b2 = st.columns(2)
+                if b1.button(t("srv_save", lang), key=f"srv_save_{_q['id']}",
+                             type="primary", width="stretch"):
+                    interview.save_answer(_srv_cid, _q["id"], respuesta=_resp,
+                                          responsable=_resp_nom,
+                                          area_responsable=_resp_area,
+                                          estado=_estado)
+                    st.success(t("srv_saved", lang))
+                    st.rerun()
+
+                # El casillero de repreguntas. Las locales salen SIEMPRE — se
+                # calculan mirando qué le falta a esta respuesta y no
+                # necesitan ni internet ni clave, que es la situación normal
+                # en la sala de reuniones de un cliente.
+                st.markdown(f"**{t('srv_followups', lang)}**")
+                for _r in interview.follow_ups(_q["id"], _resp, lang):
+                    st.markdown(f"- {_r}")
+
+                _prov = configured_provider()
+                if not _prov:
+                    st.caption(t("srv_no_ai", lang))
+                elif b2.button(t("srv_ask_ai", lang), key=f"srv_ai_{_q['id']}",
+                               width="stretch",
+                               help=t("srv_ai_warning", lang)):
+                    _extra = interview.ai_follow_ups(_q["id"], _resp, lang)
+                    if _extra:
+                        st.markdown(f"**{t('srv_followups_ai', lang)}** "
+                                    f"({provider_label(_prov)})")
+                        for _r in _extra:
+                            st.markdown(f"- {_r}")
+                    else:
+                        st.info(t("srv_ai_failed", lang))
+
+        st.divider()
+        st.subheader(t("srv_export", lang))
+        _srv_doc = interview.to_document(_srv_cid, lang, _srv_nombre)
+        _srv_base = f"relevamiento_{_srv_cid[:8]}_{lang}"
+        s1, s2, s3, s4 = st.columns(4)
+        s1.download_button(t("tz_dl_html", lang),
+                           doc_export.a_html(_srv_doc).encode("utf-8"),
+                           f"{_srv_base}.html", "text/html", width="stretch")
+        s2.download_button(
+            t("tz_dl_docx", lang), doc_export.a_docx(_srv_doc), f"{_srv_base}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch")
+        s3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_srv_doc),
+                           f"{_srv_base}.pdf", "application/pdf", width="stretch")
+        s4.download_button(t("srv_dl_xlsx", lang),
+                           to_excel_bytes(interview.answers_df(_srv_cid, lang),
+                                          "relevamiento"),
+                           f"{_srv_base}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+
+# --------------------------------------------------------------- Reuniones
+with tab_mtg:
+    st.info(t("mtg_intro", lang))
+    _MTG_FUENTES = {"transcripcion": t("mtg_src_transcript", lang),
+                    "grabar": t("mtg_src_record", lang),
+                    "audio": t("mtg_src_audio", lang),
+                    "pegar": t("mtg_src_paste", lang)}
+    _mtg_fuente = st.radio(t("mtg_source", lang), list(_MTG_FUENTES),
+                           format_func=lambda k: _MTG_FUENTES[k], horizontal=True,
+                           key="mtg_fuente")
+    _mtg_texto = ""
+    _mtg_audio = None
+    _mtg_nombre = "reunion.wav"
+
+    if _mtg_fuente == "transcripcion":
+        # El camino recomendado: la transcripción que YA generó la
+        # plataforma. Ahí el orador viene identificado por el sistema que
+        # sabía quién tenía el micrófono abierto, y el audio nunca sale de
+        # donde ya estaba.
+        st.caption(t("mtg_transcript_help", lang))
+        _mtg_up = st.file_uploader(t("mtg_upload_tr", lang),
+                                   type=["vtt", "srt", "txt", "json", "csv"],
+                                   key="mtg_up_tr")
+        if _mtg_up is not None:
+            _mtg_texto = _mtg_up.getvalue().decode("utf-8", "replace")
+    elif _mtg_fuente == "grabar":
+        st.caption(t("mtg_record_help", lang))
+        _mtg_rec = st.audio_input(t("mtg_record", lang), key="mtg_rec")
+        if _mtg_rec is not None:
+            _mtg_audio = _mtg_rec.getvalue()
+    elif _mtg_fuente == "audio":
+        _mtg_up = st.file_uploader(
+            t("mtg_upload_audio", lang),
+            type=[e.lstrip(".") for e in transcribe.EXTENSIONES], key="mtg_up_au")
+        if _mtg_up is not None:
+            _mtg_audio = _mtg_up.getvalue()
+            _mtg_nombre = _mtg_up.name
+    else:
+        _mtg_texto = st.text_area(t("mtg_paste", lang), height=200, key="mtg_paste_in")
+
+    # Transcribir manda el audio a un tercero. Se pide permiso ACÁ, cada vez,
+    # y no con una casilla en Configuración que alguien marcó hace meses: el
+    # audio de una reunión de un cliente no es un archivo cualquiera.
+    if _mtg_audio:
+        st.audio(_mtg_audio)
+        _mtg_prov = transcribe.proveedor_disponible()
+        if not _mtg_prov:
+            st.warning(transcribe.motivo("sin_proveedor", lang))
+        else:
+            st.warning(t("mtg_ai_warning", lang).format(
+                proveedor=provider_label(_mtg_prov)))
+            if st.checkbox(t("mtg_ai_confirm", lang), key="mtg_ai_ok") and \
+                    st.button(t("mtg_transcribe", lang), type="primary",
+                              key="mtg_do_tr"):
+                with st.spinner(t("mtg_transcribing", lang)):
+                    _mtg_res = transcribe.transcribir(_mtg_audio, _mtg_nombre, lang)
+                if _mtg_res["ok"]:
+                    st.session_state["mtg_texto"] = _mtg_res["texto"]
+                    st.success(t("mtg_transcribed", lang))
+                else:
+                    st.error(_mtg_res["mensaje"])
+    _mtg_texto = _mtg_texto or st.session_state.get("mtg_texto", "")
+
+    _mtg_inter = meetings.parse_transcript(_mtg_texto)
+    if not _mtg_inter:
+        st.caption(t("mtg_empty", lang))
+    else:
+        m1, m2, m3 = st.columns(3)
+        _mtg_tit = m1.text_input(t("mtg_title", lang), key="mtg_titulo")
+        _mtg_fec = m2.text_input(t("mtg_date", lang), key="mtg_fecha")
+        _mtg_par = m3.text_input(t("mtg_people", lang), key="mtg_participantes")
+        _mtg_min = meetings.minutes(_mtg_inter, lang, titulo=_mtg_tit,
+                                    fecha=_mtg_fec, participantes=_mtg_par)
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric(t("mtg_kpi_turns", lang), _mtg_min["intervenciones"])
+        k2.metric(t("mtg_kpi_min", lang), _mtg_min["duracion_min"])
+        k3.metric(t("mtg_kpi_findings", lang), len(_mtg_min["hallazgos"]))
+
+        st.subheader(t("mtg_speakers", lang))
+        st.caption(t("mtg_speakers_note", lang))
+        st.dataframe(_mtg_min["oradores"], width="stretch", hide_index=True)
+
+        st.subheader(t("mtg_findings", lang))
+        _mtg_h = _mtg_min["hallazgos"]
+        if len(_mtg_h):
+            _tipos = sorted(_mtg_h["tipo"].unique().tolist())
+            _sel = st.multiselect(t("mtg_filter_type", lang), _tipos, default=_tipos,
+                                  key="mtg_filtro_tipo")
+            st.dataframe(_mtg_h[_mtg_h["tipo"].isin(_sel)]
+                         [["tipo", "minuto", "orador", "cita"]],
+                         width="stretch", hide_index=True)
+        else:
+            st.caption(t("mtg_no_findings", lang))
+
+        st.subheader(t("mtg_pipeline", lang))
+        st.caption(t("mtg_pipeline_note", lang))
+        _mtg_p = _mtg_min["pipeline"]
+        if len(_mtg_p):
+            st.dataframe(_mtg_p[["n", "etapa", "minuto", "orador", "cita", "pistas"]],
+                         width="stretch", hide_index=True)
+        else:
+            st.caption(t("mtg_no_pipeline", lang))
+
+        with st.expander(t("mtg_transcript", lang)):
+            st.caption(t("mtg_assign_note", lang))
+            st.dataframe(_mtg_min["transcripcion"], width="stretch", hide_index=True)
+
+        st.subheader(t("mtg_export", lang))
+        _mtg_doc = meetings.to_document(_mtg_min, lang)
+        _mtg_base = f"minuta_{lang}"
+        g1, g2, g3, g4 = st.columns(4)
+        g1.download_button(t("tz_dl_html", lang),
+                           doc_export.a_html(_mtg_doc).encode("utf-8"),
+                           f"{_mtg_base}.html", "text/html", width="stretch")
+        g2.download_button(
+            t("tz_dl_docx", lang), doc_export.a_docx(_mtg_doc), f"{_mtg_base}.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch")
+        g3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_mtg_doc),
+                           f"{_mtg_base}.pdf", "application/pdf", width="stretch")
+        g4.download_button(t("mtg_dl_xlsx", lang),
+                           to_excel_bytes(_mtg_min["transcripcion"], "transcripcion"),
+                           f"{_mtg_base}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           width="stretch")
+
 # ---------------------------------------------------------------- Proyecto
 with tab_ws:
-    st.info(t("ws_intro", lang), icon="📁")
+    st.info(t("ws_intro", lang))
     ws_clients = load_clients()
     if not ws_clients:
-        st.warning(t("ws_no_clients", lang), icon="🏢")
+        st.warning(t("ws_no_clients", lang))
     else:
         ws_opts = {f"{c.get('company', '?')} ({c.get('client_id', '')[:6]})": c
                    for c in ws_clients}
@@ -1857,7 +2472,11 @@ with tab_ws:
                 _tables: dict = {}
                 for _key in chosen:
                     if _key == "governance":
-                        for _gk, _gv in governance_tables(lang).items():
+                        # Guardar en el proyecto del cliente el gobierno que
+                        # está viendo, no el de la demo pelada.
+                        for _gk, _gv in governance_tables(
+                                lang, include_samples=incl_samples,
+                                user_datasets=_mis_datasets()).items():
                             _tables[f"gob_{_gk}"] = _gv
                     else:
                         _tables.update(candidates[_key][1])
@@ -1878,7 +2497,7 @@ with tab_ws:
             st.caption(t("ws_no_stages", lang))
         for _sm in _stages:
             _sid = _sm["stage_id"]
-            _hdr = (f"📌 {_sm['name']} · {_sm.get('kind', '')} · "
+            _hdr = (f"{_sm['name']} · {_sm.get('kind', '')} · "
                     f"{_sm.get('created_at', '')[:16].replace('T', ' ')}")
             with st.expander(_hdr):
                 if _sm.get("notes"):
@@ -1928,14 +2547,97 @@ with tab_ws:
 
 # ------------------------------------------------------------------- Ayuda
 with tab_h:
-    st.info(t("h_intro", lang), icon="❓")
+    st.info(t("h_intro", lang))
+
+    # --- Configuración de IA ------------------------------------------------
+    # Antes esto solo se podía hacer con variables de entorno, que para alguien
+    # que abre un .exe significa cerrar el programa, tocar el sistema y volver
+    # a abrirlo. Y no había forma de elegir el MODELO, que es lo que decide
+    # cuánto gasta el usuario en su propia cuenta.
+    st.subheader(t("ia_title", lang))
+    st.caption(t("ia_intro", lang))
+
+    _ia_prov = st.selectbox(
+        t("ia_provider", lang), list(ai_settings.PROVEEDORES),
+        format_func=lambda p: ai_settings.PROVEEDORES[p]["etiqueta"],
+        key="ia_prov")
+
+    _ia_c1, _ia_c2 = st.columns([2, 1])
+    with _ia_c1:
+        _ia_key = st.text_input(t("ia_key", lang), type="password",
+                                value="", placeholder="••••••••",
+                                help=t("ia_key_help", lang), key="ia_key_in")
+        if _ia_key:
+            _donde = ai_settings.guardar_key(_ia_prov, _ia_key)
+            if _donde == "ofuscada":
+                st.warning(t("ia_saved_obf", lang))
+            else:
+                st.success(t("ia_saved", lang))
+
+        # Solo "compatible" necesita que le digan a dónde apuntar; para los
+        # demás la URL es fija y preguntarla sería ruido.
+        if _ia_prov == "compatible":
+            _ia_base = st.text_input(t("ia_base_url", lang),
+                                     value=ai_settings.base_url("compatible"),
+                                     help=t("ia_base_help", lang), key="ia_base_in")
+            if _ia_base != ai_settings.base_url("compatible"):
+                ai_settings.guardar_base_url(_ia_base)
+
+    with _ia_c2:
+        st.write("")
+        if st.button(t("ia_refresh", lang), help=t("ia_refresh_help", lang),
+                     key="ia_refresh_btn", use_container_width=True):
+            if not ai_settings.leer_key(_ia_prov):
+                st.warning(t("ia_need_key", lang))
+            else:
+                _antes = ai_settings.modelos_conocidos(_ia_prov)
+                _lista = ai_settings.refrescar_modelos(_ia_prov)
+                # refrescar_modelos conserva la lista anterior si falla, así que
+                # "no cambió nada" es la señal de que no se pudo traer.
+                if _lista == _antes and not ai_settings.actualizado_en(_ia_prov):
+                    st.warning(t("ia_refresh_fail", lang))
+                else:
+                    st.success(t("ia_refresh_ok", lang).format(n=len(_lista)))
+
+    _ia_modelos = ai_settings.modelos_conocidos(_ia_prov)
+    if _ia_modelos:
+        _actual = ai_settings.modelo_elegido(_ia_prov)
+        _idx = _ia_modelos.index(_actual) if _actual in _ia_modelos else 0
+        _elegido = st.selectbox(t("ia_model", lang), _ia_modelos, index=_idx,
+                                help=t("ia_model_help", lang), key="ia_model_sel")
+        if _elegido != _actual:
+            ai_settings.guardar_modelo(_ia_prov, _elegido)
+
+    _ia_activo = configured_provider()
+    if _ia_activo:
+        st.caption(t("ia_active", lang).format(
+            prov=provider_label(_ia_activo),
+            model=ai_settings.modelo_elegido(_ia_activo) or "—"))
+    else:
+        st.caption(t("ia_none", lang))
+    st.caption(t("ia_copilot", lang))
+    st.divider()
+
+    # --- Cómo está instalado ------------------------------------------------
+    # Lo único que cambia entre las dos formas de instalar es DÓNDE queda
+    # guardado lo que el usuario hace, y eso no se puede adivinar mirando la
+    # pantalla. En la VM de un cliente es la diferencia entre llevarse el
+    # trabajo y perderlo al cerrar sesión.
+    st.subheader(t("inst_title", lang))
+    _inst = install_mode.descripcion(lang)
+    st.markdown(f"**{_inst['titulo']}**")
+    st.caption(_inst["detalle"])
+    st.caption(f"{t('inst_where', lang)}: `{_inst['datos']}`")
+    if _inst["datos_fuera_de_la_carpeta"]:
+        st.warning(t("inst_fallback", lang))
+    st.divider()
 
     # --- Licencia -----------------------------------------------------------
     st.subheader(t("lic_title", lang))
     _lic = licensing.status()
     st.caption(t("lic_intro", lang))
     if not _lic["emisor_configurado"]:
-        st.warning(t("lic_no_issuer", lang), icon="⚠️")
+        st.warning(t("lic_no_issuer", lang))
     _lc1, _lc2 = st.columns([1, 2])
     _lc1.metric(t("lic_plan", lang),
                 _lic["plan"] if _lic["licenciado"] else t("lic_demo", lang))
@@ -1961,7 +2663,7 @@ with tab_h:
                 st.success(t("lic_ok", lang).format(plan=_payload.get("plan")))
                 st.rerun()
             else:
-                st.error(t("lic_bad", lang), icon="⚠️")
+                st.error(t("lic_bad", lang))
     st.caption(f"**{t('lic_paid_features', lang)}:** "
                + ", ".join(_lic["funciones_pagas"]))
     st.divider()
@@ -1980,7 +2682,7 @@ with tab_h:
     st.subheader(t("h_speeches", lang))
     st.markdown(t("h_speeches_note", lang))
     for sp in speeches(lang):
-        with st.expander(f"🎙️ {sp['title']}"):
+        with st.expander(f"{sp['title']}"):
             st.caption(f"{t('h_audience', lang)}: {sp['audience']}")
             st.markdown(sp["text"].replace("\n", "  \n"))
 
@@ -1990,12 +2692,67 @@ with tab_h:
     st.subheader(t("h_pvfaq", lang))
     st.markdown(t("h_pvfaq_note", lang))
     for item in purview_collibra_faq(lang):
-        with st.expander(f"❓ {item['q']}"):
+        with st.expander(f"{item['q']}"):
             st.markdown(item["a"])
 
 # ---------------------------------------------------------- Entregable final
+with tab_tz:
+    # El recorrido completo del dato, contado dos veces: en criollo para quien
+    # firma la compra y en técnico para quien mantiene el código. La evidencia
+    # de cada etapa sale de ESTA corrida — con lo que el usuario tenga cargado
+    # en este momento, no con números de folleto.
+    st.info(t("tz_intro", lang))
+    _tz_gov = governance_tables(lang, include_samples=incl_samples,
+                                user_datasets=_mis_datasets())
+    _tz_ctx = dict(
+        datasets=_mis_datasets(),
+        catalog=_tz_gov["catalog"], dictionary=_tz_gov["dictionary"],
+        results=_tz_gov["quality_results"], lineage=_tz_gov["lineage"],
+        glossary=_tz_gov["glossary"], policies=_tz_gov["policies"],
+        indice=overall_index(results), tablas_bi=sorted(_tz_gov),
+    )
+    _TZ_VISTAS = {"ambos": t("tz_view_both", lang),
+                  "criollo": t("tz_view_plain", lang),
+                  "tecnico": t("tz_view_tech", lang)}
+    _tz_vista = st.radio(t("tz_view", lang), list(_TZ_VISTAS),
+                         format_func=lambda k: _TZ_VISTAS[k], horizontal=True)
+    _tz_campos = {"ambos": ("criollo", "tecnico", "porque", "impacto"),
+                  "criollo": ("criollo", "impacto"),
+                  "tecnico": ("tecnico", "porque")}[_tz_vista]
+
+    _tz_etapas = pipeline_doc.documentar(lang, **_tz_ctx)
+    _tz_rot = pipeline_doc.etiquetas(lang)
+    _tz_medidas = sum(1 for e in _tz_etapas if e["evidencia"])
+    z1, z2, z3 = st.columns(3)
+    z1.metric(t("tz_kpi_stages", lang), len(_tz_etapas))
+    z2.metric(t("tz_kpi_measured", lang), f"{_tz_medidas} / {len(_tz_etapas)}")
+    z3.metric(t("kpi_quality", lang), f"{_tz_ctx['indice']} / 100")
+
+    for _tz_e in _tz_etapas:
+        st.markdown(f"##### {_tz_e['n']}. {_tz_e['titulo']}")
+        st.caption(f"`{_tz_e['modulo']}`")
+        for _tz_campo in _tz_campos:
+            st.markdown(f"**{_tz_rot[_tz_campo]}** — {_tz_e[_tz_campo]}")
+        if _tz_e["evidencia"]:
+            st.success(f"**{_tz_rot['evidencia']}** · {_tz_e['evidencia']}")
+        st.divider()
+
+    st.subheader(t("tz_export", lang))
+    st.caption(t("tz_export_note", lang))
+    _tz_doc = pipeline_doc.documento(lang, **_tz_ctx)
+    _tz_nombre = f"mvdg_pipeline_{lang}"
+    e1, e2, e3 = st.columns(3)
+    e1.download_button(t("tz_dl_html", lang), doc_export.a_html(_tz_doc).encode("utf-8"),
+                       f"{_tz_nombre}.html", "text/html", width="stretch")
+    e2.download_button(
+        t("tz_dl_docx", lang), doc_export.a_docx(_tz_doc), f"{_tz_nombre}.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        width="stretch")
+    e3.download_button(t("tz_dl_pdf", lang), doc_export.a_pdf(_tz_doc),
+                       f"{_tz_nombre}.pdf", "application/pdf", width="stretch")
+
 with tab_del:
-    st.info(t("del_intro", lang), icon="📦")
+    st.info(t("del_intro", lang))
     _del_keys = case_deliverable.case_keys()
     _del_key = st.selectbox(
         t("del_pick", lang), _del_keys,
@@ -2003,7 +2760,7 @@ with tab_del:
     _del = case_deliverable.build_deliverable(_del_key, lang)
     _dm, _dk, _dmig = _del["meta"], _del["kpis"], _del["migration"]
 
-    st.subheader(f"📦 {_dm['name']}")
+    st.subheader(f"{_dm['name']}")
     st.caption(f"{_dm['domain']} · {_dm['classification']} · "
                f"{t('del_owner', lang)}: {_dm['owner']} · "
                f"{t('col_steward', lang)}: {_dm['steward']}")
@@ -2060,13 +2817,13 @@ with tab_del:
 
 # --------------------------------------------------------------- Power BI
 with tab_con:
-    st.info(t("con_intro", lang), icon="🤝")
+    st.info(t("con_intro", lang))
 
     with st.expander(t("con_theory", lang)):
         st.caption(t("con_theory_note", lang))
         for _th in data_contracts.theory(lang):
             st.markdown(f"**{_th['concept']}** — {_th['plain']}")
-            st.caption(f"🛠️ {_th['practice']}")
+            st.caption(f"{_th['practice']}")
 
     # Siempre sobre el alcance combinado completo (demo + casos): un contrato
     # por cada producto gobernado, evaluado con la última corrida real.
@@ -2144,8 +2901,8 @@ with tab_con:
                        key="con_dl_xlsx")
 
 with tab_pbi:
-    st.info(t("pbi_intro", lang), icon="🔷")
-    st.caption("🔐 " + t("pbi_secure_note", lang))
+    st.info(t("pbi_intro", lang))
+    st.caption("" + t("pbi_secure_note", lang))
 
     _PBI_MODE = {"offline": t("pbi_mode_offline", lang), "tenant": t("pbi_mode_tenant", lang),
                 "example": t("pbi_mode_example", lang)}
@@ -2158,34 +2915,39 @@ with tab_pbi:
     pbi_models = None         # list[PowerBIModel] (modo tenant)
 
     if pbi_mode == "offline":
-        _PBI_SRC = {"path": t("pbi_src_path", lang), "zip": t("pbi_src_zip", lang)}
-        pbi_source = st.radio(t("pbi_source", lang), ["path", "zip"], horizontal=True,
+        # Subir el archivo va PRIMERO y es el valor por defecto: escribir una
+        # ruta a mano solo funciona si el archivo está en esta misma máquina,
+        # cosa que no pasa ni en el modo servidor ni cuando el cliente prueba
+        # la demo desde otra computadora. Antes la ruta era lo único visible
+        # y además solo aceptaba la CARPETA .pbip, así que quien tenía un
+        # .pbit —el caso normal— no tenía por dónde entrar.
+        _PBI_SRC = {"zip": t("pbi_src_zip", lang), "path": t("pbi_src_path", lang)}
+        pbi_source = st.radio(t("pbi_source", lang), ["zip", "path"], horizontal=True,
                               key="pbi_source", format_func=lambda k: _PBI_SRC[k])
-        if pbi_source == "path":
+        if pbi_source == "zip":
+            up = st.file_uploader(t("pbi_zip", lang), type=["pbit", "pbix", "zip"],
+                                  key="pbi_zip")
+            st.caption(t("pbi_zip_hint", lang))
+            if up is not None:
+                import tempfile
+                try:
+                    with st.spinner(t("pbi_wait", lang)):
+                        tmpdir = tempfile.mkdtemp(prefix="mvdg_pbi_")
+                        fpath = os.path.join(tmpdir, up.name)
+                        with open(fpath, "wb") as fh:
+                            fh.write(up.getbuffer())
+                        model_out = pbi.ingest_powerbi_file(fpath, lang)
+                except Exception as exc:  # noqa: BLE001
+                    pbi_err = exc
+        else:
             folder = st.text_input(t("pbi_path", lang), key="pbi_path")
             st.caption(t("pbi_path_hint", lang))
             if st.button(t("pbi_load", lang), key="pbi_load_path") and folder.strip():
                 try:
                     with st.spinner(t("pbi_wait", lang)):
-                        model_out = pbi.ingest_pbip(folder.strip(), lang)
+                        model_out = pbi.ingest_powerbi_file(folder.strip(), lang)
                 except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
-        else:
-            up = st.file_uploader(t("pbi_zip", lang), type=["zip"], key="pbi_zip")
-            if up is not None:
-                import tempfile
-                import zipfile
-                try:
-                    with st.spinner(t("pbi_wait", lang)):
-                        tmpdir = tempfile.mkdtemp(prefix="mvdg_pbip_")
-                        zpath = os.path.join(tmpdir, "proj.zip")
-                        with open(zpath, "wb") as fh:
-                            fh.write(up.getbuffer())
-                        with zipfile.ZipFile(zpath) as zf:
-                            zf.extractall(tmpdir)
-                        model_out = pbi.ingest_pbip(tmpdir, lang)
-                except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
+                    pbi_err = exc
         if model_out is not None:
             pbi_single_model = model_out["_model"]
     elif pbi_mode == "example":
@@ -2197,12 +2959,12 @@ with tab_pbi:
             model_out = pbi.ingest_example(lang)
             pbi_single_model = model_out["_model"]
         else:
-            st.warning(t("pbi_example_tenant_note", lang), icon="⚠️")
+            st.warning(t("pbi_example_tenant_note", lang))
             model_out = pbi.ingest_example_tenant(lang)
             pbi_models = model_out["_models"]
     else:
         if not pbi.tenant_configured():
-            st.warning(t("pbi_tenant_off", lang), icon="🔒")
+            st.warning(t("pbi_tenant_off", lang))
         else:
             st.caption(t("pbi_tenant_hint", lang))
             pbi_max_ws = st.number_input(t("pbi_tenant_max_ws", lang), min_value=1, max_value=1000,
@@ -2213,7 +2975,7 @@ with tab_pbi:
                     with st.spinner(t("pbi_wait", lang)):
                         model_out = pbi.ingest_tenant(lang, max_workspaces=int(pbi_max_ws))
                 except Exception as exc:  # noqa: BLE001
-                    pbi_err = str(exc)
+                    pbi_err = exc
             cached = st.session_state.get("pbi_tenant_result")
             if model_out is not None:
                 st.session_state["pbi_tenant_result"] = model_out
@@ -2223,7 +2985,10 @@ with tab_pbi:
             pbi_models = model_out["_models"]
 
     if pbi_err:
-        st.error(f"{t('pbi_err', lang)}: {pbi_err}", icon="⚠️")
+        # Traducido y con el "qué hacer" adelante, no el texto crudo de la
+        # excepción: para un .pbix el mensaje útil es "guardalo como .pbit",
+        # y así se ve en los 3 idiomas.
+        _error(pbi_err, lang, "archivo", prefijo=f"{t('pbi_err', lang)}: ")
     elif model_out is None:
         st.caption(t("pbi_no_model", lang))
     else:
@@ -2284,7 +3049,7 @@ with tab_pbi:
             _pbi_picked_model = next(m for m in pbi_models if m.name == _pbi_picked)
             _pbi_measures_show = [(_pbi_picked_model.name, m) for m in _pbi_picked_model.measures]
         for _i, (_mname, _m) in enumerate(_pbi_measures_show):
-            with st.expander(f"📐 {_m.name}" + (f" · {_m.table}" if _m.table else "")):
+            with st.expander(f"{_m.name}" + (f" · {_m.table}" if _m.table else "")):
                 st.code(_m.dax or "—", language="text")
                 if _m.description:
                     st.caption(_m.description)
@@ -2314,14 +3079,36 @@ with tab_pbi:
         st.markdown(t("mcp_remote_body", lang))
         st.caption(t("mcp_docs_note", lang))
 
+    # Los servidores MCP oficiales de cada plataforma, con su configuración
+    # generada del registro (mvdg/mcp_presets.py) y no escrita a mano acá: si
+    # cambia un nombre de paquete, cambia en un solo lugar.
+    st.markdown(f'**{t("mcp_bi_title", lang)}**')
+    st.caption(t("mcp_bi_intro", lang))
+    for _plat in ("Power BI", "Tableau"):
+        _srv = mcp_presets.por_plataforma(_plat)
+        with st.expander(f"{_plat} — {len(_srv)}"):
+            for _pid, _cfg in _srv.items():
+                st.markdown(f"**{_cfg['etiqueta']}**")
+                st.caption(_cfg["para_que"])
+                _c1, _c2 = st.columns(2)
+                _c1.caption(f"{_cfg['auth']}")
+                _c2.caption(f"{_cfg['requisitos']}")
+                if mcp_presets.lanzable_localmente(_pid):
+                    st.caption(t("mcp_bi_stdio", lang))
+                else:
+                    st.caption(t("mcp_bi_http", lang))
+                st.code(mcp_presets.config_json(_pid), language="json")
+                st.caption(f"[{t('mcp_bi_docs', lang)}]({_cfg['docs']})")
+                st.divider()
+
     st.markdown(f'**{t("mcp_expose_title", lang)}**')
     st.markdown(t("mcp_expose_body", lang))
     import importlib.util as _ilu
     _mcp_ok = _ilu.find_spec("mcp") is not None
     if _mcp_ok:
-        st.success(t("mcp_expose_status_ok", lang), icon="🔌")
+        st.success(t("mcp_expose_status_ok", lang))
     else:
-        st.warning(t("mcp_expose_status_missing", lang), icon="⚠️")
+        st.warning(t("mcp_expose_status_missing", lang))
     st.caption(t("mcp_cfg_claude", lang))
     st.code("claude mcp add mvdg -- python -m mvdg.mcp_server", language="bash")
     st.caption(t("mcp_cfg_vscode", lang))
@@ -2338,10 +3125,10 @@ with tab_pbi:
         st.success(t("mcp_try_ok", lang).format(n=len(_mcp_tools)))
         st.json({tl["name"]: tl["description"].split("\n")[0] for tl in _mcp_tools})
 
-    st.info(t("mcp_honest_note", lang), icon="🧭")
+    st.info(t("mcp_honest_note", lang))
 
 with tab_tab:
-    st.info(t("tab_intro", lang), icon="📊")
+    st.info(t("tab_intro", lang))
 
     _TAB_MODE = {"offline": t("tab_mode_offline", lang), "site": t("tab_mode_site", lang),
                 "example": t("tab_mode_example", lang)}
@@ -2349,9 +3136,13 @@ with tab_tab:
                         key="tab_mode", format_func=lambda k: _TAB_MODE[k])
 
     if tab_mode == "offline":
-        tpath = st.text_input(t("tab_path", lang), key="tab_path")
-        st.caption(t("tab_path_hint", lang))
+        # Igual que en Power BI: primero subir el archivo, que anda siempre;
+        # la ruta escrita queda plegada, para cuando el programa corre en la
+        # misma máquina donde está el workbook.
         up = st.file_uploader(t("tab_upload", lang), type=["twb", "twbx"], key="tab_upload")
+        with st.expander(t("tab_src_path", lang)):
+            tpath = st.text_input(t("tab_path", lang), key="tab_path")
+            st.caption(t("tab_path_hint", lang))
         if st.button(t("tab_load", lang), key="tab_load_btn"):
             try:
                 with st.spinner(t("tab_wait", lang)):
@@ -2376,7 +3167,7 @@ with tab_tab:
         st.session_state["tab_scan_result"] = tabl.ingest_example(lang)
     else:
         if not tabl.configured():
-            st.warning(t("tab_off", lang), icon="🔒")
+            st.warning(t("tab_off", lang))
         else:
             if st.button(t("tab_scan", lang), key="tab_scan_btn"):
                 try:
@@ -2434,7 +3225,7 @@ with tab_tab:
             st.caption(t("tab_refactor_hint", lang))
         _tab_calc_fields = [f for f in tab_model.fields if f.is_calculated]
         for _i, _f in enumerate(_tab_calc_fields):
-            with st.expander(f"📐 {_f.name}" + (f" · {_f.datasource}" if _f.datasource else "")):
+            with st.expander(f"{_f.name}" + (f" · {_f.datasource}" if _f.datasource else "")):
                 st.code(_f.formula or "—", language="text")
                 if _f.description:
                     st.caption(_f.description)
@@ -2458,6 +3249,6 @@ with tab_tab:
     st.markdown(t("mcp_tab_body", lang))
     st.caption(t("mcp_tab_cfg", lang))
     st.code('{\n  "mcpServers": {\n    "tableau": {\n      "command": "npx",\n      "args": ["-y", "@tableau/mcp-server@3.0.0"],\n      "env": {\n        "SERVER": "https://mi-servidor-tableau",\n        "SITE_NAME": "mi_sitio",\n        "PAT_NAME": "mi_pat",\n        "PAT_VALUE": "<valor-del-PAT>",\n        "PRODUCT_TELEMETRY_ENABLED": "false"\n      }\n    }\n  }\n}', language="json")
-    st.warning(t("mcp_tab_caveats", lang), icon="⚠️")
-    st.info(t("mcp_tab_verified", lang), icon="🧪")
+    st.warning(t("mcp_tab_caveats", lang))
+    st.info(t("mcp_tab_verified", lang))
     st.caption(t("mcp_tab_gov", lang))

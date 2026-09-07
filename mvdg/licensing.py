@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Licencias (verificación local, firma de clave pública).
 
@@ -37,9 +39,15 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 import time
 
-from .clients import data_dir
+# Desde `paths` y no desde `clients`: este módulo corre en el arranque de
+# TODO —incluido un runner de CI que solo quiere validar un token— y
+# `clients` importa pandas para el CRUD de fichas. Importarlo desde acá
+# rompía el build del instalador owner con ModuleNotFoundError: pandas.
+# Un verificador de firmas Ed25519 no tiene por qué necesitar DataFrames.
+from .paths import data_dir
 
 # ---------------------------------------------------------------------------
 # Clave pública del emisor de licencias.
@@ -54,10 +62,12 @@ from .clients import data_dir
 #
 # Es la clave PÚBLICA: no es un secreto y no pasa nada si se lee del binario.
 # ---------------------------------------------------------------------------
-PUBLIC_KEY_B64 = ""
+PUBLIC_KEY_B64 = "P00Ez9Ow4kUDYsyMAMvs-3kiJ9pJAlD0LNoW2VGsN28"
 
 _PREFIJO = "MVDG2"
 _ARCHIVO = "licencia.json"
+# Token que viaja dentro del build del owner (ver _licencia_empaquetada).
+_ARCHIVO_EMPAQUETADO = "licencia_owner.txt"
 
 # Planes conocidos, de menor a mayor. "demo" es el piso: sin licencia válida,
 # el programa funciona igual pero con las funciones marcadas abajo apagadas.
@@ -78,6 +88,14 @@ _ARCHIVO = "licencia.json"
 # se olvide sumar "owner" a mano.
 PLAN_DEMO = "demo"
 PLAN_OWNER = "owner"
+# "trial" es el plan Professional (USD 390/mes) por 14 días, sin pago: el
+# mismo token MVDG2 que emitiría una compra real, pero con `exp` a 14 días.
+# Lo emite una persona después de la demo 1 a 1 (Actions -> "Emitir
+# licencia"); antes lo firmaba solo un endpoint público, y esa licencia
+# alcanzaba para bajar el programa, así que la descarga era abierta con un
+# formulario adelante. verify() YA rechaza tokens vencidos (ver más abajo) —
+# el vencimiento no necesita ningún código nuevo acá, solo que "trial"
+# habilite lo mismo que "professional" en FUNCIONES_PAGAS.
 # "trial" es el plan Professional (USD 390/mes) por 14 días, auto-emitido sin
 # pago: api/trial.js firma el mismo token MVDG2 que emitiría una compra real,
 # pero con `exp` a 14 días y sin pasar por MercadoPago. verify() YA rechaza
@@ -103,10 +121,25 @@ PLANES = (PLAN_DEMO, "licencia", PLAN_TRIAL, "professional", "enterprise", PLAN_
 # Si querés un demo más restringido (por ejemplo, pedir licencia para usar
 # datos propios), agregá "mis_datos" a FUNCIONES_PAGAS y listo.
 # ---------------------------------------------------------------------------
+# Todo plan que se PAGA habilita las funciones pagas. "licencia" (la Licencia
+# PC de pago único) estaba fuera de las tres tuplas: el token verificaba, el
+# plan quedaba en "licencia"… y has_feature() devolvía False para las tres. El
+# que pagaba recibía, función por función, exactamente la demo.
+#
+# La diferencia entre los tiers es COMERCIAL, no de features: "licencia" es una
+# PC y pago único, "professional" es suscripción, "enterprise" agrega soporte y
+# volumen. Si querés que la Licencia PC no llegue a las integraciones, sacá
+# PLAN_LICENCIA de la tupla que corresponda — es una línea y nada más.
+PLAN_LICENCIA = "licencia"
+_PAGOS = (PLAN_LICENCIA, "professional", "enterprise", PLAN_TRIAL)
+
 FUNCIONES_PAGAS: dict[str, tuple[str, ...]] = {
     # función -> planes que la habilitan. "trial" da acceso a lo mismo que
     # "professional" (es el mismo plan, por 14 días) — así el trial demuestra
     # el tier completo, no una versión recortada de "a ver si les gusta".
+    "migracion_purview": _PAGOS,
+    "migracion_collibra": _PAGOS,
+    "escaneo_tenant_bi": _PAGOS,
     "migracion_purview": ("professional", "enterprise", PLAN_TRIAL),
     "migracion_collibra": ("professional", "enterprise", PLAN_TRIAL),
     "escaneo_tenant_bi": ("professional", "enterprise", PLAN_TRIAL),
@@ -121,12 +154,19 @@ def _archivo() -> str:
     return os.path.join(data_dir(), _ARCHIVO)
 
 
-def verify(token: str, public_key_b64: str | None = None) -> dict | None:
+def verify(token: str, public_key_b64: str | None = None,
+           check_machine: bool = True) -> dict | None:
     """Verifica una licencia ``MVDG2.<payload>.<firma>``.
 
     Devuelve el payload si la firma es válida y no está vencida; ``None`` en
     cualquier otro caso. No lanza: una licencia inválida es un estado normal
     (alguien pegó mal la clave), no un error del programa.
+
+    ``check_machine=False`` verifica todo MENOS que el campo ``mid`` sea de
+    esta PC. Lo usa el emisor de licencias (packaging/licencias.py) para su
+    chequeo de sanidad: firma un token atado a OTRA máquina (la del owner) y
+    necesita confirmar que la firma quedó bien sin que lo rechace por no ser
+    esa máquina. El programa del cliente siempre usa el default.
     """
     pub = public_key_b64 if public_key_b64 is not None else PUBLIC_KEY_B64
     if not pub or not token or not isinstance(token, str):
@@ -163,6 +203,15 @@ def verify(token: str, public_key_b64: str | None = None) -> dict | None:
             return None
     if payload.get("plan") not in PLANES:
         return None
+    # Licencia ATADA a una máquina (campo "mid"): se usa para el build del
+    # owner, que viene desbloqueado de fábrica. Si ese .exe se filtra, en
+    # cualquier otra PC el id no coincide y queda en plan demo. Las licencias
+    # que se VENDEN no llevan "mid" y siguen valiendo en cualquier máquina —
+    # atarle la licencia a la PC a un cliente que pagó sería hostil.
+    if check_machine:
+        from .machine import matches
+        if not matches(payload.get("mid")):
+            return None
     return payload
 
 
@@ -189,16 +238,47 @@ def clear() -> None:
         pass
 
 
+def _licencia_empaquetada() -> str | None:
+    """Token que viaja DENTRO del programa, si lo hay (build del owner).
+
+    El instalador del owner trae ``licencia_owner.txt`` al lado del .exe: así
+    el programa abre ya desbloqueado, sin pegar el token a mano cada vez que
+    se reinstala. No es un atajo de seguridad — ese token igual tiene que
+    pasar ``verify()`` como cualquier otro (firma Ed25519 válida y, en el
+    caso del owner, atado a la máquina). Si no valida, se ignora."""
+    candidatas = []
+    if getattr(sys, "frozen", False):
+        candidatas.append(os.path.dirname(sys.executable))
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidatas.append(meipass)
+    else:
+        candidatas.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for base in candidatas:
+        ruta = os.path.join(base, _ARCHIVO_EMPAQUETADO)
+        try:
+            with open(ruta, encoding="utf-8") as fh:
+                token = fh.read().strip()
+            if token:
+                return token
+        except OSError:
+            continue
+    return None
+
+
 def current() -> dict | None:
     """Licencia guardada, **revalidando la firma** en cada lectura.
 
     Revalidar y no confiar en el JSON guardado es el punto: si alguien edita
     licencia.json a mano para ponerse plan "enterprise", la firma deja de
     coincidir con el payload y la licencia se descarta.
+
+    Si no hay licencia guardada, se prueba la empaquetada (build del owner).
     """
     ruta = _archivo()
     if not os.path.exists(ruta):
-        return None
+        token = _licencia_empaquetada()
+        return verify(token) if token else None
     try:
         with open(ruta, encoding="utf-8") as fh:
             guardado = json.load(fh)
@@ -240,6 +320,59 @@ def status() -> dict:
         "email": (payload or {}).get("email"),
         "emitida": (payload or {}).get("iat"),
         "vence": (payload or {}).get("exp"),
+        # Id de la suscripcion de MercadoPago, si esta licencia viene de una.
+        # Es lo que le permite al programa renovarse solo: pregunta por ese id
+        # y, mientras la suscripcion este paga, recibe una licencia nueva. Sin
+        # esto habria que pedirle al cliente que guarde el id a mano.
+        "suscripcion": (payload or {}).get("sub"),
         "emisor_configurado": bool(PUBLIC_KEY_B64),
         "funciones_pagas": sorted(FUNCIONES_PAGAS),
     }
+
+
+# Dominio donde vive el emisor. Se puede apuntar a otro lado con
+# MVDG_LICENCIAS_URL — util para probar contra un preview sin tocar codigo.
+EMISOR = "https://mv-data-governance.vercel.app"
+
+
+def renovar(timeout: float = 15.0) -> dict:
+    """Pide una licencia nueva para la suscripcion de la licencia actual.
+
+    Es LA UNICA parte del programa que sale a internet, y solo corre si la
+    licencia vigente trae `sub` — o sea, si es de una suscripcion. Un cliente
+    con Licencia PC (pago unico) nunca dispara esto: no tiene nada que
+    renovar.
+
+    Devuelve {"ok": bool, "motivo": str, "plan": str}. No lanza: quedarse sin
+    internet un rato no puede romper el programa, y la licencia vieja sigue
+    valiendo hasta su vencimiento.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    actual = current()
+    sub = (actual or {}).get("sub")
+    if not sub:
+        return {"ok": False, "motivo": "sin_suscripcion", "plan": plan()}
+
+    base = os.environ.get("MVDG_LICENCIAS_URL", EMISOR).rstrip("/")
+    url = f"{base}/api/suscripcion?id={sub}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            datos = _json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        # Sin conexion: no se toca nada. La licencia actual sigue en pie.
+        return {"ok": False, "motivo": "sin_conexion", "plan": plan()}
+
+    if not datos.get("activa"):
+        # La suscripcion se dio de baja o quedo impaga. NO se borra la
+        # licencia: se deja vencer sola. Borrarla acá dejaria al cliente
+        # afuera al instante por un pago que quizas se acredita mañana.
+        return {"ok": False, "motivo": datos.get("motivo") or "no_autorizada",
+                "plan": plan()}
+
+    token = datos.get("license_key")
+    if not token or save(token) is None:
+        return {"ok": False, "motivo": "licencia_invalida", "plan": plan()}
+    return {"ok": True, "motivo": "renovada", "plan": plan()}

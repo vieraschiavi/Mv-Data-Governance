@@ -1,0 +1,607 @@
+# Instalador de escritorio (Electron + NSIS) — versión CLIENTE y versión OWNER.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Qué entrega
+# ────────────────────────────────────────────────────────────────────────────
+# Un ZIP con la estructura pedida:
+#
+#   MVDataGovernance_v<ver>.zip
+#   └── INSTALADOR/
+#       ├── MVDataGovernance_Setup_<ver>.exe   ← doble clic y listo
+#       └── LEEME.txt                          ← qué hace, en ES/EN/PT
+#
+# El instalador NSIS deja: acceso directo en el ESCRITORIO, entrada en el
+# MENÚ INICIO, y DESINSTALADOR en "Agregar o quitar programas" — los tres
+# declarados explícitamente en electron/package.json, no heredados de un
+# default que puede cambiar entre versiones de electron-builder.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Cliente vs owner: MISMO programa, distinta licencia
+# ────────────────────────────────────────────────────────────────────────────
+#   CLIENTE  -> sin licencia adentro. Arranca en plan demo; cuando compra,
+#               pega su clave en la pestaña Ayuda y se habilita. NO baja otro
+#               programa: es el mismo, desbloqueado.
+#   OWNER    -> lleva licencia_owner.txt adentro, ATADA A TU MÁQUINA. Abre
+#               desbloqueado sin escribir ninguna clave. Si ese .exe se
+#               filtra, en otra PC el id no coincide y abre en plan demo.
+#
+# Un solo binario es el que se audita, se testea y se firma. Dos builds
+# paralelos serían dos superficies donde una queda atrás sin que nadie se
+# entere — por eso lo único que cambia entre las dos versiones es un .txt.
+#
+# Se publica como ARTEFACTO, no como Release: los assets de Release quedan
+# pegados al repo para siempre, y el del owner no puede quedar expuesto el
+# día que el repo pase a público. El del cliente se sube a la Release a mano
+# (o se aloja donde apunte MVDG_INSTALLER_URL).
+name: Instalador Escritorio (Electron)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "cliente = sin licencia · owner = desbloqueado para tu PC"
+        required: true
+        default: cliente
+        type: choice
+        options: [cliente, owner, ambas]
+  # Y al pushear a main algo que cambia el PROGRAMA. Los paths son a
+  # proposito: rearmar 400 MB por un typo en un .md seria quemar minutos de
+  # Actions al pedo.
+  #
+  # OJO: este trigger NO alcanza para el caso normal. Los merges los hace
+  # automerge.yml con el GITHUB_TOKEN, y GitHub no crea corridas para eventos
+  # originados con ese token (proteccion contra recursion). Por eso automerge
+  # ademas PIDE este workflow explicitamente por workflow_dispatch, que es una
+  # excepcion documentada. Este `push` cubre el otro caso: alguien empujando a
+  # main a mano.
+  push:
+    branches: ["main"]
+    paths:
+      - "mvdg/**"
+      - "app/**"
+      - "bi_api/**"
+      - "electron/**"
+      - "requirements.txt"
+      - ".github/workflows/instalador_electron.yml"
+
+# Un build a la vez. Dos merges seguidos lanzaban dos corridas de Windows en
+# paralelo que publican a las MISMAS etiquetas fijas (cliente-latest,
+# owner-latest): la que terminara última ganaba, así que un merge viejo podía
+# pisar al nuevo y dejar publicado un instalador atrasado. Además son builds
+# largos y caros. `cancel-in-progress` porque de dos builds encolados el que
+# importa es el del código más nuevo.
+concurrency:
+  group: instalador-electron
+  cancel-in-progress: true
+
+permissions:
+  contents: write          # publicar la Release del owner
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Que se construye en esta corrida. A mano, lo que se haya elegido; al
+      # mergear a main, solo el del owner — que es el que tiene que estar
+      # siempre listo. El del cliente se arma a pedido cuando se publica.
+      - name: Decidir que versiones construir
+        id: modo
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -z "$v" ] && v="owner"
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+          echo "Construyendo: $v"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Antes de gastar 5 minutos bajando Python y compilando: verificar la
+      # configuracion. Las dos cosas que rompieron este instalador (el layout
+      # del ._pth y el oneClick que anula la pantalla de carpeta) son
+      # configuracion, y fallan aca en segundos en vez de a mitad del build
+      # — o peor, en la PC del cliente.
+      - name: Verificar la configuracion del instalador
+        run: node electron/lib/instalador.test.js
+
+      # Python EMBEBIBLE, no un venv. Un venv guarda en pyvenv.cfg la ruta
+      # del Python base de la maquina donde se creo: copiado a la PC de un
+      # cliente que no tiene Python, no arranca. La distribucion embeddable
+      # de python.org es relocalizable por diseno — es la unica forma de que
+      # el .exe ande en una PC recien formateada, que es todo el punto de
+      # entregar un instalador.
+      - name: Preparar el Python embebido que viaja adentro
+        shell: pwsh
+        run: |
+          $ver = "3.12.7"
+          $dest = "pyembed"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $zip = "$env:RUNNER_TEMP\pyembed.zip"
+          Invoke-WebRequest -UseBasicParsing `
+            -Uri "https://www.python.org/ftp/python/$ver/python-$ver-embed-amd64.zip" `
+            -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+
+          # El embeddable trae ._pth que DESACTIVA site-packages: sin
+          # habilitarlo, pip instala pero los import fallan. Es el fallo
+          # clasico de este empaquetado y no da ningun error claro.
+          $pth = Get-ChildItem "$dest\python*._pth" | Select-Object -First 1
+          (Get-Content $pth) -replace '^#\s*import site', 'import site' |
+            Set-Content $pth
+          Add-Content $pth "Lib\site-packages"
+
+          # Y la carpeta de ARRIBA, que es donde vive el motor. Esto no es
+          # decoracion: con un ._pth presente Python arranca AISLADO, y en
+          # modo aislado sys.path es exactamente lo que dice este archivo —
+          # no se agrega el directorio actual ni se respeta PYTHONPATH.
+          # Sin esta linea, "python -m bi_api.main" no encuentra ni bi_api ni
+          # mvdg por mas que el cwd sea el correcto, que es justo como los
+          # lanza spawnApi().
+          #
+          # ".." se resuelve contra la carpeta del ._pth (NO contra el
+          # directorio actual: verificado). Por eso el motor tiene que quedar
+          # EXACTAMENTE UN NIVEL arriba del python.exe en los dos lados:
+          #
+          #   build:      <repo>\pyembed\python.exe        -> ".." = <repo>
+          #   instalado:  resources\server\python\python.exe -> ".." = resources\server
+          #
+          # Antes esto se armaba en "build\pyembed", que son DOS niveles: ahi
+          # ".." daba <repo>\build, que no tiene el motor. El build fallo 7
+          # veces seguidas con "ModuleNotFoundError: No module named 'mvdg'"
+          # y no habia instalador de Electron. Si se cambia $dest, tiene que
+          # seguir siendo una carpeta al lado del motor.
+          Add-Content $pth ".."
+
+          Invoke-WebRequest -UseBasicParsing -Uri "https://bootstrap.pypa.io/get-pip.py" `
+            -OutFile "$env:RUNNER_TEMP\get-pip.py"
+          & "$dest\python.exe" "$env:RUNNER_TEMP\get-pip.py" --no-cache-dir
+          & "$dest\python.exe" -m pip install --no-cache-dir -r requirements.txt
+
+          # Verificacion REAL: que ese Python pueda importar lo que el
+          # programa necesita. Si esto falla, el instalador saldria roto y
+          # el cliente lo descubriria al abrirlo.
+          # Se corre desde OTRA carpeta a proposito. Si se verificara parado
+          # en la raiz del repo, un sys.path mal armado podria quedar tapado
+          # por el directorio actual y el instalador saldria roto igual — el
+          # cliente no tiene el repo, tiene la carpeta de instalacion.
+          # Se importa bi_api.main ademas de mvdg porque es lo que arranca de
+          # verdad (spawnApi hace "python -m bi_api.main").
+          $py = (Resolve-Path "$dest\python.exe").Path
+          Push-Location $env:RUNNER_TEMP
+          & $py -c "import fastapi, uvicorn, pandas, mvdg, bi_api.main; print('embebido OK', mvdg.__version__)"
+          $codigo = $LASTEXITCODE
+          Pop-Location
+          if ($codigo -ne 0) { throw "El Python embebido no puede importar el motor" }
+
+      # npm ci ANTES de construir la interfaz: build-ui usa esbuild, que sale
+      # de node_modules. Estaba al reves y fallaba con "Cannot find package
+      # 'esbuild'". El bug estuvo siempre; no se veia porque el build moria
+      # antes, en el Python embebido — cada falla tapaba a la siguiente.
+      - name: Instalar dependencias de Electron
+        working-directory: electron
+        run: npm ci
+
+      - name: Construir la interfaz React
+        working-directory: electron
+        run: npm run build-ui
+
+      - name: Leer la versión del programa
+        id: ver
+        shell: bash
+        run: echo "v=$(python -c 'import mvdg; print(mvdg.__version__)')" >> "$GITHUB_OUTPUT"
+
+
+      # ---------------------------------------------------------------- CLIENTE
+      - name: Construir instalador CLIENTE
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        working-directory: electron
+        run: npm run dist-win
+
+      - name: Empaquetar INSTALADOR/ (cliente)
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          New-Item -ItemType Directory -Force -Path "salida\INSTALADOR" | Out-Null
+          $exe = Get-ChildItem "electron\dist_electron\*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "electron-builder no genero ningun .exe" }
+          if ($exe.Length / 1MB -lt 40) {
+            throw ("El instalador pesa {0:N1} MB: sospechoso, no se publica" -f ($exe.Length/1MB))
+          }
+          Copy-Item $exe.FullName "salida\INSTALADOR\MVDataGovernance_Setup_$v.exe"
+          # Array de lineas y no un here-string de PowerShell: el `"@` que lo
+          # cierra tiene que ir pegado al margen izquierdo, y eso rompe la
+          # indentacion del bloque `run: |` de YAML.
+          $leeme = @(
+            "MV Data Governance $v - Instalador de Windows",
+            "",
+            "ES: Doble clic en MVDataGovernance_Setup_$v.exe. Elegis carpeta y disco.",
+            "    Deja acceso directo en el escritorio y en el menu Inicio, y se",
+            "    desinstala desde 'Agregar o quitar programas'.",
+            "    Arranca en plan demo. Cuando compres, pega tu clave en la pestana",
+            "    Ayuda: es el MISMO programa, no hay una segunda descarga.",
+            "",
+            "EN: Double-click MVDataGovernance_Setup_$v.exe. Pick folder and drive.",
+            "    Adds desktop and Start Menu shortcuts, uninstalls from 'Apps'.",
+            "    Starts in demo. After buying, paste your key in the Help tab: it is",
+            "    the SAME program, there is no second download.",
+            "",
+            "PT: Duplo clique em MVDataGovernance_Setup_$v.exe. Escolha pasta e disco.",
+            "    Cria atalhos na area de trabalho e no menu Iniciar; desinstala em",
+            "    'Aplicativos'. Inicia no plano demo. Apos comprar, cole sua chave na",
+            "    aba Ajuda: e o MESMO programa, sem segundo download."
+          )
+          $leeme | Out-File -FilePath "salida\INSTALADOR\LEEME.txt" -Encoding ascii
+          Compress-Archive -Path "salida\INSTALADOR" -DestinationPath "MVDataGovernance_v$v.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        with:
+          name: MVDataGovernance_CLIENTE_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 90
+
+      # ------------------------------------------ PORTABLE (VM del cliente)
+      #
+      # La segunda forma de instalar, y no es un capricho: en la VM de un
+      # cliente el consultor entra sin permisos de administrador, muchas
+      # veces sin internet, y con un perfil de usuario que puede resetearse
+      # al cerrar sesion. Ahi un instalador no sirve.
+      #
+      # Es EL MISMO build: se rearma `win-unpacked` —lo que el instalador
+      # habria dejado en disco— con dos archivos de texto adentro. Un
+      # segundo `npm run dist-win` daria un binario distinto que nadie
+      # compara, y la version que corre en la maquina del cliente seria
+      # justo la menos probada.
+      #
+      # MODO_VM_CLIENTE.txt es lo que hace que el programa se comporte
+      # distinto: main.js lo busca al lado del .exe y, si esta, guarda todo
+      # en Datos\ ahi mismo en vez del perfil del usuario (ver
+      # mvdg/install_mode.py). El paquete que se bajo ES el modo — no hay
+      # nada que configurar en la VM.
+      - name: Empaquetar PORTABLE para la VM del cliente
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          $origen = "electron\dist_electron\win-unpacked"
+          if (-not (Test-Path $origen)) {
+            throw "No existe $origen : electron-builder no dejo la app desempaquetada"
+          }
+          $destino = "portable\MV Data Governance"
+          New-Item -ItemType Directory -Force -Path $destino | Out-Null
+          Copy-Item "$origen\*" $destino -Recurse -Force
+
+          # El marcador. Se lee: cualquiera que abra la carpeta tiene que
+          # entender que significa sin buscar el manual.
+          @(
+            "MODO: VM O EQUIPO DEL CLIENTE (PORTABLE)",
+            "",
+            "ES: La presencia de este archivo hace que el programa guarde TODO en",
+            "    la carpeta 'Datos' de aca al lado, y nada en el perfil del",
+            "    usuario ni en el registro de Windows. Borras esta carpeta y no",
+            "    queda rastro en la maquina. NO lo borres: sin el, el programa",
+            "    vuelve a guardar en el perfil del usuario.",
+            "",
+            "EN: This file makes the program store EVERYTHING in the 'Datos'",
+            "    folder next to it, and nothing in the user profile or the Windows",
+            "    registry. Delete this folder and nothing is left on the machine.",
+            "    Do NOT delete this file: without it the program goes back to",
+            "    storing things in the user profile.",
+            "",
+            "PT: A presenca deste arquivo faz o programa guardar TUDO na pasta",
+            "    'Datos' ao lado, e nada no perfil do usuario nem no registro do",
+            "    Windows. Apague esta pasta e nao sobra rastro na maquina. NAO",
+            "    apague este arquivo: sem ele o programa volta a guardar no perfil."
+          ) | Out-File -FilePath "$destino\MODO_VM_CLIENTE.txt" -Encoding ascii
+
+          @(
+            "MV Data Governance $v - PORTABLE (VM o equipo del cliente)",
+            "",
+            "ES: No se instala. Copia esta carpeta al equipo o VM del cliente",
+            "    (donde tengas permiso de escribir: Documentos, D:\, un disco de",
+            "    red) y abri 'MV Data Governance.exe'. No pide administrador, no",
+            "    toca el registro y no necesita internet.",
+            "    Todo lo que hagas queda en la subcarpeta 'Datos'. Para llevarte",
+            "    el trabajo, copia esa carpeta. Para no dejar nada, borra la",
+            "    carpeta entera.",
+            "    Arranca en plan demo; pega tu clave en la pestana Licencia.",
+            "",
+            "EN: Nothing is installed. Copy this folder to the client machine or",
+            "    VM (anywhere you can write: Documents, D:\, a network drive) and",
+            "    open 'MV Data Governance.exe'. No administrator rights, no",
+            "    registry, no internet needed.",
+            "    Everything you do stays in the 'Datos' subfolder. To take your",
+            "    work with you, copy that folder. To leave nothing behind, delete",
+            "    the whole folder.",
+            "    Starts in demo; paste your key in the License tab.",
+            "",
+            "PT: Nao instala nada. Copie esta pasta para o equipamento ou VM do",
+            "    cliente (onde voce possa escrever: Documentos, D:\, um disco de",
+            "    rede) e abra 'MV Data Governance.exe'. Sem administrador, sem",
+            "    registro, sem internet.",
+            "    Tudo o que voce faz fica na subpasta 'Datos'. Para levar o",
+            "    trabalho, copie essa pasta. Para nao deixar nada, apague a pasta",
+            "    inteira.",
+            "    Inicia no plano demo; cole sua chave na aba Licenca."
+          ) | Out-File -FilePath "$destino\LEEME.txt" -Encoding ascii
+
+          Compress-Archive -Path $destino -DestinationPath "MVDataGovernance_VM_v$v.zip" -Force
+          $mb = (Get-Item "MVDataGovernance_VM_v$v.zip").Length / 1MB
+          if ($mb -lt 40) {
+            throw ("El portable pesa {0:N1} MB: sospechoso, no se publica" -f $mb)
+          }
+          Write-Host ("Portable listo: {0:N1} MB" -f $mb)
+
+      - uses: actions/upload-artifact@v4
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        with:
+          name: MVDataGovernance_VM_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_VM_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 90
+
+      # ------------------------------------------------- Release del cliente
+      #
+      # El boton de descarga de la landing va a /api/descargar, que redirige a
+      # MVDG_INSTALLER_URL. Esa variable apuntaba a un instalador que nunca
+      # existio, asi que el boton respondia 503 "sin_configurar": la web
+      # ofrecia un programa que no se podia bajar.
+      #
+      # Con una Release de etiqueta fija el link es estable y no caduca (los
+      # artefactos de Actions vencen y hay que entrar a la corrida a buscarlos,
+      # que no sirve para un boton publico).
+      #
+      # Este .exe NO trae licencia: arranca en plan demo y se desbloquea
+      # pegando la clave. Es el mismo binario que baja todo el mundo — un
+      # unico binario es el que se audita, se testea y se firma.
+      - name: Publicar la Release del cliente
+        if: steps.modo.outputs.v == 'cliente' || steps.modo.outputs.v == 'ambas'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.ver.outputs.v }}"
+          exe="salida/INSTALADOR/MVDataGovernance_Setup_$v.exe"
+          [ -f "$exe" ] || { echo "No se genero $exe"; exit 1; }
+          # El portable va en la MISMA release: dos formas de instalar, un
+          # solo lugar donde buscarlas. Publicarlo aparte garantizaba que
+          # tarde o temprano una quedara en una version distinta de la otra.
+          vm="MVDataGovernance_VM_v$v.zip"
+          [ -f "$vm" ] || { echo "No se genero $vm"; exit 1; }
+
+          notas="$RUNNER_TEMP/notas_cliente.md"
+          {
+            echo "MV Data Governance $v · escritorio (Electron + React)."
+            echo
+            echo "**Dos formas de instalar. El mismo programa en las dos.**"
+            echo
+            echo "1. \`MVDataGovernance_Setup_$v.exe\` — **instalacion normal**,"
+            echo "   para tu equipo o el de tu consultora. Elegis carpeta y"
+            echo "   disco, deja acceso directo en el escritorio y en el menu"
+            echo "   Inicio, y se desinstala desde Agregar o quitar programas."
+            echo "   Lo que hacés queda guardado en tu perfil de usuario."
+            echo
+            echo "2. \`MVDataGovernance_VM_v$v.zip\` — **VM o equipo del"
+            echo "   cliente**. No se instala: descomprimis la carpeta donde"
+            echo "   tengas permiso de escribir y abris el .exe. Sin"
+            echo "   administrador, sin registro, sin internet. Todo queda en"
+            echo "   la subcarpeta \`Datos\`; borras la carpeta y no queda"
+            echo "   rastro en la maquina del cliente."
+            echo
+            echo "Las dos arrancan en plan demo. Si compraste, pega tu clave"
+            echo "en la pestana Licencia: es el MISMO programa, no hay una"
+            echo "segunda descarga."
+            echo
+            echo "Se reemplazan en cada cambio del programa, asi que estos"
+            echo "links siempre apuntan a la ultima version."
+          } > "$notas"
+
+          if gh release view cliente-latest >/dev/null 2>&1; then
+            gh release edit cliente-latest --title "MV Data Governance $v" \
+              --notes-file "$notas"
+            gh release upload cliente-latest "$exe" "$vm" --clobber
+          else
+            gh release create cliente-latest "$exe" "$vm" \
+              --title "MV Data Governance $v" --notes-file "$notas"
+          fi
+
+          url="https://github.com/${{ github.repository }}/releases/download/cliente-latest/MVDataGovernance_Setup_$v.exe"
+          echo "Release lista: $url"
+          # Se deja a la vista en el resumen de la corrida: es el valor exacto
+          # que hay que poner en MVDG_INSTALLER_URL para que el boton de la
+          # landing deje de responder 503.
+          {
+            echo "### Instalador del cliente publicado"
+            echo ""
+            echo "Pone esto en Vercel como \`MVDG_INSTALLER_URL\`:"
+            echo ""
+            echo "    $url"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ------------------------------------------------------------------ OWNER
+      # La licencia se agrega DESPUÉS del build del cliente y se reconstruye:
+      # así el programa es idéntico y lo único distinto es el .txt.
+      - name: Validar la licencia del owner
+        id: owner
+        if: steps.modo.outputs.v == 'owner' || steps.modo.outputs.v == 'ambas'
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
+        run: |
+          # Sin el secreto no hay instalador de owner posible.
+          #
+          # Cuando cortar y cuando saltear se decide por lo que se PIDIO, no
+          # por el evento: el automerge dispara con workflow_dispatch igual
+          # que una persona, asi que mirar github.event_name no distingue
+          # nada. Se vio en la corrida #9 — el automerge pidio 'owner', falto
+          # el secreto, y el build quedo en rojo aunque nadie hubiera apretado
+          # nada.
+          #
+          #   version=owner  -> alguien quiere SOLO el del owner: si falta el
+          #                     secreto no hay nada que entregar, corta.
+          #   version=ambas  -> el del cliente ya se construyo; el del owner
+          #                     se suma si se puede. Se avisa y se sigue.
+          if [ -z "$TOKEN" ]; then
+            echo "hay=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Sin MVDG_OWNER_TOKEN::No se construye el instalador del owner. Generalo y pegalo en Settings > Secrets."
+            if [ "${{ steps.modo.outputs.v }}" = "owner" ]; then
+              echo "Se pidio SOLO la version owner y falta el secreto: no hay nada que entregar."
+              exit 1
+            fi
+            echo "Se sigue: el instalador del cliente ya se construyo."
+            exit 0
+          fi
+          echo "hay=true" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import os, sys
+          from mvdg import licensing
+          p = licensing.verify(os.environ["TOKEN"].strip(), check_machine=False)
+          if p is None:
+              sys.exit("El token no verifica contra la publica de mvdg/licensing.py")
+          if p.get("plan") != licensing.PLAN_OWNER:
+              sys.exit(f"El token es plan '{p.get('plan')}', se esperaba 'owner'")
+          # Atar el token a una maquina (campo "mid") exige calcularlo EN esa
+          # maquina: sale del hostname y la MAC. Un token emitido fuera de la
+          # PC del owner no puede llevarlo. Se acepta, porque un owner sin
+          # instalador no le sirve a nadie, pero se avisa fuerte: sin "mid",
+          # ese .exe filtrado abre desbloqueado en cualquier PC.
+          if p.get("mid"):
+              print(f"Licencia OK: plan={p['plan']} atada a la maquina {p['mid']}")
+          else:
+              print(f"Licencia OK: plan={p['plan']} SIN atar a ninguna maquina")
+              print("::warning title=Instalador owner sin atar::Este .exe abre "
+                    "desbloqueado en CUALQUIER PC. No lo compartas. Para atarlo, "
+                    "corre 'python packaging/licencias.py maquina' en tu equipo y "
+                    "reemiti el token con --maquina <id>.")
+          PY
+
+      - name: Construir instalador OWNER
+        if: steps.owner.outputs.hay == 'true'
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.MVDG_OWNER_TOKEN }}
+        run: |
+          # el token viaja junto al motor, donde licensing._licencia_empaquetada lo busca
+          $env:TOKEN | Out-File -FilePath "mvdg\licencia_owner.txt" -Encoding ascii -NoNewline
+          cd electron
+          npm run dist-win
+
+      - name: Empaquetar INSTALADOR/ (owner)
+        if: steps.owner.outputs.hay == 'true'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.v }}"
+          New-Item -ItemType Directory -Force -Path "salida_owner\INSTALADOR" | Out-Null
+          $exe = Get-ChildItem "electron\dist_electron\*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "electron-builder no genero ningun .exe" }
+          Copy-Item $exe.FullName "salida_owner\INSTALADOR\MVDataGovernance_OWNER_Setup_$v.exe"
+          $leeme = @(
+            "MV Data Governance $v - INSTALADOR DEL OWNER - NO DISTRIBUIR",
+            "",
+            "Este instalador viene ya desbloqueado y la licencia esta ATADA A TU",
+            "MAQUINA: en cualquier otra PC abre en plan demo. Aun asi, no lo",
+            "compartas - para eso esta la version CLIENTE."
+          )
+          $leeme | Out-File -FilePath "salida_owner\INSTALADOR\LEEME.txt" -Encoding ascii
+          Compress-Archive -Path "salida_owner\INSTALADOR" -DestinationPath "MVDataGovernance_OWNER_v$v.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        if: steps.owner.outputs.hay == 'true'
+        with:
+          name: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}
+          path: MVDataGovernance_OWNER_v${{ steps.ver.outputs.v }}.zip
+          retention-days: 7
+
+      # --------------------------------------------------- Release del owner
+      #
+      # Pedido explicito: que SIEMPRE haya un instalador owner en GitHub para
+      # probar el programa completo, con un link fijo que no caduque. Los
+      # artefactos de Actions vencen y hay que entrar a la corrida a buscarlos;
+      # una Release tiene URL estable.
+      #
+      # AVISO, dicho una sola vez y sin vueltas: este repositorio es PUBLICO.
+      # Cualquiera puede bajar este .exe, y como el token NO esta atado a una
+      # maquina, abre el programa completo en cualquier PC. Es una decision
+      # tomada a conciencia, no un descuido.
+      #
+      # Para cerrarlo el dia que se quiera, sin tocar este workflow:
+      #   1. En tu PC:  python packaging/licencias.py maquina    -> da tu id
+      #   2. Reemitis el token con --maquina <id>
+      #   3. Lo pegas en Settings > Secrets > MVDG_OWNER_TOKEN
+      # A partir de ahi, ese mismo .exe abre en plan demo en cualquier otra PC.
+      # El paso de validacion de arriba ya distingue los dos casos y avisa.
+      #
+      # La etiqueta es fija (owner-latest) y se reemplaza en cada corrida: asi
+      # el link es siempre el mismo y no se acumulan releases viejas.
+      - name: Publicar la Release del owner
+        if: steps.owner.outputs.hay == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.ver.outputs.v }}"
+          exe="salida_owner/INSTALADOR/MVDataGovernance_OWNER_Setup_$v.exe"
+          [ -f "$exe" ] || { echo "No se genero $exe"; exit 1; }
+
+          notas="$RUNNER_TEMP/notas.md"
+          {
+            echo "Instalador de escritorio (Electron + React) de MV Data"
+            echo "Governance $v, version OWNER: abre con TODAS las funciones"
+            echo "habilitadas, sin pegar ninguna clave."
+            echo
+            echo "Se reemplaza automaticamente en cada cambio del programa,"
+            echo "asi que este link siempre apunta a la ultima version."
+            echo
+            echo "Al instalar: elegis carpeta y disco (propone una unidad"
+            echo "distinta de C: si tenes una con espacio), deja acceso"
+            echo "directo en el escritorio y en el menu Inicio, y se"
+            echo "desinstala desde Agregar o quitar programas."
+          } > "$notas"
+
+          # --clobber reemplaza el asset si ya existia con ese nombre.
+          if gh release view owner-latest >/dev/null 2>&1; then
+            gh release edit owner-latest --title "MV Data Governance $v · OWNER" \
+              --notes-file "$notas"
+            gh release upload owner-latest "$exe" --clobber
+          else
+            gh release create owner-latest "$exe" \
+              --title "MV Data Governance $v · OWNER" --notes-file "$notas"
+          fi
+          echo "Release lista: https://github.com/${{ github.repository }}/releases/tag/owner-latest"
+
+          # La URL exacta que va en Vercel, impresa en el resumen de la
+          # corrida. /api/descargar elige el build por el PLAN de la licencia:
+          # con plan owner busca MVDG_INSTALLER_URL_OWNER, y si no esta
+          # cargada responde 503 en vez de entregarte el build del cliente.
+          # Sin esta linea habia que armar la URL a mano y era el paso donde
+          # se erraba.
+          # OJO con el nombre: el asset del owner se sube como
+          # MVDataGovernance_OWNER_Setup_$v.exe (ver el paso "Empaquetar
+          # INSTALADOR/ (owner)"). Esta linea decia MVDataGovernance_Setup_$v.exe
+          # —sin el OWNER_—, asi que la URL que el resumen mandaba a pegar en
+          # Vercel apuntaba a un archivo que NO existe en esa release: 404, y
+          # /api/descargar respondiendo que no encuentra el instalador del
+          # owner. Justo el paso que este bloque existe para no errar.
+          url="https://github.com/${{ github.repository }}/releases/download/owner-latest/MVDataGovernance_OWNER_Setup_$v.exe"
+          {
+            echo "## Instalador OWNER publicado"
+            echo
+            echo "Pone esto en Vercel como \`MVDG_INSTALLER_URL_OWNER\`:"
+            echo
+            echo '```'
+            echo "$url"
+            echo '```'
+            echo
+            echo "Con eso, tu licencia owner te baja ESTE build y la de un"
+            echo "cliente le baja el suyo — la decide la licencia firmada,"
+            echo "no la URL."
+          } >> "$GITHUB_STEP_SUMMARY"

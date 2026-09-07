@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · API REST para herramientas de BI.
 
@@ -14,16 +16,16 @@ from __future__ import annotations
 import hmac
 import json
 import os
-import socket
 import sys
 import threading
 import time
 from collections import deque
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import (Body, FastAPI, File, Form, HTTPException, Query, Request,
+                     UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from mvdg import APP_NAME, __version__
 from mvdg.exporters import governance_tables
@@ -198,6 +200,627 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/instalacion", tags=["meta"])
+def instalacion(lang: str = "es"):
+    """Cómo está instalado esto y DÓNDE queda guardado lo que hace el usuario.
+
+    No es un dato de diagnóstico: es lo único que cambia entre las dos formas
+    de instalar (tu equipo / la VM del cliente), y el usuario tiene que poder
+    verlo sin abrir una consola. En una VM no persistente, guardar en el
+    perfil del usuario significa perder el trabajo al cerrar sesión — si eso
+    está pasando, la pantalla lo dice.
+    """
+    from mvdg import install_mode
+    return install_mode.descripcion(lang if lang in LANGS else "es")
+
+
+# ---------------------------------------------------------------------------
+# Licencia
+#
+# La version .exe (Electron + React) no tenia NINGUNA nocion de licencia: sus
+# seis vistas son funciones gratuitas, no habia donde pegar la clave, y demo,
+# paga y owner se veian exactamente igual. O sea que quien pagaba y usaba el
+# .exe recibia la demo — el mismo bug que ya se cerro en la capa de licencias,
+# un nivel mas arriba.
+#
+# Estos dos endpoints son lo minimo para que la compra sirva en el .exe:
+# consultar que plan hay, y activar una clave.
+#
+# Que esto sea escritura sobre una API no la abre a nadie: escucha en
+# 127.0.0.1 por defecto (fuera de loopback exige MVDG_API_TOKEN, ver main()),
+# y sobre todo licensing.save() REVALIDA la firma Ed25519 antes de guardar
+# nada. Mandar un token inventado no habilita nada: se rechaza igual que si se
+# pegara en la otra interfaz.
+# ---------------------------------------------------------------------------
+@app.get("/api/licencia", tags=["meta"])
+def licencia_estado():
+    """Plan vigente y que funciones habilita."""
+    from mvdg import licensing
+    return licensing.status()
+
+
+# Body(...)/File(...) en el default los marca ruff (B008): se sacan a
+# constantes de modulo.
+_CUERPO = Body(...)
+_ARCHIVO = File(...)
+
+
+@app.post("/api/licencia", tags=["meta"])
+def licencia_activar(cuerpo: dict = _CUERPO):
+    """Activa una clave MVDG2. Devuelve el estado nuevo, o 400 si no valida.
+
+    No se guarda nada que no verifique: `save()` devuelve None y ahi se
+    responde 400. Una clave rota tiene que fallar RUIDOSO — el sintoma de no
+    hacerlo es un cliente que pego su clave, no vio ningun error, y sigue en
+    demo sin entender por que.
+    """
+    from mvdg import licensing
+    token = str((cuerpo or {}).get("token") or "").strip()
+    if not token:
+        raise HTTPException(400, "Falta la clave de licencia.")
+    if licensing.save(token) is None:
+        raise HTTPException(400, "La clave no es valida para este programa.")
+    return licensing.status()
+
+
+@app.post("/api/licencia/renovar", tags=["meta"])
+def licencia_renovar():
+    """Renueva la licencia si viene de una suscripcion que sigue paga.
+
+    Es la unica llamada del programa que sale a internet, y solo hace algo si
+    la licencia actual trae `sub`. Quien tiene Licencia PC (pago unico) recibe
+    "sin_suscripcion" y no se toca nada.
+
+    Nunca borra la licencia vigente: si la suscripcion figura impaga puede ser
+    que el cobro se acredite mañana, y dejar al cliente afuera al instante por
+    eso seria peor que esperar al vencimiento.
+    """
+    from mvdg import licensing
+    r = licensing.renovar()
+    return {**r, **licensing.status()}
+
+
+@app.delete("/api/licencia", tags=["meta"])
+def licencia_borrar():
+    """Saca la licencia guardada y vuelve a plan demo."""
+    from mvdg import licensing
+    licensing.clear()
+    return licensing.status()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# LAS TRES FUNCIONES QUE SE COBRAN
+# ───────────────────────────────────────────────────────────────────────────
+# El .exe que baja el cliente habla SOLO con esta API. Y acá no existía ni un
+# endpoint para migrar a Purview, migrar a Collibra ni escanear el tenant de
+# BI — las tres únicas funciones que se pagan.
+#
+# O sea: el cliente pagaba, pegaba su clave, y la pantalla de licencia le
+# decía "estas 3 funciones están desbloqueadas"… sin ninguna forma de
+# usarlas. Vivían solo en app/app.py (Streamlit), que el .exe no levanta.
+# Pagar y no recibir es el mismo problema que cobrar un mes y entregar para
+# siempre, mirado desde el otro lado.
+#
+# Se replica el criterio que ya tenía Streamlit, que es el correcto
+# comercialmente: LA VISTA PREVIA ES GRATIS —es lo que hace lucir el
+# producto— y lo que se licencia es el push REAL contra el sistema de la
+# empresa. Un plan demo puede ver exactamente qué se enviaría; no puede
+# enviarlo.
+#
+# Y se respeta lo que manda el proyecto: los conectores externos están
+# apagados por defecto. `dry_run` es True salvo pedido explícito, y sin
+# credenciales configuradas el push real ni se intenta.
+
+_DESTINOS_MIGRACION = {
+    "purview": ("migracion_purview", "purview_export"),
+    "collibra": ("migracion_collibra", "collibra_export"),
+}
+
+
+def _exigir_licencia(funcion: str) -> None:
+    """Corta con 402 si el plan actual no incluye esa función.
+
+    402 y no 403: 403 es "no tenés permiso" y suena a error del cliente. Acá
+    la respuesta es "esto se paga", que es exactamente lo que significa
+    Payment Required — y le deja a la interfaz un código sin ambigüedad para
+    mostrar el aviso de licencia en vez de un error genérico.
+    """
+    from mvdg import licensing
+    if not licensing.has_feature(funcion):
+        raise HTTPException(402, {
+            "error": "requiere_licencia",
+            "funcion": funcion,
+            "plan": licensing.plan(),
+            "es": "Esta función necesita una licencia activa. La vista previa "
+                  "no requiere ninguna.",
+            "en": "This feature needs an active license. The preview needs "
+                  "none.",
+            "pt": "Esta função precisa de uma licença ativa. A pré-visualização "
+                  "não precisa de nenhuma.",
+        })
+
+
+@app.get("/api/conectores", tags=["governance"])
+def conectores_estado():
+    """Qué conectores externos están configurados y cuáles habilita el plan.
+
+    La interfaz lo necesita para decir la verdad ANTES de que el cliente
+    apriete: sin credenciales el push real no puede correr por más licencia
+    que tenga, y con licencia pero sin credenciales el problema no es la
+    licencia. Sin esto los dos casos se ven igual — un botón que falla.
+    """
+    from mvdg import collibra_export, licensing, purview_export
+    return {
+        "plan": licensing.plan(),
+        "purview": {
+            "configurado": bool(purview_export.configured()),
+            "licenciado": licensing.has_feature("migracion_purview"),
+        },
+        "collibra": {
+            "configurado": bool(collibra_export.configured()),
+            "licenciado": licensing.has_feature("migracion_collibra"),
+        },
+        "tenant_bi": {
+            "licenciado": licensing.has_feature("escaneo_tenant_bi"),
+        },
+    }
+
+
+@app.post("/api/migracion/{destino}", tags=["governance"])
+def migrar(destino: str, cuerpo: dict = _CUERPO,
+           lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Migra el catálogo a Purview o Collibra.
+
+    `aplicar: false` (el default) es la vista previa: no toca nada afuera y no
+    pide licencia. `aplicar: true` es el push real contra el sistema de la
+    empresa, y ese sí se licencia.
+
+    El default es la vista previa a propósito: si mandar de verdad fuera lo
+    que pasa cuando no se aclara nada, alcanzaría un cuerpo mal armado para
+    escribirle al Purview de producción de un cliente.
+    """
+    import importlib
+
+    if destino not in _DESTINOS_MIGRACION:
+        raise HTTPException(404, f"Destino desconocido: {destino}. "
+                                 f"Disponibles: {sorted(_DESTINOS_MIGRACION)}")
+    funcion, modulo = _DESTINOS_MIGRACION[destino]
+    aplicar = bool((cuerpo or {}).get("aplicar"))
+    if aplicar:
+        _exigir_licencia(funcion)
+
+    exporter = importlib.import_module(f"mvdg.{modulo}")
+    if aplicar and not exporter.configured():
+        raise HTTPException(409, {
+            "error": "conector_sin_configurar",
+            "destino": destino,
+            "es": f"Faltan las credenciales de {destino}. La vista previa "
+                  f"funciona igual.",
+            "en": f"{destino} credentials are missing. The preview still works.",
+            "pt": f"Faltam as credenciais do {destino}. A pré-visualização "
+                  f"funciona mesmo assim.",
+        })
+
+    t = governance_tables(lang)
+    try:
+        resultado = exporter.push_all(t["catalog"], t["dictionary"],
+                                      t["glossary"], dry_run=not aplicar)
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo del conector
+        # El detalle del error del sistema remoto no se filtra al cliente: el
+        # tipo alcanza para diagnosticar sin exponer URLs internas ni tokens
+        # que a veces vienen en el mensaje de la excepción.
+        raise HTTPException(502, {
+            "error": "conector_fallo", "destino": destino,
+            "tipo": type(exc).__name__,
+        }) from exc
+    return {"destino": destino, "aplicado": aplicar, "resultado": resultado}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# PERFILAR TUS PROPIOS DATOS
+# ───────────────────────────────────────────────────────────────────────────
+# La landing lo vende con estas palabras: «Subí un CSV o Excel y obtené al
+# instante esquema, nulos, duplicados, PII detectada y reglas sugeridas». Y el
+# plan de US$ 149 dice «Todo el programa sin límite de tiempo».
+#
+# El .exe no tenía NADA de eso. Ni endpoint, ni pantalla, ni forma de cargar un
+# archivo. El perfilador vivía solo en app/app.py (Streamlit), que el .exe no
+# levanta — así que el cliente bajaba el programa, buscaba la función principal
+# que vio anunciada, y no existía.
+#
+# Es gratis a propósito: no está en FUNCIONES_PAGAS, igual que en Streamlit.
+# Es lo que hace que alguien entienda el producto con SUS datos, que es lo que
+# después se compra.
+#
+# EL ARCHIVO NO SALE DE LA MÁQUINA y no toca el disco: la API escucha en
+# 127.0.0.1, se lee en memoria y se descarta. No hay ningún lugar donde
+# quede — que es exactamente lo que la landing promete cuando dice que tus
+# datos nunca salen de tu PC.
+
+# ───────────────────────── Cuánto se acepta ─────────────────────────────
+# Los topes viejos (40 MB, 200.000 filas) estaban puestos para el peor caso
+# —la API expuesta a varios usuarios— y se los comía también el caso normal:
+# alguien perfilando SU archivo en SU PC. Y el de filas era peor que el de
+# bytes, porque no rechazaba: LEÍA LAS PRIMERAS 200.000 Y SEGUÍA. El cliente
+# recibía el perfil de un pedazo de su archivo con cara de perfil completo.
+#
+# Ahora los dos se configuran, y por defecto no estorban:
+#
+#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 2048; 0 = sin tope)
+#   MVDG_MAX_FILAS        tope de filas          (default 0 = sin tope)
+#
+# El tope de bytes sigue existiendo por defecto porque esta API PUEDE
+# publicarse fuera de 127.0.0.1: sin ningún límite, una sola petición basta
+# para voltear el proceso. En una instalación de escritorio se puede poner
+# MVDG_MAX_UPLOAD_MB=0 y el único límite pasa a ser la RAM de la máquina,
+# que es el límite honesto.
+def _limite(env: str, defecto: int) -> int:
+    """Lee un tope numérico del entorno. 0 (o negativo) = sin tope."""
+    try:
+        valor = int(os.environ.get(env, "").strip() or defecto)
+    except ValueError:
+        return defecto
+    return max(0, valor)
+
+
+_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 2048) * 1024 * 1024
+# 0 = leer el archivo entero. Es el default: truncar en silencio es la peor
+# de las tres opciones (rechazar, truncar avisando, leer todo).
+_MAX_FILAS = _limite("MVDG_MAX_FILAS", 0)
+_EXT_OK = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
+
+
+@app.post("/api/perfilar", tags=["governance"])
+async def perfilar(archivo: UploadFile = _ARCHIVO,
+                   lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Perfila un CSV o Excel: esquema, nulos, duplicados, PII y reglas.
+
+    No requiere licencia. No guarda nada.
+    """
+    import io
+
+    import pandas as pd
+
+    from mvdg import profiler
+
+    nombre = (archivo.filename or "").strip()
+    if not nombre.lower().endswith(_EXT_OK):
+        raise HTTPException(400, {
+            "error": "formato_no_soportado",
+            "es": f"Se aceptan {', '.join(_EXT_OK)}.",
+            "en": f"Accepted formats: {', '.join(_EXT_OK)}.",
+            "pt": f"Formatos aceitos: {', '.join(_EXT_OK)}.",
+        })
+
+    crudo = await archivo.read(_MAX_BYTES + 1) if _MAX_BYTES else await archivo.read()
+    if _MAX_BYTES and len(crudo) > _MAX_BYTES:
+        raise HTTPException(413, {
+            "error": "archivo_muy_grande",
+            "max_mb": _MAX_BYTES // (1024 * 1024),
+            "es": f"El archivo pasa de {_MAX_BYTES // (1024 * 1024)} MB.",
+            "en": f"The file is over {_MAX_BYTES // (1024 * 1024)} MB.",
+            "pt": f"O arquivo passa de {_MAX_BYTES // (1024 * 1024)} MB.",
+        })
+    if not crudo:
+        raise HTTPException(400, {"error": "archivo_vacio"})
+
+    try:
+        # nrows=None es "todas": con _MAX_FILAS en 0 se lee el archivo entero.
+        _filas = _MAX_FILAS or None
+        if nombre.lower().endswith((".xlsx", ".xlsm", ".xls")):
+            df = pd.read_excel(io.BytesIO(crudo), nrows=_filas)
+        else:
+            # sep=None + engine="python" deja que pandas descubra si es coma,
+            # punto y coma o tabulador. En Uruguay el Excel exporta con punto y
+            # coma por el separador decimal, asi que asumir la coma daria una
+            # sola columna con todo adentro y un perfil que no dice nada.
+            df = pd.read_csv(io.BytesIO(crudo), sep=None, engine="python",
+                             nrows=_filas)
+    except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
+        raise HTTPException(400, {
+            "error": "no_se_pudo_leer", "tipo": type(exc).__name__,
+            "es": "No se pudo leer el archivo. ¿Está completo y bien formado?",
+            "en": "The file could not be read. Is it complete and well formed?",
+            "pt": "Não foi possível ler o arquivo. Está completo e bem formado?",
+        }) from exc
+
+    if df.empty or not len(df.columns):
+        raise HTTPException(400, {"error": "sin_datos"})
+
+    perfil = profiler.profile_table(df)
+    return {
+        "archivo": nombre,
+        # Los conteos se convierten uno por uno y NO metiendolos en una Series:
+        # pandas unifica el tipo de la Series entera, asi que un solo decimal
+        # (null_cells_pct) convertia "4 filas" en "4.0 filas". Un conteo con
+        # decimales en pantalla se lee como un error del programa.
+        "resumen": {k: (int(v) if float(v).is_integer() and k != "null_cells_pct"
+                        else round(float(v), 2))
+                    for k, v in profiler.summary(df).items()},
+        "perfil": json.loads(perfil.to_json(orient="records",
+                                            date_format="iso")),
+        "reglas": profiler.suggest_rules(df, lang),
+        # Que el cliente sepa que vio TODO su archivo, o que se corto. Un
+        # perfil sobre la mitad de las filas presentado como si fuera el total
+        # es un dato equivocado con cara de dato bueno.
+        "filas_leidas": int(len(df)),
+        "truncado": bool(_MAX_FILAS and len(df) >= _MAX_FILAS),
+    }
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# INGENIERÍA DE DATOS AUTOMÁTICA (mvdg/dataeng.py)
+# ───────────────────────────────────────────────────────────────────────────
+# La pestaña completa: perfil avanzado, calidad por 6 dimensiones, claves y
+# joins entre tablas, análisis temporal, fuga de información (leakage) contra
+# un target y feature engineering anti-leakage — sobre un archivo o una base
+# de datos SQL. Gratis, igual que /api/perfilar: no está en FUNCIONES_PAGAS.
+#
+# El motor (mvdg/dataeng.py) es language-neutral a propósito: cada issue,
+# cada motivo de fuga y cada feature llevan un CÓDIGO estable, no una
+# oración armada. La traducción pasa ACÁ, en la API — mismo lugar donde ya
+# se resuelve el idioma para el resto de /api/perfilar y de las tablas de
+# gobierno — así que ni Streamlit ni React tienen que reimplementar la
+# lógica de "qué texto le corresponde a este código".
+#
+# La fuente SQL reusa mvdg/connectors.py (9 motores, credenciales protegidas
+# con el keyring del SO) en vez de duplicar un conector acá: es el mismo
+# motor que ya usa la pestaña Perfilador de Streamlit, con las conexiones
+# guardadas compartidas entre las dos interfaces (~/.mv_data_governance).
+#
+# La traducción de los códigos language-neutral vive en `mvdg.dataeng`
+# (`traducir_resultado` y compañía), no acá: Streamlit también la necesita
+# para su propia integración de este motor, y duplicarla en bi_api hubiera
+# significado dos lugares que traducen "qi_nulos_masivos" y que pueden
+# desalinearse — el mismo tipo de bug que ya le costó caro a este proyecto
+# (ver api/checkout.js, precio y vencimiento separados en dos archivos).
+
+
+def _de_error(clave: str, status: int, **extra) -> HTTPException:
+    """Arma un HTTPException trilingüe a partir de una clave de mvdg/i18n.py."""
+    from mvdg.i18n import t
+    return HTTPException(status, {
+        "error": clave,
+        "es": t(clave, "es"), "en": t(clave, "en"), "pt": t(clave, "pt"),
+        **extra,
+    })
+
+
+# Acá entran VARIOS archivos a la vez (o un .sqlite con varias tablas), así
+# que el tope es el del conjunto. Configurable con MVDG_MAX_UPLOAD_DE_MB;
+# 0 = sin tope, igual que en /api/perfilar.
+_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 4096) * 1024 * 1024
+_ARCHIVOS = File(...)
+
+
+@app.post("/api/ingenieria/archivo", tags=["governance"])
+async def ingenieria_archivo(
+    archivos: list[UploadFile] = _ARCHIVOS,
+    lang: str = Query("es", pattern="^(es|en|pt)$"),
+    target: str = Query(""),
+    columna_tiempo: str = Query(""),
+):
+    """Analiza uno o varios archivos (CSV/TSV/Excel/Parquet/JSON/JSONL/SQLite)
+    con el motor completo de ingeniería de datos. No requiere licencia. No
+    guarda nada — igual que /api/perfilar.
+    """
+    from mvdg import dataeng
+
+    if not archivos:
+        raise _de_error("de_err_vacio", 400)
+
+    tablas: dict = {}
+    restante = _MAX_BYTES_DE
+    for arch in archivos:
+        nombre = (arch.filename or "").strip()
+        ext = os.path.splitext(nombre.lower())[1]
+        if ext not in dataeng.EXT_SOPORTADAS:
+            raise _de_error("de_err_formato", 400)
+        # Con el tope apagado (_MAX_BYTES_DE = 0) se lee el archivo entero y
+        # no se lleva presupuesto: `restante` deja de tener sentido.
+        if _MAX_BYTES_DE:
+            crudo = await arch.read(restante + 1)
+            if len(crudo) > restante:
+                raise _de_error("de_grande", 413)
+        else:
+            crudo = await arch.read()
+        if not crudo:
+            continue
+        restante -= len(crudo)
+        try:
+            leidas = dataeng.leer_archivo_bytes(nombre, crudo)
+        except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
+            raise _de_error("de_malo", 400, tipo=type(exc).__name__) from exc
+        stem = dataeng.slug(os.path.splitext(nombre)[0], 30)
+        for tname, tdf in leidas.items():
+            clave = tname if len(archivos) == 1 else f"{stem}__{tname}"
+            base, i = clave, 2
+            while clave in tablas:
+                clave = f"{base}_{i}"
+                i += 1
+            tablas[clave] = tdf
+
+    if not tablas:
+        raise _de_error("de_err_vacio", 400)
+
+    truncado_tablas = len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
+    if truncado_tablas:
+        tablas = dict(list(tablas.items())[:dataeng.MAX_TABLAS_MULTIPLES])
+
+    tgt = target.strip() or None
+    tcol = columna_tiempo.strip() or None
+    resultados = {
+        nombre: dataeng.traducir_resultado(
+            dataeng.analizar_tabla(nombre, df, target=tgt, columna_tiempo=tcol), lang)
+        for nombre, df in tablas.items()
+    }
+    joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
+    return {
+        "tablas": resultados,
+        "joins": dataeng.traducir_joins(joins, lang),
+        "truncado_tablas": truncado_tablas,
+    }
+
+
+def _de_resolver_conexion(cuerpo: dict) -> tuple[dict, str | None]:
+    """Arma (profile, password) a partir del cuerpo del pedido.
+
+    Si trae `conn_id`, parte de la conexión ya guardada (no hace falta
+    reescribir host/usuario cada vez) y el cuerpo puede pisar cualquier
+    campo puntual — incluida la contraseña, sin que eso la guarde.
+    """
+    from mvdg import connectors
+    cuerpo = cuerpo or {}
+    conn_id = cuerpo.get("conn_id")
+    base = {}
+    if conn_id:
+        for c in connectors.load_connections():
+            if c.get("conn_id") == conn_id:
+                base = dict(c)
+                break
+    profile = {**base, **{k: v for k, v in cuerpo.items() if v not in (None, "")}}
+    password = cuerpo.get("password") or (connectors.stored_password(base) if base else "")
+    return profile, (password or None)
+
+
+@app.get("/api/ingenieria/sql/conexiones", tags=["governance"])
+def ingenieria_sql_conexiones():
+    """Conexiones guardadas — nunca la contraseña, ni cifrada ni ofuscada."""
+    from mvdg import connectors
+    return [{k: v for k, v in c.items() if k != "password_enc"}
+            for c in connectors.load_connections()]
+
+
+@app.post("/api/ingenieria/sql/conexiones", tags=["governance"])
+def ingenieria_sql_guardar(cuerpo: dict = _CUERPO):
+    """Guarda (o actualiza, por `conn_id`) una conexión a base de datos."""
+    from mvdg import connectors
+    cuerpo = cuerpo or {}
+    if not str(cuerpo.get("name", "")).strip():
+        raise HTTPException(400, "Falta el nombre de la conexión.")
+    stored = connectors.save_connection(cuerpo, save_password=bool(cuerpo.get("save_password", True)))
+    return {k: v for k, v in stored.items() if k != "password_enc"}
+
+
+@app.delete("/api/ingenieria/sql/conexiones/{conn_id}", tags=["governance"])
+def ingenieria_sql_borrar(conn_id: str):
+    from mvdg import connectors
+    connectors.delete_connection(conn_id)
+    return {"ok": True}
+
+
+@app.post("/api/ingenieria/sql/probar", tags=["governance"])
+def ingenieria_sql_probar(cuerpo: dict = _CUERPO):
+    """Prueba una conexión SQL (ad hoc o guardada por `conn_id`)."""
+    profile, password = _de_resolver_conexion(cuerpo)
+    from mvdg import connectors
+    ok, msg = connectors.test_connection(profile, password=password)
+    return {"ok": ok, "mensaje": msg}
+
+
+@app.post("/api/ingenieria/sql/tablas", tags=["governance"])
+def ingenieria_sql_tablas(cuerpo: dict = _CUERPO):
+    """Tablas visibles en la conexión."""
+    profile, password = _de_resolver_conexion(cuerpo)
+    from mvdg import connectors
+    try:
+        tablas = connectors.list_tables(profile, password=password)
+    except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
+        raise HTTPException(502, {"error": "conexion_fallo", "tipo": type(exc).__name__,
+                                  "detalle": str(exc)}) from exc
+    return {"tablas": tablas}
+
+
+@app.post("/api/ingenieria/sql/analizar", tags=["governance"])
+def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
+                            lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Trae una o varias tablas (o el resultado de una consulta SELECT/WITH)
+    y corre el motor completo de ingeniería de datos. Gratis, sin licencia —
+    igual que /api/ingenieria/archivo, solo cambia de dónde sale el
+    DataFrame.
+    """
+    from mvdg import connectors, dataeng
+
+    profile, password = _de_resolver_conexion(cuerpo)
+    if not profile.get("engine"):
+        raise HTTPException(400, "Falta el motor de la conexión.")
+
+    try:
+        # Sin techo: `limite=0` trae la tabla entera. Antes se recortaba a
+        # connectors.MAX_ROWS, así que pedir más filas de las permitidas
+        # devolvía menos sin decir nada.
+        crudo_lim = cuerpo.get("limite")
+        limite = (max(0, int(crudo_lim)) if crudo_lim is not None
+                  else dataeng.MUESTRA_SQL_DEFECTO)
+    except (TypeError, ValueError):
+        limite = dataeng.MUESTRA_SQL_DEFECTO
+
+    query = str(cuerpo.get("query") or "").strip()
+    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES]
+
+    tablas: dict = {}
+    try:
+        if query:
+            tablas["consulta"] = connectors.run_query(profile, query, limite, password=password)
+        for nombre in nombres_tablas:
+            tablas[nombre] = connectors.load_table(profile, nombre, limite, password=password)
+    except ValueError as exc:  # consulta que no es SELECT/WITH
+        raise HTTPException(400, {"error": "consulta_no_permitida", "detalle": str(exc)}) from exc
+    except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
+        raise HTTPException(502, {"error": "conexion_fallo", "tipo": type(exc).__name__,
+                                  "detalle": str(exc)}) from exc
+
+    if not tablas:
+        raise HTTPException(400, "Indicá al menos una tabla o una consulta.")
+
+    tgt = str(cuerpo.get("target") or "").strip() or None
+    tcol = str(cuerpo.get("columna_tiempo") or "").strip() or None
+    resultados = {
+        nombre: dataeng.traducir_resultado(
+            dataeng.analizar_tabla(nombre, df, target=tgt, columna_tiempo=tcol,
+                                   muestra=dataeng.TOPE_FILAS), lang)
+        for nombre, df in tablas.items()
+    }
+    joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
+    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang)}
+
+
+@app.post("/api/bi/escanear-tenant", tags=["governance"])
+def escanear_tenant(cuerpo: dict = _CUERPO,
+                    lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Escanea el tenant de Power BI y cataloga lo que encuentre.
+
+    Acá no hay vista previa que valga: leer el tenant de la empresa ES la
+    función. Por eso pide licencia siempre, a diferencia de las migraciones.
+    """
+    _exigir_licencia("escaneo_tenant_bi")
+    from mvdg import powerbi_meta
+
+    try:
+        maximo = int((cuerpo or {}).get("max_workspaces") or 25)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "max_workspaces tiene que ser un numero") from None
+    maximo = max(1, min(maximo, 1000))
+
+    try:
+        salida = powerbi_meta.ingest_tenant(lang, max_workspaces=maximo)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, {
+            "error": "tenant_fallo", "tipo": type(exc).__name__,
+        }) from exc
+
+    # Las tablas vuelven como DataFrame; se serializan igual que el resto de
+    # la API para que la interfaz no tenga que tratarlas distinto.
+    tablas = {}
+    for nombre, valor in (salida or {}).items():
+        if hasattr(valor, "to_json"):
+            tablas[nombre] = json.loads(valor.to_json(orient="records",
+                                                      date_format="iso"))
+        else:
+            tablas[nombre] = valor
+    return {"max_workspaces": maximo, "tablas": tablas}
+
+
 def _serve(df, table: str, lang: str, format: str):
     if format == "csv":
         return PlainTextResponse(df.to_csv(index=False),
@@ -206,6 +829,230 @@ def _serve(df, table: str, lang: str, format: str):
     # garantizando JSON estricto para cualquier cliente BI.
     records = json.loads(df.to_json(orient="records", date_format="iso"))
     return {"table": table, "lang": lang, "rows": len(df), "data": records}
+
+# --------------------------------------------------------------- descargas
+#
+# Los documentos (HTML/Word/PDF/Excel) se arman ACA y viajan como una
+# respuesta HTTP con Content-Disposition, en vez de construirse en el
+# navegador y bajarse como blob. Dos razones:
+#
+#   1. El motor que los escribe (mvdg.doc_export) es Python. Reimplementarlo
+#      en JavaScript serian dos escritores de PDF que se separan en el primer
+#      cambio, y el que se probaria menos es el del .exe.
+#   2. Una descarga por URL http:// normal es lo que la ventana de Electron
+#      maneja sin trucos. Un blob: dentro de un empaquetado es justo el
+#      camino que se rompe callado.
+_TIPOS_DOC = {
+    "html": ("text/html; charset=utf-8", "html"),
+    "docx": ("application/vnd.openxmlformats-officedocument."
+             "wordprocessingml.document", "docx"),
+    "pdf": ("application/pdf", "pdf"),
+    "xlsx": ("application/vnd.openxmlformats-officedocument."
+             "spreadsheetml.sheet", "xlsx"),
+}
+
+
+def _documento(doc: dict, formato: str, nombre: str, tabla=None) -> Response:
+    """Un documento ya armado, servido como descarga."""
+    from mvdg import doc_export
+
+    if formato not in _TIPOS_DOC:
+        raise HTTPException(400, f"Formato desconocido: {formato!r}. "
+                                 f"Validos: {', '.join(_TIPOS_DOC)}.")
+    if formato == "xlsx":
+        if tabla is None:
+            raise HTTPException(400, "Este documento no tiene version Excel.")
+        from mvdg.exporters import to_excel_bytes
+        crudo = to_excel_bytes(tabla, nombre[:31])
+    elif formato == "html":
+        crudo = doc_export.a_html(doc).encode("utf-8")
+    elif formato == "docx":
+        crudo = doc_export.a_docx(doc)
+    else:
+        crudo = doc_export.a_pdf(doc)
+    tipo, ext = _TIPOS_DOC[formato]
+    return Response(
+        content=crudo, media_type=tipo,
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.{ext}"'})
+
+
+# ---------------------------------------------------------------------------
+# Relevamiento y reuniones
+#
+# El motor de los dos modulos ya existe (mvdg/interview.py, mvdg/meetings.py).
+# Estos endpoints lo dejan alcanzable desde la API, que es por donde lo
+# consume la version .exe: sin ellos, el motor solo se podria usar desde una
+# de las dos interfaces.
+#
+# Van ANTES de /api/{table}: esa ruta es un comodin y se come cualquier cosa
+# que se declare despues. Hay un test que fija el orden, porque el sintoma de
+# equivocarse no es un error sino un 200 con el contenido de otra ruta.
+# ---------------------------------------------------------------------------
+@app.get("/api/empresas", tags=["governance"])
+def empresas():
+    """Las empresas cargadas. El relevamiento se guarda por empresa."""
+    from mvdg.clients import load_clients
+    return [{"client_id": c.get("client_id", ""),
+             "company": c.get("company", ""),
+             "status": c.get("status", "")}
+            for c in load_clients() if c.get("client_id")]
+
+
+@app.get("/api/relevamiento/preguntas", tags=["governance"])
+def relevamiento_preguntas(lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """El banco entero: areas del pipeline y sus preguntas."""
+    from mvdg import interview
+    return {"lang": lang, "areas": interview.areas(lang),
+            "preguntas": interview.questions(lang)}
+
+
+@app.post("/api/relevamiento/repreguntas", tags=["governance"])
+def relevamiento_repreguntas(cuerpo: dict = _CUERPO):
+    """Que repreguntar sobre una respuesta.
+
+    Las de `repreguntas` se calculan ACA, sin red y sin clave: es el camino
+    normal, porque un relevamiento se hace en la sala de reuniones de un
+    cliente. Con `"ia": true` se agregan ademas las que genera el proveedor
+    configurado sobre la respuesta exacta, y eso manda la respuesta del
+    cliente afuera: el que llama tiene que haberlo advertido en pantalla.
+    """
+    from mvdg import interview
+    datos = cuerpo or {}
+    lang = str(datos.get("lang") or "es")
+    lang = lang if lang in LANGS else "es"
+    qid = str(datos.get("id") or "").strip()
+    if not interview.question(qid, lang):
+        raise HTTPException(404, f"No existe la pregunta {qid!r}.")
+    respuesta = str(datos.get("respuesta") or "")
+    salida = {"id": qid,
+              "repreguntas": interview.follow_ups(qid, respuesta, lang)}
+    if datos.get("ia"):
+        salida["repreguntas_ia"] = interview.ai_follow_ups(qid, respuesta, lang)
+    return salida
+
+
+@app.get("/api/relevamiento/{client_id}/documento", tags=["governance"])
+def relevamiento_documento(client_id: str,
+                           formato: str = Query("pdf"),
+                           lang: str = Query("es", pattern="^(es|en|pt)$"),
+                           empresa: str = ""):
+    """El relevamiento de un cliente como HTML, Word, PDF o Excel."""
+    from mvdg import interview
+    return _documento(
+        interview.to_document(client_id, lang, empresa), formato,
+        f"relevamiento_{client_id[:8]}_{lang}",
+        tabla=interview.answers_df(client_id, lang))
+
+
+@app.get("/api/relevamiento/{client_id}", tags=["governance"])
+def relevamiento_estado(client_id: str,
+                        lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Lo respondido para un cliente, con la cobertura por area."""
+    from mvdg import interview
+    return {
+        "client_id": client_id, "lang": lang,
+        "cobertura": interview.overall_coverage(client_id),
+        "por_area": json.loads(
+            interview.progress(client_id, lang).to_json(orient="records")),
+        "respuestas": json.loads(
+            interview.answers_df(client_id, lang).to_json(orient="records")),
+    }
+
+
+@app.post("/api/relevamiento/{client_id}", tags=["governance"])
+def relevamiento_guardar(client_id: str, cuerpo: dict = _CUERPO):
+    """Anota quien respondio que. El estado se deduce si no viene."""
+    from mvdg import interview
+    datos = cuerpo or {}
+    qid = str(datos.get("id") or "").strip()
+    if not interview.question(qid):
+        raise HTTPException(404, f"No existe la pregunta {qid!r}.")
+    return interview.save_answer(
+        client_id, qid,
+        respuesta=str(datos.get("respuesta") or ""),
+        responsable=str(datos.get("responsable") or ""),
+        area_responsable=str(datos.get("area_responsable") or ""),
+        estado=str(datos.get("estado") or ""))
+
+
+def _minuta_de(datos: dict):
+    """La minuta y su idioma, a partir del cuerpo de un pedido."""
+    from mvdg import meetings
+    lang = str(datos.get("lang") or "es")
+    lang = lang if lang in LANGS else "es"
+    inter = meetings.parse_transcript(str(datos.get("texto") or ""))
+    return meetings.minutes(
+        inter, lang, titulo=str(datos.get("titulo") or ""),
+        fecha=str(datos.get("fecha") or ""),
+        participantes=str(datos.get("participantes") or "")), lang
+
+
+@app.post("/api/reuniones/minuta", tags=["governance"])
+def reuniones_minuta(cuerpo: dict = _CUERPO):
+    """Transcripcion -> minuta: quien hablo, hallazgos y cruce con el pipeline.
+
+    Recibe TEXTO, no audio: transcribir manda el audio a un tercero y esa
+    decision se toma en la interfaz, con el aviso delante, no por una llamada
+    de API que alguien podria encadenar sin darse cuenta.
+    """
+    minuta, _ = _minuta_de(cuerpo or {})
+    tablas = ("oradores", "hallazgos", "pipeline", "transcripcion")
+    salida = {k: v for k, v in minuta.items() if k not in tablas}
+    salida.update({k: json.loads(minuta[k].to_json(orient="records"))
+                   for k in tablas})
+    return salida
+
+
+@app.post("/api/reuniones/documento", tags=["governance"])
+def reuniones_documento(formato: str = Query("pdf"), cuerpo: dict = _CUERPO):
+    """La minuta como HTML, Word, PDF o Excel (la transcripcion completa)."""
+    from mvdg import meetings
+    minuta, lang = _minuta_de(cuerpo or {})
+    return _documento(meetings.to_document(minuta, lang), formato,
+                      f"minuta_{lang}", tabla=minuta["transcripcion"])
+
+
+@app.get("/api/reuniones/transcripcion", tags=["governance"])
+def reuniones_transcripcion_estado(lang: str = Query("es", pattern="^(es|en|pt)$")):
+    """Si se puede transcribir audio, y con que proveedor.
+
+    La interfaz lo consulta para NO ofrecer el boton cuando no hay clave: un
+    boton que siempre falla es peor que no tenerlo.
+    """
+    from mvdg import ai_provider, transcribe
+    proveedor = transcribe.proveedor_disponible()
+    return {"disponible": bool(proveedor), "proveedor": proveedor or "",
+            "etiqueta": ai_provider.provider_label(proveedor) if proveedor else "",
+            "motivo": "" if proveedor else transcribe.motivo("sin_proveedor", lang)}
+
+
+_CONFIRMO = Form(False)
+_LANG_FORM = Form("es")
+
+
+@app.post("/api/reuniones/transcribir", tags=["governance"])
+async def reuniones_transcribir(archivo: UploadFile = _ARCHIVO,
+                                confirmo: bool = _CONFIRMO,
+                                lang: str = _LANG_FORM):
+    """Audio -> texto, con la clave del usuario. MANDA EL AUDIO A UN TERCERO.
+
+    Exige `confirmo=true` explicito. No es burocracia: es el unico endpoint de
+    esta API que saca contenido del cliente de la maquina, y el resto del
+    programa promete justo lo contrario. Que haya que decirlo en cada llamada
+    evita que quede encendido por una configuracion que alguien puso una vez.
+    """
+    from mvdg import transcribe
+    lang = lang if lang in LANGS else "es"
+    if not confirmo:
+        raise HTTPException(400, (
+            "Falta la confirmacion explicita: transcribir manda este audio a "
+            "un proveedor externo. Mande confirmo=true solo despues de "
+            "avisarlo en pantalla."))
+    crudo = await archivo.read()
+    resultado = transcribe.transcribir(crudo, archivo.filename or "reunion.wav", lang)
+    if not resultado["ok"]:
+        raise HTTPException(400, resultado["mensaje"])
+    return resultado
 
 
 @app.get("/api/{table}", tags=["governance"])
@@ -252,13 +1099,46 @@ def get_sample_meta(dataset: str, lang: str = Query("es", pattern="^(es|en|pt)$"
 
 
 def _port_free(host: str, port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            s.bind((host, port))
-            return True
-        except OSError:
-            return False
+    """.Esta el puerto libre de verdad?
+
+    Delegado a mvdg.netports: la version anterior ponia SO_REUSEADDR, que en
+    Windows permite hacer bind sobre un puerto que otra app ya ocupa. O sea
+    que este chequeo — el que existe justamente para NO pisar a nadie —
+    devolvia "libre" en el sistema operativo donde mas importa."""
+    from mvdg.netports import puerto_libre
+    return puerto_libre(host, port)
+
+
+def _dir_ui() -> str | None:
+    """Carpeta con la interfaz de escritorio (React) ya empaquetada.
+
+    La sirve ESTE servidor, en /app, a propósito: así la UI y la API quedan
+    en el mismo origen y no hace falta CORS ni abrirla por file://, que son
+    las dos formas habituales de que un empaquetado de escritorio termine
+    con un agujero de seguridad o con un "no carga y no se sabe por qué".
+
+    Orden: MVDG_UI_DIR (para armados a medida o para el bundle de
+    electron-builder, que mueve las carpetas) y si no, la ruta del repo.
+    Si no existe, no se monta nada — la API sigue funcionando igual para
+    Power BI/Tableau, que es su trabajo principal.
+    """
+    from pathlib import Path
+    candidatas = []
+    env = os.environ.get("MVDG_UI_DIR", "").strip()
+    if env:
+        candidatas.append(Path(env))
+    candidatas.append(Path(__file__).resolve().parent.parent / "electron" / "ui" / "dist")
+    for c in candidatas:
+        if (c / "index.html").is_file():
+            return str(c)
+    return None
+
+
+_UI = _dir_ui()
+if _UI:
+    from fastapi.staticfiles import StaticFiles
+    # html=True hace que /app sirva index.html en la raíz de la carpeta.
+    app.mount("/app", StaticFiles(directory=_UI, html=True), name="ui")
 
 
 def main():

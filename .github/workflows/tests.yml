@@ -9,8 +9,13 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Un push nuevo sobre la misma rama cancela la corrida anterior.
-  group: tests-${{ github.ref }}
+  # Se agrupa por NOMBRE DE RAMA, no por github.ref, a propósito: un PR
+  # dispara dos eventos (push a la rama y pull_request) cuyos refs son
+  # distintos (refs/heads/x vs refs/pull/N/merge). Con github.ref cada uno
+  # armaba su propio grupo y la suite corría DOS VECES por PR — el doble de
+  # minutos de Actions para el mismo commit. Agrupados por rama, la segunda
+  # cancela a la primera y queda una sola corrida.
+  group: tests-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -48,13 +53,37 @@ jobs:
 
       - name: Cero warnings de deprecación
         # Corrida aparte y estricta: si algo empieza a emitir un
-        # DeprecationWarning, esto falla aunque los tests de arriba pasen.
+        # DeprecationWarning, queda marcado aunque los tests de arriba pasen.
+        #
+        # continue-on-error: la mayoria de las deprecaciones que aparecen acá
+        # NO son de este repo — las emite una libreria de terceros al sacar
+        # version. Bloquear el merge por eso pone en rojo el PR de alguien que
+        # no toco nada, y lo obliga a arreglar algo ajeno para poder mergear
+        # lo suyo. El aviso sigue estando (el paso queda marcado en amarillo);
+        # lo que se saca es el bloqueo. Los tests de verdad, arriba, siguen
+        # siendo obligatorios.
+        continue-on-error: true
         run: python -m pytest tests/ -q -W error::DeprecationWarning
 
       - name: Auto-diagnóstico del motor
         # El selfcheck importa el motor entero y el dashboard: si algo quedó
         # desalineado entre app.py y mvdg/, se cae acá aunque los tests pasen.
         run: python -m mvdg.selfcheck
+
+      # makensis compila el script NSIS del instalador. Sin esto, el test
+      # de instalador salta esa parte y un error de sintaxis en el .nsh
+      # recien aparece en el runner Windows, a mitad del build.
+      #
+      # continue-on-error a proposito: bajar un paquete depende de la red y
+      # de los mirrors de Ubuntu, o sea de algo que NO es este repo. Si eso
+      # se cae, el PR no tiene por que ponerse en rojo — el test de
+      # instalador detecta que no hay makensis, avisa PARCIAL y sigue con
+      # los otros 11 checks. Un CI que falla por motivos ajenos al codigo
+      # entrena a ignorarlo, que es peor que no tenerlo.
+      - name: NSIS (para compilar el script del instalador)
+        if: matrix.python-version == '3.12'
+        continue-on-error: true
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nsis
 
       - name: Tests de JS (pago/licencia + XSS)
         # Sin deps nuevas (Node ya viene en el runner): cubre lo que pytest no
@@ -63,4 +92,7 @@ jobs:
         if: matrix.python-version == '3.12'
         run: |
           node api/payments.test.js
+          node api/pago_a_licencia.test.js
           node landing/security.test.js
+          node electron/lib/navegacion.test.js
+          node electron/lib/instalador.test.js

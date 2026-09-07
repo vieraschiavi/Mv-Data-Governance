@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · Fichas de empresas clientes (persistentes).
 
@@ -5,9 +7,8 @@ CRM liviano de gobierno de datos: cada ficha guarda la empresa, el contacto,
 su BI, sus restricciones de TI (deciden si conviene la Opción A instalador
 .exe o la Opción B portable .bat), la madurez de gobierno y notas.
 
-Las fichas se guardan en disco (JSON) y sobreviven al cierre del programa:
-    ~/.mv_data_governance/clientes.json
-o en la carpeta que indique la variable de entorno MVDG_DATA_DIR.
+Las fichas se guardan en disco (JSON) y sobreviven al cierre del programa, en
+la carpeta que decide ``data_dir()`` — ver ahí la prioridad exacta.
 """
 from __future__ import annotations
 
@@ -18,16 +19,16 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+# `data_dir` y su sondeo de escritura viven en mvdg/paths.py, que NO importa
+# pandas: mvdg/licensing.py los necesita, y arrastrar el CRUD de clientes
+# —y con él pandas— hasta el verificador de licencias rompía el build del
+# instalador en un runner con Python limpio. Se reexportan acá porque seis
+# módulos ya los importan desde `clients`.
+from .paths import _ESCRITURA_PROBADA, _dir_junto_al_exe_escribible, data_dir  # noqa: F401
+
 BI_TOOLS = ["Power BI", "Tableau", "Looker", "MicroStrategy", "Qlik", "Excel"]
 IT_RESTRICTIONS = ["exe_ok", "no_exe_python_ok", "solo_web"]
 STATUSES = ["lead", "demo", "piloto", "activo", "cerrado"]
-
-
-def data_dir() -> str:
-    d = os.environ.get("MVDG_DATA_DIR") or os.path.join(
-        os.path.expanduser("~"), ".mv_data_governance")
-    os.makedirs(d, exist_ok=True)
-    return d
 
 
 def _file() -> str:

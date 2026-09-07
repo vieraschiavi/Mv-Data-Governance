@@ -1,18 +1,22 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """
 MV Data Governance · IA externa opcional para las sugerencias de corrección.
 
 Por defecto, las sugerencias de "cómo corregir cada falla" (mvdg.remediation)
 son 100% locales y determinísticas — nada sale de la máquina. Este módulo
-agrega una capa OPCIONAL: si el usuario configura su propia API key de
-Claude, ChatGPT (OpenAI) o Gemini como variable de entorno, cada regla puede
-pedir además una sugerencia generada en vivo por ese modelo.
+agrega una capa OPCIONAL: si el usuario configura su propia API key —Claude,
+ChatGPT, Gemini, Grok, o cualquier servicio compatible con OpenAI— cada regla
+puede pedir además una sugerencia generada en vivo por ese modelo. Qué
+proveedor y qué MODELO se usan sale de mvdg/ai_settings.py.
 
 Reglas de diseño (no negociables):
   - Apagado por defecto. Sin ninguna variable de entorno configurada, el
     programa funciona exactamente igual que antes (asistencia local).
-  - La API key la pone el usuario en su propio entorno — el programa nunca
-    la pide, nunca la guarda, nunca la manda a ningún lado más que al
-    proveedor elegido.
+  - La API key la pone el usuario: como variable de entorno, o desde
+    Configuración (ver mvdg/ai_settings.py, que la guarda en el keyring del
+    sistema operativo). Nunca se manda a ningún lado más que al proveedor
+    elegido.
   - Solo se manda METADATO de la falla (dataset, columna, dimensión,
     descripción de la regla, cantidad de filas afectadas) — nunca datos
     reales de las filas.
@@ -40,9 +44,49 @@ _PROVIDERS = {
     "claude": ("ANTHROPIC_API_KEY", "Claude (Anthropic)", "claude-sonnet-5", "MVDG_AI_MODEL_CLAUDE"),
     "openai": ("OPENAI_API_KEY", "ChatGPT (OpenAI)", "gpt-4o-mini", "MVDG_AI_MODEL_OPENAI"),
     "gemini": ("GEMINI_API_KEY", "Gemini (Google)", "gemini-1.5-flash", "MVDG_AI_MODEL_GEMINI"),
+    "grok": ("XAI_API_KEY", "Grok (xAI)", "grok-2-latest", "MVDG_AI_MODEL_GROK"),
+    # Cualquier OTRO servicio que hable el formato de OpenAI
+    # (/chat/completions). Es la respuesta a "que cada cliente use el agente
+    # que quiera": escribir un conector por proveedor deja el producto siempre
+    # atrás del que salió ayer. Con esto entran OpenRouter —que a su vez
+    # enruta a Claude, GPT, Gemini, Llama y decenas más—, Groq, Mistral,
+    # DeepSeek, Together, Azure OpenAI y los locales tipo Ollama o LM Studio,
+    # sin tocar una línea de este archivo.
+    #
+    # Necesita DOS datos, no uno: la key y a dónde apuntar.
+    "compatible": ("MVDG_AI_API_KEY", "Compatible con OpenAI", "gpt-4o-mini", "MVDG_AI_MODEL"),
 }
-# orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza una
-_PRIORITY = ["claude", "openai", "gemini"]
+# Orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza
+# una. "compatible" va último: si alguien configuró la key oficial de su
+# proveedor, esa es la vía directa.
+_PRIORITY = ["claude", "openai", "gemini", "grok", "compatible"]
+
+# A dónde apunta el proveedor compatible. Sin esto no se puede usar: una key
+# suelta no dice contra qué servicio va.
+_BASE_URL_ENV = "MVDG_AI_BASE_URL"
+
+
+def _key_for(provider: str) -> str:
+    """La API key vigente. Delega en ai_settings, que resuelve el orden
+    entorno -> keyring -> respaldo: si esto leyera os.environ por su cuenta,
+    la key cargada desde la interfaz no serviria para nada."""
+    from . import ai_settings
+    return ai_settings.leer_key(provider)
+
+
+def _disponible(provider: str) -> bool:
+    """¿Este proveedor tiene lo que necesita para funcionar?
+
+    Todos piden su API key. "compatible" pide ADEMÁS la URL base: sin ella la
+    key no dice contra qué servicio va, y dar por configurado algo que no
+    puede llamar a nadie haría que la UI ofrezca una opción que siempre falla.
+    """
+    if not _key_for(provider):
+        return False
+    if provider == "compatible":
+        from . import ai_settings
+        return bool(ai_settings.base_url("compatible"))
+    return True
 
 
 def configured_provider() -> str | None:
@@ -52,11 +96,10 @@ def configured_provider() -> str | None:
     si no, se usa el primero disponible en orden de prioridad. None si no
     hay ninguna key configurada — modo local (el de siempre)."""
     forced = os.environ.get("MVDG_AI_PROVIDER", "").strip().lower()
-    if forced in _PROVIDERS and os.environ.get(_PROVIDERS[forced][0]):
+    if forced in _PROVIDERS and _disponible(forced):
         return forced
     for key in _PRIORITY:
-        env_var, _, _, _ = _PROVIDERS[key]
-        if os.environ.get(env_var):
+        if _disponible(key):
             return key
     return None
 
@@ -66,8 +109,17 @@ def provider_label(provider: str) -> str:
 
 
 def _model_for(provider: str) -> str:
-    env_var, _, default, model_env = _PROVIDERS[provider]
-    return os.environ.get(model_env, default)
+    """El modelo a usar. La variable de entorno especifica manda; si no, el
+    que el usuario eligio en Configuracion; si no, el default del proveedor.
+    Elegirlo importa: entre el modelo mas chico y el mas grande de un mismo
+    proveedor hay un orden de magnitud de diferencia en costo por llamada, y
+    el que paga es el usuario."""
+    _, _, default, model_env = _PROVIDERS[provider]
+    del_entorno = os.environ.get(model_env, "").strip() if model_env else ""
+    if del_entorno:
+        return del_entorno
+    from . import ai_settings
+    return ai_settings.modelo_elegido(provider) or default
 
 
 _PROMPT_TMPL = {
@@ -156,7 +208,39 @@ def _call_gemini(prompt: str, api_key: str, model: str) -> str:
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-_CALLERS = {"claude": _call_claude, "openai": _call_openai, "gemini": _call_gemini}
+def _call_grok(prompt: str, api_key: str, model: str) -> str:
+    return _openai_shape(prompt, api_key, model, "https://api.x.ai/v1")
+
+
+def _openai_shape(prompt: str, api_key: str, model: str, base: str) -> str:
+    """El cuerpo /chat/completions, que hablan OpenAI, xAI y los compatibles."""
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 400}
+    headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+    data = _post_json(f"{base.rstrip('/')}/chat/completions", headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
+def _call_compatible(prompt: str, api_key: str, model: str) -> str:
+    """Cualquier servicio con la forma de OpenAI: /chat/completions.
+
+    La URL base se toma tal cual la puso el usuario, sacándole una barra final
+    y el /chat/completions si ya lo escribió — es el error de tipeo más común
+    al copiar la doc de un proveedor, y terminaría en un 404 que se ve como
+    "la IA no anda"."""
+    base = os.environ.get(_BASE_URL_ENV, "").strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")]
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 400}
+    headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
+    data = _post_json(f"{base}/chat/completions", headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
+_CALLERS = {"claude": _call_claude, "openai": _call_openai,
+            "gemini": _call_gemini, "grok": _call_grok,
+            "compatible": _call_compatible}
 
 
 def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
@@ -169,8 +253,7 @@ def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_prompt(dataset, column, dimension, description, affected_rows, lang)
@@ -247,8 +330,7 @@ def ai_refactor_dax(measure: str, dax: str, table: str = "",
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_dax_prompt(measure, dax, table, lang)
@@ -328,8 +410,7 @@ def ai_refactor_calc(field: str, formula: str, datasource: str = "",
     provider = provider or configured_provider()
     if not provider or provider not in _CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key:
         return None
     prompt = _build_calc_prompt(field, formula, datasource, lang)
@@ -428,8 +509,7 @@ def ai_parse_orgchart_image(image_bytes: bytes, media_type: str = "image/png",
     provider = provider or configured_provider()
     if not provider or provider not in _VISION_CALLERS:
         return None
-    env_var, _, _, _ = _PROVIDERS[provider]
-    api_key = os.environ.get(env_var)
+    api_key = _key_for(provider)
     if not api_key or not image_bytes:
         return None
     import base64
@@ -455,3 +535,71 @@ def ai_parse_orgchart_image(image_bytes: bytes, media_type: str = "image/png",
                 "email": "",
             })
     return people or None
+
+
+# ------------------------------------------------------- repreguntas del relevamiento
+# El "casillero de IA" del módulo de relevamiento (ver mvdg/interview.py).
+#
+# Acá se manda la PREGUNTA del banco y la RESPUESTA que dio el cliente. Eso es
+# más de lo que manda el resto de este archivo, así que hay que decirlo con
+# todas las letras: la respuesta de una persona del cliente sale de la máquina
+# hacia el proveedor que el usuario configuró. Por eso la pantalla lo avisa en
+# el botón, y por eso mvdg/interview.py tiene repreguntas LOCALES que
+# funcionan sin clave: la función de acá es un extra, nunca el camino único.
+_REPREGUNTA_TMPL = {
+    "es": (
+        "Sos un consultor senior de gobierno de datos haciendo un relevamiento. "
+        "Área del pipeline: {area}. Le preguntaste al cliente: \"{pregunta}\". "
+        "Te respondió: \"{respuesta}\". Escribí las 3 REPREGUNTAS más útiles para "
+        "cerrar lo que quedó impreciso o sin decir. Concretas, una sola cosa cada "
+        "una, respondibles en una frase. No repitas la pregunta original ni pidas "
+        "algo que la respuesta ya contesta. Respondé SOLO con un objeto JSON sin "
+        'texto extra ni markdown: {{"repreguntas": ["...", "...", "..."]}}'
+    ),
+    "en": (
+        "You are a senior data governance consultant running a discovery interview. "
+        "Pipeline area: {area}. You asked the client: \"{pregunta}\". They answered: "
+        "\"{respuesta}\". Write the 3 most useful FOLLOW-UP questions to close what "
+        "was left vague or unsaid. Concrete, one thing each, answerable in a "
+        "sentence. Do not repeat the original question or ask what the answer "
+        "already covers. Reply ONLY with a JSON object, no extra text or markdown: "
+        '{{"repreguntas": ["...", "...", "..."]}}'
+    ),
+    "pt": (
+        "Você é um consultor sênior de governança de dados fazendo um levantamento. "
+        "Área do pipeline: {area}. Você perguntou ao cliente: \"{pregunta}\". Ele "
+        "respondeu: \"{respuesta}\". Escreva as 3 REPERGUNTAS mais úteis para fechar "
+        "o que ficou impreciso ou não dito. Concretas, uma coisa cada, respondíveis "
+        "em uma frase. Não repita a pergunta original nem peça o que a resposta já "
+        "cobre. Responda APENAS com um objeto JSON, sem texto extra nem markdown: "
+        '{{"repreguntas": ["...", "...", "..."]}}'
+    ),
+}
+
+
+def ai_follow_ups(pregunta: str, respuesta: str, area: str = "",
+                  lang: str = "es", provider: str | None = None) -> list[str] | None:
+    """Qué repreguntar sobre una respuesta concreta del cliente.
+
+    Devuelve ``None`` —nunca lanza— si no hay proveedor, no hay clave, la
+    respuesta está vacía o la llamada falla. El llamador se queda con las
+    repreguntas locales, que es el comportamiento por defecto."""
+    provider = provider or configured_provider()
+    if not provider or provider not in _CALLERS or not str(respuesta).strip():
+        return None
+    api_key = _key_for(provider)
+    if not api_key:
+        return None
+    tmpl = _REPREGUNTA_TMPL.get(lang, _REPREGUNTA_TMPL["es"])
+    prompt = tmpl.format(area=area or "-", pregunta=pregunta,
+                         respuesta=str(respuesta)[:2000])
+    try:
+        text = _CALLERS[provider](prompt, api_key, _model_for(provider))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            KeyError, IndexError, ValueError, OSError):
+        return None
+    parsed = _extract_json_object(text)
+    if not parsed or not isinstance(parsed.get("repreguntas"), list):
+        return None
+    limpias = [str(r).strip() for r in parsed["repreguntas"] if str(r).strip()]
+    return limpias[:3] or None
