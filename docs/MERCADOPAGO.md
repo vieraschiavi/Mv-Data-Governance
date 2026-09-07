@@ -73,6 +73,16 @@ además acusarle recibo al que pidió la demo.
 Si la clave no está cargada, el formulario **no dice "gracias"**: responde 503
 y la página muestra el mailto de respaldo. Un formulario que agradece y tira
 el pedido a la basura es peor que no tener formulario.
+### Trial de 14 días (sin MercadoPago)
+
+El plan Professional (USD 390/mes) tiene un trial real de 14 días junto al
+botón de compra, en la misma tarjeta de precios: el visitante pone su email
+en `landing/index.html` → `POST /api/trial` → `api/trial.js` firma una
+licencia `MVDG2` con `plan: "trial"` y vencimiento a 14 días, usando la misma
+`LICENSE_PRIVATE_KEY` de la tabla de abajo. **No pasa por MercadoPago ni pide
+ningún dato de pago** — solo necesita esa variable, no `MP_ACCESS_TOKEN`.
+Al vencer, `mvdg/licensing.py` lo descarta solo (mismo chequeo de `exp` que
+cualquier licencia paga) y el programa vuelve a plan demo sin código extra.
 
 ## 1. Variables de entorno a configurar en Vercel
 
@@ -88,6 +98,7 @@ Andá a tu proyecto en Vercel → **Settings → Environment Variables** y carg�
 | `MVDG_MAIL_TO` | No | A dónde llegan los pedidos de demo. Por defecto, tu casilla. |
 | `MVDG_MAIL_FROM` | No | Remitente de esos mails. Por defecto `onboarding@resend.dev` (sirve sin verificar dominio, pero solo puede escribirle a la casilla dueña de la cuenta de Resend). |
 | `LICENSE_PUBLIC_KEY` | No | Clave pública Ed25519 con la que `api/descargar.js` valida las licencias. Por defecto usa la que está embebida en el código, la misma que lleva el programa. Solo se toca para rotar el par. |
+| `LICENSE_PRIVATE_KEY` | Recomendada | Clave privada Ed25519 (par generado con `python packaging/licencias.py keygen` — ver `distribucion/owner/LEEME.md`) que firma las licencias `MVDG2`, las que **el programa de escritorio sabe validar** (`mvdg/licensing.py`). Sin esto, ni una compra real ni el trial de 14 días emiten licencia utilizable — falla cerrado, nunca se entrega una licencia rota. |
 | `MP_CURRENCY` | No | Moneda de cobro en MercadoPago. Por defecto `USD` (coincide con los precios mostrados en la web). |
 | `MP_LINK_LICENCIA`, `MP_LINK_PRO`, `MP_LINK_CRED100`, `MP_LINK_CRED550`, `MP_LINK_CRED2500` | No | Links de pago fijos de respaldo, solo se usan si **no** hay `MP_ACCESS_TOKEN` cargado. |
 
