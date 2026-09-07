@@ -96,6 +96,12 @@ PLAN_OWNER = "owner"
 # formulario adelante. verify() YA rechaza tokens vencidos (ver más abajo) —
 # el vencimiento no necesita ningún código nuevo acá, solo que "trial"
 # habilite lo mismo que "professional" en FUNCIONES_PAGAS.
+# "trial" es el plan Professional (USD 390/mes) por 14 días, auto-emitido sin
+# pago: api/trial.js firma el mismo token MVDG2 que emitiría una compra real,
+# pero con `exp` a 14 días y sin pasar por MercadoPago. verify() YA rechaza
+# tokens vencidos (ver más abajo) — el vencimiento del trial no necesita
+# ningún código nuevo acá, solo que "trial" habilite lo mismo que
+# "professional" en FUNCIONES_PAGAS.
 PLAN_TRIAL = "trial"
 PLANES = (PLAN_DEMO, "licencia", PLAN_TRIAL, "professional", "enterprise", PLAN_OWNER)
 
@@ -134,6 +140,9 @@ FUNCIONES_PAGAS: dict[str, tuple[str, ...]] = {
     "migracion_purview": _PAGOS,
     "migracion_collibra": _PAGOS,
     "escaneo_tenant_bi": _PAGOS,
+    "migracion_purview": ("professional", "enterprise", PLAN_TRIAL),
+    "migracion_collibra": ("professional", "enterprise", PLAN_TRIAL),
+    "escaneo_tenant_bi": ("professional", "enterprise", PLAN_TRIAL),
 }
 
 

@@ -528,6 +528,9 @@ def test_licencia_trial_14_dias_da_lo_mismo_que_professional(tmp_path, monkeypat
     plan 'trial'. Este test verifica el lado que lo interpreta: mientras no
     venza, desbloquea exactamente lo mismo que 'professional' (el plan de
     USD 390/mes que la prueba demuestra)."""
+    """api/trial.js emite un token 'trial' — este test verifica el lado que
+    lo interpreta: mientras no venza, desbloquea exactamente lo mismo que
+    'professional' (el plan de USD 390/mes que el trial demuestra)."""
     import time as _t
     from mvdg import licensing
     monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
@@ -3505,6 +3508,64 @@ def test_errores_de_archivo_dan_consejo_no_traceback(tmp_path):
         pd.read_csv(mal, encoding="utf-8")
     except Exception as exc:
         casos.append(("encoding", exc, ("UTF-8",)))
+def test_landing_ofrece_trial_de_14_dias_sin_tarjeta():
+    """El trial del tier USD 390 (Professional) tiene que existir como flujo
+    real — email -> licencia — no un boton que dice 'pedir demo'. Y no puede
+    pedir NUNCA una tarjeta para arrancar."""
+    html = _landing("index.html")
+    assert 'id="trialForm"' in html and 'id="trialToggle"' in html
+    assert "fetch('/api/trial'" in html or 'fetch("/api/trial"' in html
+    assert 'type="email"' in html.split('id="trialForm"')[1][:400]
+    # El FORMULARIO del trial (no el boton que lo abre) no puede pedir
+    # tarjeta. El boton en si dice "sin tarjeta" a proposito -- esa negacion
+    # es la promesa, no una violacion -- por eso se mira desde <form> en
+    # adelante, no desde el boton.
+    inicio = html.index('<form id="trialForm"')
+    fin = html.index("</form>", inicio) + len("</form>")
+    bloque_form = html[inicio:fin]
+    assert "trialEmail" in bloque_form and "trialMsg" in bloque_form  # ventana correcta
+    for prohibido in ("card", "tarjeta", "cartão", "cvv", "cvc"):
+        assert prohibido not in bloque_form.lower(), f"'{prohibido}' dentro del form de trial"
+
+
+def test_endpoint_trial_no_tiene_ningun_campo_de_pago():
+    """api/trial.js: ni un import de MercadoPago, ni un campo de tarjeta, en
+    todo el CODIGO (fuera de comentarios) — el trial no pasa por el circuito
+    de pago en absoluto. Los comentarios SI pueden nombrar MercadoPago (para
+    explicar justamente que no se usa), por eso se limpian antes de mirar."""
+    import re
+    ruta = os.path.join(_repo_root(), "api", "trial.js")
+    with open(ruta, encoding="utf-8") as fh:
+        codigo = fh.read()
+    sin_comentarios = re.sub(r"//.*", "", codigo)
+    sin_comentarios = re.sub(r"/\*.*?\*/", "", sin_comentarios, flags=re.S)
+    for prohibido in ("mercadopago", "MP_ACCESS_TOKEN", "card_number", "cvv", "cvc"):
+        assert prohibido.lower() not in sin_comentarios.lower(), \
+            f"'{prohibido}' en el codigo (no comentario) de api/trial.js"
+    assert "rateLimited" in codigo, "sin rate limiting"
+    assert "signEd25519" in codigo, "no emite el formato de licencia que valida el programa"
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_landing_trial_traducido(lang):
+    html = _landing("index.html")
+    for clave in ("pl3trial", "pl3trial_ph", "pl3trial_go"):
+        assert f"{clave}:" in html, f"falta {clave} en {lang}"
+
+
+def test_landing_publica_la_comparativa_honesta():
+    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
+    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
+    un .md del repo no la ve ningun cliente."""
+    import re
+    html = _landing("index.html")
+    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
+    assert tabla, "falta la tabla de la comparativa honesta"
+    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
+    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
+    # se accede desde el nav, no queda enterrada
+    assert 'href="#honesta"' in html
 
     vacio = tmp_path / "vacio.csv"
     vacio.write_text("")
