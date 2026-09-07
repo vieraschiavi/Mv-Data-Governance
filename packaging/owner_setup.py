@@ -97,6 +97,34 @@ def _leer_privada() -> str | None:
         return None
 
 
+def _origen_privada() -> str:
+    """De dónde salió la privada que usó (o intentó usar) esta corrida.
+
+    Mismo orden que ``_leer_privada()`` — si cambia uno, tiene que cambiar
+    el otro. Sirve solo para el mensaje de error: cuando la privada no
+    corresponde a la pública, decir DE DÓNDE salió ahorra la mitad del
+    diagnóstico (una LICENSE_PRIVATE_KEY vieja pisando el archivo correcto
+    es el caso más común, y por variable de entorno no se ve a simple
+    vista)."""
+    if (os.environ.get("LICENSE_PRIVATE_KEY") or "").strip():
+        return "la variable de entorno LICENSE_PRIVATE_KEY"
+    return f"el archivo {_ruta_privada()}"
+
+
+def _publica_de(priv_b64: str) -> str | None:
+    """La pública que correspondería a esta privada. None si no es válida."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    try:
+        priv = Ed25519PrivateKey.from_private_bytes(
+            base64.urlsafe_b64decode(priv_b64 + "=" * (-len(priv_b64) % 4)))
+    except (ValueError, TypeError):
+        return None
+    from cryptography.hazmat.primitives import serialization
+    return _b64u(priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw))
+
+
 def _escribir_publica_en_el_codigo(pub_b64: str) -> None:
     """Deja PUBLIC_KEY_B64 escrita en mvdg/licensing.py.
 
@@ -193,7 +221,39 @@ def main(email: str | None = None) -> int:
     payload = licensing.verify(token)
     if payload is None:
         _p("  [4/5] ERROR: la licencia recien emitida NO verifica.")
-        _p("        No se activa nada. (.La privada corresponde a la publica?)")
+        _p("        No se activa nada.")
+        _p()
+        # El caso mas comun con diferencia: la privada usada no es la que
+        # generó la publica que ya esta commiteada en mvdg/licensing.py.
+        # Mostrar de donde salio cada una es lo que antes habia que
+        # explicar por chat leyendo el codigo — ahora lo dice el propio
+        # script, incluida la variable de entorno vieja que nadie recuerda
+        # que quedo puesta.
+        derivada = _publica_de(priv_b64)
+        _p(f"        Privada usada, leida de: {_origen_privada()}")
+        if derivada is None:
+            _p("        Esa privada ni siquiera tiene el formato esperado")
+            _p("        (Ed25519, base64 sin relleno) — no es una clave valida.")
+        elif derivada != licensing.PUBLIC_KEY_B64:
+            _p(f"        Esa privada corresponde a la publica ...{derivada[-12:]}")
+            _p(f"        pero mvdg/licensing.py tiene    ...{licensing.PUBLIC_KEY_B64[-12:]}")
+            _p("        Son de PARES DISTINTOS: alguna quedo de una corrida")
+            _p("        anterior (o de otra maquina) y no es la que firmo la")
+            _p("        publica que ya esta commiteada.")
+            _p()
+            _p("        Si tenes la privada CORRECTA (la que generó esa")
+            _p("        publica), poné su valor en LICENSE_PRIVATE_KEY o en")
+            _p(f"        {_ruta_privada()}")
+            _p("        y volvé a correr este script.")
+            _p()
+            _p("        Generar un par NUEVO solo si perdiste esa privada de")
+            _p("        verdad: invalida TODAS las licencias ya emitidas a")
+            _p("        clientes con la publica actual.")
+        else:
+            _p("        Las claves SI corresponden entre si — el problema no")
+            _p("        es la privada. Revisá que 'cryptography' este bien")
+            _p("        instalado (pip show cryptography) y que el reloj del")
+            _p("        sistema este correcto.")
         return 1
     _p("  [4/5] Verificada con la ruta real del programa (Ed25519 + maquina)")
 

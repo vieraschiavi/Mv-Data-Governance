@@ -2084,6 +2084,69 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
             del sys.modules[m]
 
 
+def test_activacion_del_owner_diagnostica_par_de_claves_que_no_corresponden(
+        tmp_path, monkeypatch):
+    """Caso real reportado: pública YA configurada (owner activado en otra
+    corrida, o en otra máquina) y una privada presente en el archivo local
+    — pero de un par DISTINTO. El síntoma en pantalla era genérico
+    ("¿La privada corresponde a la pública?") y había que leer el código
+    para saber qué mirar. Ahora el propio mensaje dice de dónde salió la
+    privada usada y compara las dos claves, para que no haga falta abrir
+    el archivo fuente para diagnosticarlo."""
+    import importlib
+    import shutil
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "datos"))
+    monkeypatch.delenv("LICENSE_PRIVATE_KEY", raising=False)
+    copia = tmp_path / "repo"
+    copia.mkdir()
+    for d in ("mvdg", "packaging"):
+        shutil.copytree(os.path.join(_repo_root(), d), copia / d)
+    monkeypatch.syspath_prepend(str(copia))
+    for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+        del sys.modules[m]
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "owner_setup_test3", copia / "packaging" / "owner_setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+
+        # Genero UN par (A) y lo dejo como la "pública ya configurada" del
+        # repo — simula una activación previa, en esta PC o en otra.
+        priv_a, pub_a = setup._generar_par()
+        lic = copia / "mvdg" / "licensing.py"
+        lic.write_text(re.sub(r'^PUBLIC_KEY_B64 = "[^"]*"$',
+                              f'PUBLIC_KEY_B64 = "{pub_a}"',
+                              lic.read_text(encoding="utf-8"), count=1,
+                              flags=re.MULTILINE), encoding="utf-8")
+
+        # Y dejo en el archivo de datos la privada de OTRO par (B) — el
+        # caso real: una privada vieja, de otra corrida, quedó ahí.
+        priv_b, _pub_b = setup._generar_par()
+        (tmp_path / "datos").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "datos" / setup.NOMBRE_PRIVADA).write_text(priv_b)
+        assert priv_a != priv_b
+
+        salida = []
+        monkeypatch.setattr(setup, "_p", lambda texto="": salida.append(texto))
+        assert setup.main() == 1
+        texto = "\n".join(salida)
+
+        # El diagnostico tiene que decir de donde salio la privada...
+        assert str(tmp_path / "datos") in texto
+        # ...que las dos claves NO corresponden entre si...
+        assert "PARES DISTINTOS" in texto
+        # ...y ofrece poner la privada correcta ANTES de sugerir generar
+        # un par nuevo (eso invalidaria licencias de clientes ya emitidas
+        # con pub_a).
+        assert "poné su valor" in texto
+        assert texto.index("poné su valor") < texto.index("Generar un par NUEVO")
+        # La publica configurada NO cambio (no se regenero nada solo).
+        assert f'PUBLIC_KEY_B64 = "{pub_a}"' in lic.read_text(encoding="utf-8")
+    finally:
+        for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+            del sys.modules[m]
+
+
 def _sku_a_plan() -> dict:
     """El mapa SKU->plan leido del propio JS, sin reimplementarlo."""
     import json as _json
