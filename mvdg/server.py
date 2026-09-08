@@ -33,6 +33,29 @@ mostrar el dashboard (ver ``auth_required``/``check_password``, aplicado en
 ``app/app.py``). Sin esa variable, el servidor sigue funcionando (como
 antes) pero queda abierto a quien llegue a la red — se avisa igual que se
 avisa el modo "servidor abierto" sin lista de hosts.
+
+Licencia sin que nadie escriba nada (``MVDG_SERVER_LICENSE_TOKEN``)
+--------------------------------------------------------------------
+Caso real: el dueño del producto es también consultor en un cliente que NO
+deja instalar ni un .exe/.bat en su laptop, y cuyos datos no pueden salir
+del servidor/VM del cliente. El instalador **owner** (el que abre
+desbloqueado sin pegar nada) no sirve ahí: esa licencia va atada A SU
+LAPTOP a propósito, así que en cualquier otra máquina abre en demo — es la
+misma protección que evita que un .exe owner filtrado desbloquee cualquier
+PC. Acá el camino es al revés: se emite un token ``owner`` atado al id de
+ESE SERVIDOR (no al de la laptop) con
+
+    python packaging/licencias.py maquina        # corrido UNA VEZ en el server
+    python packaging/licencias.py firmar --plan owner --maquina <ese id> \\
+        --email <tu-email>                       # corrido en TU máquina, con tu privada
+
+y se deja el token resultante en ``MVDG_SERVER_LICENSE_TOKEN`` antes de
+arrancar. ``run_server`` lo activa (vía ``licensing.save`` — firma Y máquina
+se verifican igual que cualquier licencia) antes de abrir el dashboard: el
+primer navegador que llega ya lo ve desbloqueado, sin pestaña de licencia,
+sin que nadie tenga que copiar ni pegar nada ahí. Un token que no verifica
+(vencido, mal copiado, atado a otra máquina) no activa nada — el servidor
+sigue en el plan que ya tuviera, nunca por eso se cae.
 """
 from __future__ import annotations
 
@@ -46,6 +69,7 @@ DEFAULT_PORT = 8501
 AUTHORIZED_FILE = "server_authorized.txt"
 _SERVER_MODE_ENV = "MVDG_SERVER_MODE"
 _PASSWORD_ENV = "MVDG_SERVER_PASSWORD"
+_LICENSE_TOKEN_ENV = "MVDG_SERVER_LICENSE_TOKEN"
 
 
 def server_mode_active() -> bool:
@@ -167,6 +191,56 @@ def authorization_status(authorized: list[str],
     return {"mode": "denied", "matched": None}
 
 
+def activate_license_from_env() -> tuple[bool, str | None]:
+    """Activa la licencia en ``MVDG_SERVER_LICENSE_TOKEN``, si hay una.
+
+    Separada de ``run_server`` para poder probarla sin levantar Streamlit de
+    verdad (``run_server(argv_out=...)`` la llama antes del dry-run).
+
+    Pasa SIEMPRE por ``licensing.save()``: verifica firma Ed25519 y que el
+    ``mid`` del token sea el de ESTA máquina, exactamente igual que
+    cualquier otra licencia. No hay atajo acá — un token robado de otro
+    servidor no sirve en este, ni uno vencido, ni uno mal copiado.
+
+    Devuelve ``(activo, plan)``. Si la variable no está seteada: ``(False,
+    None)`` sin tocar la licencia que ya hubiera (no pisa una activación
+    manual previa por el solo hecho de no haber cambiado la variable)."""
+    token = (os.environ.get(_LICENSE_TOKEN_ENV) or "").strip()
+    if not token:
+        return False, None
+    from . import licensing
+    payload = licensing.save(token)
+    if payload is None:
+        return False, None
+    return True, payload.get("plan")
+
+
+def _avisar_activacion_licencia(activada: bool, plan_activado: str | None) -> None:
+    """El mensaje de ``activate_license_from_env()``, separado de
+    ``run_server`` nada más que para no pasar las 100 líneas que el motor
+    se prohíbe (``test_sin_funciones_gigantes_en_el_motor``)."""
+    if activada:
+        sys.stderr.write(
+            f"  [MV Data Governance] Licencia activada desde {_LICENSE_TOKEN_ENV} "
+            f"(plan={plan_activado}): el dashboard abre desbloqueado desde el "
+            "primer navegador que llegue, sin pestaña de licencia / license "
+            f"activated from {_LICENSE_TOKEN_ENV} (plan={plan_activado}): the "
+            "dashboard opens unlocked for the first browser that reaches it, "
+            f"no license screen / licença ativada a partir de "
+            f"{_LICENSE_TOKEN_ENV} (plano={plan_activado}): o dashboard abre "
+            "desbloqueado para o primeiro navegador, sem aba de licença.\n\n")
+    elif os.environ.get(_LICENSE_TOKEN_ENV, "").strip():
+        sys.stderr.write(
+            f"  [MV Data Governance] {_LICENSE_TOKEN_ENV} está definida pero NO "
+            "activó ninguna licencia (firma inválida, vencida, o atada a otra "
+            "máquina): el servidor sigue en el plan que ya tuviera, no se cae "
+            f"por esto / {_LICENSE_TOKEN_ENV} is set but did NOT activate any "
+            "license (invalid signature, expired, or bound to a different "
+            f"machine): the server keeps whichever plan it already had / "
+            f"{_LICENSE_TOKEN_ENV} está definida mas NÃO ativou nenhuma "
+            "licença: o servidor continua no plano que já tinha.\n\n")
+
+
 def _resolve_host_port(env: dict | None = None) -> tuple[str, int]:
     env = env if env is not None else os.environ
     host = env.get("MVDG_SERVER_HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
@@ -236,6 +310,8 @@ def run_server(argv_out: list | None = None) -> int:
             f"http://{host}:{port} on the network gets in without a login /\n"
             "  quem chegar no endereço na rede entra sem login. Para pedir "
             "contraseña compartida, definí MVDG_SERVER_PASSWORD.\n\n")
+
+    _avisar_activacion_licencia(*activate_license_from_env())
 
     app_path = os.path.join(base, "app", "app.py")
     os.environ.setdefault("STREAMLIT_SERVER_HEADLESS", "true")

@@ -55,6 +55,26 @@ export MVDG_SERVER_PORT=8080
 
 Todo sigue siendo local a la empresa: nada viaja a internet.
 
+**Licencia owner sin pegar nada** (caso: sos el dueño y desplegás en un
+servidor del cliente que no es tu máquina — la laptop de trabajo no deja
+instalar `.exe`/`.bat`, y los datos del cliente no pueden salir de su
+servidor): en vez del instalador owner (que abre en demo ahí, porque su
+licencia va atada a TU máquina a propósito), emitís un token owner atado al
+id de ESE servidor y lo dejás activado antes de arrancar:
+
+```bash
+python packaging/licencias.py maquina                    # en el servidor, una vez
+python packaging/licencias.py firmar --plan owner \
+    --maquina <id que imprimió el paso anterior> \
+    --email <tu-email>                                    # en TU máquina, con tu privada
+export MVDG_SERVER_LICENSE_TOKEN="<token que imprimió>"   # en el servidor, antes de arrancar
+./run_server.sh
+```
+
+El dashboard abre desbloqueado desde el primer navegador que llegue — nadie
+toca la pestaña Licencia. Un token vencido, mal copiado o atado a otra
+máquina no activa nada: el servidor sigue en el plan que ya tuviera.
+
 ### API para BI
 Doble clic en **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
 Guía por herramienta: [`docs/BI_INTEGRATION.md`](BI_INTEGRATION.md).
@@ -107,6 +127,26 @@ MV_DataGovernance_Server.bat
   authorizes any host (not recommended in production).
 
 Everything stays local to the company: nothing goes to the internet.
+
+**Owner license with nothing to paste** (case: you are the owner deploying on
+a client's server that is not your machine — your work laptop won't let you
+install an `.exe`/`.bat`, and the client's data cannot leave their server):
+instead of the owner installer (which opens in demo there, since its license
+is deliberately bound to YOUR machine), issue an owner token bound to THAT
+server's id and drop it in before starting:
+
+```bash
+python packaging/licencias.py maquina                     # on the server, once
+python packaging/licencias.py firmar --plan owner \
+    --maquina <id printed above> \
+    --email <your-email>                                  # on YOUR machine, with your private key
+export MVDG_SERVER_LICENSE_TOKEN="<printed token>"         # on the server, before starting
+./run_server.sh
+```
+
+The dashboard opens unlocked for the first browser that reaches it — nobody
+touches the License tab. An expired, miscopied, or wrongly-bound token
+activates nothing: the server keeps whichever plan it already had.
 
 ### BI API
 Double-click **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
@@ -161,6 +201,26 @@ MV_DataGovernance_Server.bat
   autoriza qualquer host (não recomendado em produção).
 
 Tudo continua local à empresa: nada vai para a internet.
+
+**Licença owner sem colar nada** (caso: você é o dono e implanta em um
+servidor do cliente que não é sua máquina — o notebook de trabalho não
+deixa instalar `.exe`/`.bat`, e os dados do cliente não podem sair do
+servidor dele): em vez do instalador owner (que abre em demo ali, pois a
+licença dele é atada de propósito à SUA máquina), emita um token owner
+atado ao id DESSE servidor e deixe ativado antes de iniciar:
+
+```bash
+python packaging/licencias.py maquina                     # no servidor, uma vez
+python packaging/licencias.py firmar --plan owner \
+    --maquina <id impresso acima> \
+    --email <seu-email>                                    # na SUA máquina, com sua privada
+export MVDG_SERVER_LICENSE_TOKEN="<token impresso>"        # no servidor, antes de iniciar
+./run_server.sh
+```
+
+O dashboard abre desbloqueado para o primeiro navegador que chegar —
+ninguém toca a aba Licença. Um token vencido, copiado errado ou atado a
+outra máquina não ativa nada: o servidor continua no plano que já tinha.
 
 ### API para BI
 Duplo clique em **`MV_DataGovernance_API.bat`** → `http://127.0.0.1:8600/docs`.
