@@ -144,3 +144,68 @@ with nothing installed on the PCs.
 **PT:** Se o cliente não permitir nem copiar um `.exe` para a VM, resta a
 implantação web em um servidor da empresa (`python -m mvdg.server`), sem nada
 instalado nos PCs.
+
+---
+
+## El caso más restrictivo: sin VM propia y sin licencia a mano / The most restrictive case: no own VM and no license to type / O caso mais restritivo: sem VM própria e sem licença para digitar
+
+**ES:** Seguimos con el ejemplo: sos consultor de Practia en Conaprole, pero
+esta vez ni siquiera te dan una VM — tu laptop de Practia no te deja instalar
+ni un `.exe` ni un `.bat`, y los datos de Conaprole no pueden tocarla bajo
+ningún concepto. La tercera vía resuelve las dos cosas a la vez:
+
+1. El servidor lo levanta **Conaprole, en SU infraestructura** (su servidor,
+   no una VM tuya) — el programa y los datos nunca salen de ahí. Alguien con
+   acceso a ese servidor corre:
+   ```bash
+   ./run_server.sh                       # Linux/macOS — instala su propio
+                                          # entorno la primera vez
+   # o en Windows: MV_DataGovernance_Server.bat
+   ```
+2. Vos (el dueño) NO le pegás una licencia comercial a mano — eso abriría en
+   plan demo, y el instalador owner tampoco sirve ahí (esa licencia va atada
+   a TU laptop a propósito). En cambio, alguien en el servidor corre **una
+   sola vez**:
+   ```bash
+   python packaging/licencias.py maquina
+   ```
+   y te pasa el id que imprime (un texto corto, no un dato sensible). Con
+   ESE id, en TU máquina (donde vive tu clave privada, que nunca viaja):
+   ```bash
+   python packaging/licencias.py firmar --plan owner --maquina <ese id> \
+       --email vieraschiavi@gmail.com
+   ```
+   El token que imprime se deja en el servidor como
+   `MVDG_SERVER_LICENSE_TOKEN` (variable de entorno, o en el `.env` que lea
+   `run_server.sh`) **antes** de arrancarlo. El dashboard abre desbloqueado
+   desde el primer navegador que llegue — ninguna pestaña de licencia, nadie
+   pega nada.
+3. Vos, en tu laptop restringida, **abrís un navegador** (Chrome, Edge, lo
+   que tengas — eso nunca está bloqueado) y entrás a la URL que te pase
+   Conaprole (`http://servidor-conaprole.local:8501`, o la que hayan
+   definido). Nada se instala, nada queda en tu disco: solo una pestaña.
+
+Con `MVDG_AUTHORIZED_HOSTS` fijo al hostname de ESE servidor y
+`MVDG_SERVER_PASSWORD` configurado, el programa no arranca en ninguna otra
+máquina y no queda abierto a cualquiera que llegue a la red de Conaprole.
+
+**EN:** Same example, one step further: Practia assigns you to Conaprole, but
+this time you are not even given a VM — your Practia laptop will not let you
+install an `.exe` or a `.bat`, and Conaprole's data cannot touch it under any
+circumstances. The third path solves both problems at once: Conaprole runs
+the server on **their own infrastructure** (nothing of yours), a signed
+owner-plan license bound to **that server's machine id** (not yours) gets
+dropped into `MVDG_SERVER_LICENSE_TOKEN` before it starts — so it opens
+unlocked with zero license screens — and you just open a plain browser tab
+on your restricted laptop to reach it. Nothing installed, nothing stored
+locally.
+
+**PT:** Mesmo exemplo, um passo além: a Practia te aloca na Conaprole, mas
+desta vez nem uma VM te dão — seu notebook da Practia não deixa instalar
+`.exe` nem `.bat`, e os dados da Conaprole não podem tocá-lo de jeito nenhum.
+A terceira via resolve as duas coisas: a Conaprole roda o servidor na
+**própria infraestrutura dela**, uma licença plano owner assinada e atada ao
+**id daquele servidor** (não ao seu) é colocada em
+`MVDG_SERVER_LICENSE_TOKEN` antes de iniciar — abre desbloqueado sem nenhuma
+tela de licença — e você só abre uma aba do navegador no seu notebook
+restrito para acessá-lo. Nada instalado, nada guardado localmente.

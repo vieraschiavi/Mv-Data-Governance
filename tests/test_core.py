@@ -475,13 +475,15 @@ def _par_de_claves():
     return priv, pub
 
 
-def _emitir(priv, plan="professional", exp=None, email="c@empresa.com"):
+def _emitir(priv, plan="professional", exp=None, email="c@empresa.com", mid=None):
     import base64
     import json
     import time as _t
     p = {"plan": plan, "email": email, "iat": int(_t.time())}
     if exp is not None:
         p["exp"] = exp
+    if mid is not None:
+        p["mid"] = mid
     body = base64.urlsafe_b64encode(json.dumps(
         p, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
     sig = base64.urlsafe_b64encode(priv.sign(body.encode())).decode().rstrip("=")
@@ -6542,6 +6544,85 @@ def test_server_run_server_sets_server_mode_flag(monkeypatch, tmp_path):
         assert argv_out  # se armaron los argumentos de streamlit
     finally:
         os.environ.pop("MVDG_SERVER_MODE", None)
+
+
+def test_server_activa_licencia_owner_desde_env_sin_pegarla_a_mano(
+        tmp_path, monkeypatch):
+    """El caso real: el dueño despliega en un servidor que NO es su laptop
+    (la de un cliente, donde ni siquiera puede instalar un .exe/.bat) y no
+    quiere que nadie tenga que abrir la pestaña Licencia y pegar nada — el
+    servidor tiene que abrir YA desbloqueado desde el primer navegador que
+    llegue.
+
+    Se firma un token 'owner' atado al id de ESTA máquina (como haría
+    `packaging/licencias.py firmar --plan owner --maquina <id>` apuntando al
+    id real del servidor) y se prueba que activate_license_from_env() lo
+    activa vía licensing.save() -- la misma verificación de firma+maquina
+    que cualquier otra licencia, no un atajo nuevo."""
+    from mvdg import licensing, server
+    from mvdg.machine import machine_id
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner", mid=machine_id())
+    monkeypatch.setenv("MVDG_SERVER_LICENSE_TOKEN", token)
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is True
+    assert plan_activado == "owner"
+    assert licensing.plan() == "owner"
+    assert licensing.has_feature("migracion_purview") is True
+
+    # Y el camino completo (run_server en dry-run) llega al mismo estado,
+    # sin levantar Streamlit de verdad.
+    licensing.clear()
+    monkeypatch.setenv("MVDG_AUTHORIZED_HOSTS", "*")
+    argv_out = []
+    try:
+        server.run_server(argv_out=argv_out)
+        assert licensing.plan() == "owner"
+    finally:
+        os.environ.pop("MVDG_SERVER_MODE", None)
+
+
+def test_server_no_activa_token_atado_a_otra_maquina(tmp_path, monkeypatch):
+    """Un token owner copiado de OTRO servidor (u OTRA persona) no debe
+    activar nada acá -- el mid no coincide, licensing.verify() lo rechaza,
+    y el servidor se queda en el plan que ya tenia (demo la primera vez) en
+    vez de abrir desbloqueado por error."""
+    from mvdg import licensing, server
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner", mid="0" * 16)  # id de OTRA maquina
+    monkeypatch.setenv("MVDG_SERVER_LICENSE_TOKEN", token)
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is False
+    assert plan_activado is None
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
+def test_server_sin_token_no_toca_una_licencia_ya_activada(tmp_path, monkeypatch):
+    """Si MVDG_SERVER_LICENSE_TOKEN no esta seteada, activate_license_from_env
+    no debe tocar nada -- ni pisar ni borrar una licencia que ya se hubiera
+    activado por otro medio (a mano, o en una corrida anterior del mismo
+    proceso)."""
+    from mvdg import licensing, server
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MVDG_SERVER_LICENSE_TOKEN", raising=False)
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    ya_activo = _emitir(priv, plan="professional")
+    assert licensing.save(ya_activo) is not None
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is False
+    assert plan_activado is None
+    assert licensing.plan() == "professional"  # sigue como estaba
 
 
 # --------------------------------------------------- Purview: relación, qualifiedName real
