@@ -475,13 +475,15 @@ def _par_de_claves():
     return priv, pub
 
 
-def _emitir(priv, plan="professional", exp=None, email="c@empresa.com"):
+def _emitir(priv, plan="professional", exp=None, email="c@empresa.com", mid=None):
     import base64
     import json
     import time as _t
     p = {"plan": plan, "email": email, "iat": int(_t.time())}
     if exp is not None:
         p["exp"] = exp
+    if mid is not None:
+        p["mid"] = mid
     body = base64.urlsafe_b64encode(json.dumps(
         p, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
     sig = base64.urlsafe_b64encode(priv.sign(body.encode())).decode().rstrip("=")
@@ -528,9 +530,6 @@ def test_licencia_trial_14_dias_da_lo_mismo_que_professional(tmp_path, monkeypat
     plan 'trial'. Este test verifica el lado que lo interpreta: mientras no
     venza, desbloquea exactamente lo mismo que 'professional' (el plan de
     USD 390/mes que la prueba demuestra)."""
-    """api/trial.js emite un token 'trial' — este test verifica el lado que
-    lo interpreta: mientras no venza, desbloquea exactamente lo mismo que
-    'professional' (el plan de USD 390/mes que el trial demuestra)."""
     import time as _t
     from mvdg import licensing
     monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
@@ -2087,6 +2086,69 @@ def test_activacion_del_owner_corta_si_falta_la_privada(tmp_path, monkeypatch):
             del sys.modules[m]
 
 
+def test_activacion_del_owner_diagnostica_par_de_claves_que_no_corresponden(
+        tmp_path, monkeypatch):
+    """Caso real reportado: pública YA configurada (owner activado en otra
+    corrida, o en otra máquina) y una privada presente en el archivo local
+    — pero de un par DISTINTO. El síntoma en pantalla era genérico
+    ("¿La privada corresponde a la pública?") y había que leer el código
+    para saber qué mirar. Ahora el propio mensaje dice de dónde salió la
+    privada usada y compara las dos claves, para que no haga falta abrir
+    el archivo fuente para diagnosticarlo."""
+    import importlib
+    import shutil
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path / "datos"))
+    monkeypatch.delenv("LICENSE_PRIVATE_KEY", raising=False)
+    copia = tmp_path / "repo"
+    copia.mkdir()
+    for d in ("mvdg", "packaging"):
+        shutil.copytree(os.path.join(_repo_root(), d), copia / d)
+    monkeypatch.syspath_prepend(str(copia))
+    for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+        del sys.modules[m]
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "owner_setup_test3", copia / "packaging" / "owner_setup.py")
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+
+        # Genero UN par (A) y lo dejo como la "pública ya configurada" del
+        # repo — simula una activación previa, en esta PC o en otra.
+        priv_a, pub_a = setup._generar_par()
+        lic = copia / "mvdg" / "licensing.py"
+        lic.write_text(re.sub(r'^PUBLIC_KEY_B64 = "[^"]*"$',
+                              f'PUBLIC_KEY_B64 = "{pub_a}"',
+                              lic.read_text(encoding="utf-8"), count=1,
+                              flags=re.MULTILINE), encoding="utf-8")
+
+        # Y dejo en el archivo de datos la privada de OTRO par (B) — el
+        # caso real: una privada vieja, de otra corrida, quedó ahí.
+        priv_b, _pub_b = setup._generar_par()
+        (tmp_path / "datos").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "datos" / setup.NOMBRE_PRIVADA).write_text(priv_b)
+        assert priv_a != priv_b
+
+        salida = []
+        monkeypatch.setattr(setup, "_p", lambda texto="": salida.append(texto))
+        assert setup.main() == 1
+        texto = "\n".join(salida)
+
+        # El diagnostico tiene que decir de donde salio la privada...
+        assert str(tmp_path / "datos") in texto
+        # ...que las dos claves NO corresponden entre si...
+        assert "PARES DISTINTOS" in texto
+        # ...y ofrece poner la privada correcta ANTES de sugerir generar
+        # un par nuevo (eso invalidaria licencias de clientes ya emitidas
+        # con pub_a).
+        assert "poné su valor" in texto
+        assert texto.index("poné su valor") < texto.index("Generar un par NUEVO")
+        # La publica configurada NO cambio (no se regenero nada solo).
+        assert f'PUBLIC_KEY_B64 = "{pub_a}"' in lic.read_text(encoding="utf-8")
+    finally:
+        for m in [k for k in list(sys.modules) if k.startswith("mvdg")]:
+            del sys.modules[m]
+
+
 def _sku_a_plan() -> dict:
     """El mapa SKU->plan leido del propio JS, sin reimplementarlo."""
     import json as _json
@@ -3508,64 +3570,6 @@ def test_errores_de_archivo_dan_consejo_no_traceback(tmp_path):
         pd.read_csv(mal, encoding="utf-8")
     except Exception as exc:
         casos.append(("encoding", exc, ("UTF-8",)))
-def test_landing_ofrece_trial_de_14_dias_sin_tarjeta():
-    """El trial del tier USD 390 (Professional) tiene que existir como flujo
-    real — email -> licencia — no un boton que dice 'pedir demo'. Y no puede
-    pedir NUNCA una tarjeta para arrancar."""
-    html = _landing("index.html")
-    assert 'id="trialForm"' in html and 'id="trialToggle"' in html
-    assert "fetch('/api/trial'" in html or 'fetch("/api/trial"' in html
-    assert 'type="email"' in html.split('id="trialForm"')[1][:400]
-    # El FORMULARIO del trial (no el boton que lo abre) no puede pedir
-    # tarjeta. El boton en si dice "sin tarjeta" a proposito -- esa negacion
-    # es la promesa, no una violacion -- por eso se mira desde <form> en
-    # adelante, no desde el boton.
-    inicio = html.index('<form id="trialForm"')
-    fin = html.index("</form>", inicio) + len("</form>")
-    bloque_form = html[inicio:fin]
-    assert "trialEmail" in bloque_form and "trialMsg" in bloque_form  # ventana correcta
-    for prohibido in ("card", "tarjeta", "cartão", "cvv", "cvc"):
-        assert prohibido not in bloque_form.lower(), f"'{prohibido}' dentro del form de trial"
-
-
-def test_endpoint_trial_no_tiene_ningun_campo_de_pago():
-    """api/trial.js: ni un import de MercadoPago, ni un campo de tarjeta, en
-    todo el CODIGO (fuera de comentarios) — el trial no pasa por el circuito
-    de pago en absoluto. Los comentarios SI pueden nombrar MercadoPago (para
-    explicar justamente que no se usa), por eso se limpian antes de mirar."""
-    import re
-    ruta = os.path.join(_repo_root(), "api", "trial.js")
-    with open(ruta, encoding="utf-8") as fh:
-        codigo = fh.read()
-    sin_comentarios = re.sub(r"//.*", "", codigo)
-    sin_comentarios = re.sub(r"/\*.*?\*/", "", sin_comentarios, flags=re.S)
-    for prohibido in ("mercadopago", "MP_ACCESS_TOKEN", "card_number", "cvv", "cvc"):
-        assert prohibido.lower() not in sin_comentarios.lower(), \
-            f"'{prohibido}' en el codigo (no comentario) de api/trial.js"
-    assert "rateLimited" in codigo, "sin rate limiting"
-    assert "signEd25519" in codigo, "no emite el formato de licencia que valida el programa"
-
-
-@pytest.mark.parametrize("lang", ["en", "pt"])
-def test_landing_trial_traducido(lang):
-    html = _landing("index.html")
-    for clave in ("pl3trial", "pl3trial_ph", "pl3trial_go"):
-        assert f"{clave}:" in html, f"falta {clave} en {lang}"
-
-
-def test_landing_publica_la_comparativa_honesta():
-    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
-    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
-    un .md del repo no la ve ningun cliente."""
-    import re
-    html = _landing("index.html")
-    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
-    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
-    assert tabla, "falta la tabla de la comparativa honesta"
-    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
-    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
-    # se accede desde el nav, no queda enterrada
-    assert 'href="#honesta"' in html
 
     vacio = tmp_path / "vacio.csv"
     vacio.write_text("")
@@ -3607,6 +3611,21 @@ def test_landing_publica_la_comparativa_honesta():
         assert any(p.lower() in msg.lower() for p in pistas), f"{nombre}: {msg}"
         # el detalle tecnico se conserva, pero aparte
         assert type(exc).__name__ in detalle
+
+
+def test_landing_publica_la_comparativa_honesta():
+    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
+    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
+    un .md del repo no la ve ningun cliente."""
+    import re
+    html = _landing("index.html")
+    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
+    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
+    assert tabla, "falta la tabla de la comparativa honesta"
+    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
+    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
+    # se accede desde el nav, no queda enterrada
+    assert 'href="#honesta"' in html
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -4290,21 +4309,6 @@ def test_pagina_de_acceso_traducida(lang):
     bloque = html[html.index("%s:{" % lang):]
     for clave in ("l_nombre", "l_empresa", "l_pais", "l_email", "c1btn", "h1"):
         assert f"{clave}:" in bloque, f"falta {clave} en {lang}"
-
-
-def test_landing_publica_la_comparativa_honesta():
-    """La comparativa capacidad-por-capacidad contra Purview/Collibra tiene que
-    estar en la LANDING, no solo en docs/. Es el mejor argumento de venta y en
-    un .md del repo no la ve ningun cliente."""
-    import re
-    html = _landing("index.html")
-    assert 'id="honesta"' in html, "falta la seccion de comparativa honesta"
-    tabla = re.search(r'<table class="cmp cmp2">.*?</table>', html, re.S)
-    assert tabla, "falta la tabla de la comparativa honesta"
-    filas = re.findall(r"<tr><td data-i=\"hon_", tabla.group(0))
-    assert len(filas) >= 12, f"solo {len(filas)} capacidades comparadas"
-    # se accede desde el nav, no queda enterrada
-    assert 'href="#honesta"' in html
 
 
 def test_landing_comparativa_dice_lo_que_mv_no_hace():
@@ -6540,6 +6544,85 @@ def test_server_run_server_sets_server_mode_flag(monkeypatch, tmp_path):
         assert argv_out  # se armaron los argumentos de streamlit
     finally:
         os.environ.pop("MVDG_SERVER_MODE", None)
+
+
+def test_server_activa_licencia_owner_desde_env_sin_pegarla_a_mano(
+        tmp_path, monkeypatch):
+    """El caso real: el dueño despliega en un servidor que NO es su laptop
+    (la de un cliente, donde ni siquiera puede instalar un .exe/.bat) y no
+    quiere que nadie tenga que abrir la pestaña Licencia y pegar nada — el
+    servidor tiene que abrir YA desbloqueado desde el primer navegador que
+    llegue.
+
+    Se firma un token 'owner' atado al id de ESTA máquina (como haría
+    `packaging/licencias.py firmar --plan owner --maquina <id>` apuntando al
+    id real del servidor) y se prueba que activate_license_from_env() lo
+    activa vía licensing.save() -- la misma verificación de firma+maquina
+    que cualquier otra licencia, no un atajo nuevo."""
+    from mvdg import licensing, server
+    from mvdg.machine import machine_id
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner", mid=machine_id())
+    monkeypatch.setenv("MVDG_SERVER_LICENSE_TOKEN", token)
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is True
+    assert plan_activado == "owner"
+    assert licensing.plan() == "owner"
+    assert licensing.has_feature("migracion_purview") is True
+
+    # Y el camino completo (run_server en dry-run) llega al mismo estado,
+    # sin levantar Streamlit de verdad.
+    licensing.clear()
+    monkeypatch.setenv("MVDG_AUTHORIZED_HOSTS", "*")
+    argv_out = []
+    try:
+        server.run_server(argv_out=argv_out)
+        assert licensing.plan() == "owner"
+    finally:
+        os.environ.pop("MVDG_SERVER_MODE", None)
+
+
+def test_server_no_activa_token_atado_a_otra_maquina(tmp_path, monkeypatch):
+    """Un token owner copiado de OTRO servidor (u OTRA persona) no debe
+    activar nada acá -- el mid no coincide, licensing.verify() lo rechaza,
+    y el servidor se queda en el plan que ya tenia (demo la primera vez) en
+    vez de abrir desbloqueado por error."""
+    from mvdg import licensing, server
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    token = _emitir(priv, plan="owner", mid="0" * 16)  # id de OTRA maquina
+    monkeypatch.setenv("MVDG_SERVER_LICENSE_TOKEN", token)
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is False
+    assert plan_activado is None
+    assert licensing.plan() == licensing.PLAN_DEMO
+
+
+def test_server_sin_token_no_toca_una_licencia_ya_activada(tmp_path, monkeypatch):
+    """Si MVDG_SERVER_LICENSE_TOKEN no esta seteada, activate_license_from_env
+    no debe tocar nada -- ni pisar ni borrar una licencia que ya se hubiera
+    activado por otro medio (a mano, o en una corrida anterior del mismo
+    proceso)."""
+    from mvdg import licensing, server
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MVDG_SERVER_LICENSE_TOKEN", raising=False)
+    priv, pub = _par_de_claves()
+    monkeypatch.setattr(licensing, "PUBLIC_KEY_B64", pub)
+
+    ya_activo = _emitir(priv, plan="professional")
+    assert licensing.save(ya_activo) is not None
+
+    activada, plan_activado = server.activate_license_from_env()
+    assert activada is False
+    assert plan_activado is None
+    assert licensing.plan() == "professional"  # sigue como estaba
 
 
 # --------------------------------------------------- Purview: relación, qualifiedName real

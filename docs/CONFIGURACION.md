@@ -93,6 +93,8 @@ Nada de esto hace falta para vender: el programa anda sin configurar nada.
 | `MVDG_MAX_FILAS` | `0` = leer el archivo entero. Con un número, se leen las primeras N filas **y la respuesta lo avisa** (`truncado: true`). Antes esto valía 200.000 fijo y truncaba en silencio. |
 | `STREAMLIT_SERVER_MAX_UPLOAD_SIZE` | `5000` MB (definido en `.streamlit/config.toml`). Es el tope del dashboard; el corte es del servidor, así que el archivo se sube entero antes de rechazarse. |
 | `MVDG_SERVER_PASSWORD` | Vacío. Si se define, exige login antes del dashboard. |
+| `MVDG_AUTHORIZED_HOSTS` | Vacío (modo servidor abierto, con aviso). Hosts/IPs separados por coma que pueden arrancar `python -m mvdg.server`; `*` = cualquiera. |
+| `MVDG_SERVER_LICENSE_TOKEN` | Vacío. Solo aplica en modo servidor (`mvdg.server`): si se define con una licencia firmada y **atada al id de ESE servidor** (`packaging/licencias.py firmar --plan owner --maquina <id>`), se activa antes de abrir el dashboard — nadie pega nada en la pestaña Licencia. Pensado para el propio dueño desplegando en un servidor que no es su máquina (p. ej. la VM de un cliente que no deja instalar ni un .exe/.bat). Un token que no verifica no activa nada; el servidor sigue en el plan que ya tuviera. |
 | `MVDG_LICENCIAS_URL` | El emisor embebido en `mvdg/licensing.py` |
 | `MVDG_AI_PROVIDER` / `MVDG_AI_BASE_URL` | IA externa apagada. **La API key de IA no es una variable de entorno**: se guarda en el keyring del sistema operativo desde la pestaña Ayuda, con la cuenta del propio cliente. |
 

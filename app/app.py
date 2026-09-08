@@ -1426,7 +1426,6 @@ def _render_profile(user_df, dataset_name: str | None = None):
     }), width="stretch", hide_index=True)
     if info["pii_columns"]:
         st.warning(t("pr_pii_hint", lang))
-        st.warning(t("pr_pii_hint", lang), icon="🔐")
 
     # Catálogo de calidad de verdad, no solo perfilado: las reglas se generan
     # a partir del propio archivo y se CORREN contra los datos (score, umbral,
@@ -1435,7 +1434,6 @@ def _render_profile(user_df, dataset_name: str | None = None):
     # dimensiones DAMA depende de reglas de negocio que no se pueden adivinar
     # de un archivo cualquiera, así que no se fingen).
     st.subheader(f"{t('pr_auto_quality', lang)}")
-    st.subheader(f"✅ {t('pr_auto_quality', lang)}")
     ares = auto_quality_results(user_df, dataset_name or t("pr_upload", lang), lang)
     if ares.empty:
         st.caption(t("pr_auto_quality_none", lang))
