@@ -257,6 +257,17 @@ with st.sidebar:
     st.divider()
     st.caption(f"v{__version__} · {t('demo_note', lang)}")
 
+if mvdg_server.server_mode_active():
+    # Hallazgo de auditoria: organigrama.json, conexiones.json, clientes.json
+    # y curaduria.json se guardan en MVDG_DATA_DIR del PROCESO DEL SERVIDOR,
+    # no en la maquina de quien los ve en el navegador -- pero varios textos
+    # de la app (rs_local_note, con_local_note, etc.) dicen "solo en tu
+    # equipo", que en modo servidor es falso: es un disco COMPARTIDO por
+    # todos los que abren esta URL. Antes esto era silencioso; ahora se avisa
+    # en cada carga de pantalla, se haya logueado o no, para que quede claro
+    # ANTES de cargar el organigrama o las conexiones de un cliente.
+    st.warning(t("srv_shared_data_warning", lang))
+
 if mvdg_server.auth_required() and not st.session_state.get("_mvdg_authed"):
     # Calienta el cache de datos ANTES del gate (no expone nada: son los
     # datasets sintéticos de demo, sin PII). Si no se calienta acá, la
