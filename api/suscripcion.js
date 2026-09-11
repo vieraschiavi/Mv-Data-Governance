@@ -32,6 +32,17 @@
 
 const { signEd25519, diasDeSku, planDeSku } = require("./_license");
 const { rateLimited, clientIp } = require("./_rate_limit");
+const { permitirRenovacion } = require("./_renovaciones");
+
+// El preapproval_id viaja en la URL de retorno del comprador: no es
+// secreto, mismo problema que ya tiene payment_id en verify-payment.js.
+// Sin este cooldown, cualquiera que lo obtenga podía pedir una licencia
+// Professional propia las veces que quisiera mientras la suscripción del
+// titular real siguiera paga. El programa del cliente solo necesita
+// renovar cada tantos días (la licencia dura DIAS), así que un piso de
+// 20 horas no le afecta a nadie que pague — y le pone un techo muy bajo
+// a quien no pagó nada.
+const COOLDOWN_RENOVACION_MS = 20 * 3600_000;
 
 // El programa consulta al abrir, así que el límite tiene que tolerar varias
 // aperturas seguidas sin habilitar un barrido de ids ajenos.
@@ -96,6 +107,17 @@ module.exports = async (req, res) => {
   if (!privKey) {
     res.status(200).json({ activa: true, estado: datos.status,
                            license_key: null, motivo: "emisor_no_configurado" });
+    return;
+  }
+
+  const permiso = await permitirRenovacion(id, COOLDOWN_RENOVACION_MS);
+  if (permiso === "muy_reciente") {
+    // No es un error del cliente real: si ya renovó hace poco (o alguien
+    // más lo hizo con su id), simplemente no hace falta otra licencia
+    // todavía. "activa: true" sin license_key -- el programa del cliente
+    // ya tiene una vigente de la renovación anterior.
+    res.status(200).json({ activa: true, estado: datos.status,
+                           license_key: null, motivo: "renovada_recientemente" });
     return;
   }
 

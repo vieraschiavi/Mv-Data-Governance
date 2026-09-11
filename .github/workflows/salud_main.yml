@@ -1,0 +1,124 @@
+name: Salud de main
+
+# ────────────────────────────────────────────────────────────────────────────
+# Qué problema cierra
+# ────────────────────────────────────────────────────────────────────────────
+# `tests.yml` corre en cada push, `main` incluido (branches: ["**"]) — pero
+# eso ya no alcanzó una vez. En el incidente de los PR #109/#110, un merge
+# manual (commit de 2 padres, 18 segundos entre push y merge — no lo hizo
+# `automerge.yml`, que solo produce squash de 1 padre) dejó a `main` con un
+# SyntaxError en mvdg/i18n.py y claves duplicadas en mvdg/licensing.py. El
+# check de esa corrida SÍ quedó en rojo — pero un X en la pestaña Actions que
+# nadie está mirando no avisa a nadie. `main` no tiene branch protection
+# (confirmado contra la API pública: `.../branches/main` → "protected":
+# false), así que ese rojo no bloqueó nada ni le llegó a nadie.
+#
+# Esto no reemplaza la branch protection — eso requiere acceso a Settings que
+# esta cuenta de automatización no tiene — pero sí achica la ventana en la
+# que `main` puede estar roto sin que se note: cada corrida re-verifica el
+# HEAD ACTUAL de main (no el commit que disparó el evento) y, si algo falla,
+# abre un issue. Un issue queda visible en la lista de Issues aunque nadie
+# haya visto la corrida de Actions, y sigue abierto hasta que alguien lo
+# cierre o vuelva a pasar la salud — a diferencia de un check de push, que se
+# pisa con el siguiente commit.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Por qué no duplica tests.yml
+# ────────────────────────────────────────────────────────────────────────────
+# Mismo gate (ruff + pytest + selfcheck), pero:
+#   - dispara por horario, no por push: agarra el caso "nadie volvió a tocar
+#     main" que un check de push nunca revisita.
+#   - abre un issue en vez de solo pintar de rojo un check — así hay una
+#     señal que sigue viva hasta que alguien la atienda, no una que se tapa
+#     con el próximo commit.
+#   - no duplica issues: si ya hay uno abierto con la misma etiqueta, esta
+#     corrida lo deja como está (evita spam de un issue por día mientras el
+#     problema sigue sin arreglarse).
+on:
+  schedule:
+    # 09:00 UTC = 06:00 en Uruguay (UTC-3). Antes de la hora de trabajo
+    # habitual, para que un problema de la noche esté visible al empezar.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  ETIQUETA: main-roto
+
+jobs:
+  salud:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias (runtime + test)
+        run: pip install -r requirements-dev.txt
+
+      - name: Linter (ruff)
+        run: python -m ruff check .
+
+      - name: Tests
+        run: python -m pytest tests/ -v
+
+      - name: Auto-diagnóstico del motor
+        run: python -m mvdg.selfcheck
+
+      - name: Asegurar la etiqueta del issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "$ETIQUETA" \
+            --color "b60205" \
+            --description "main no pasa el gate (lint/tests/selfcheck) en la corrida programada" \
+            --repo "${{ github.repository }}" 2>/dev/null || true
+
+      - name: Abrir issue si main está roto (y no hay uno ya abierto)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existentes=$(gh issue list --repo "${{ github.repository }}" \
+            --label "$ETIQUETA" --state open --json number --jq length)
+          if [ "$existentes" -gt 0 ]; then
+            echo "Ya hay un issue abierto con la etiqueta '$ETIQUETA' — no se crea otro."
+            exit 0
+          fi
+          cat > /tmp/issue_body.md <<EOF
+          La corrida programada \`Salud de main\` falló contra el HEAD actual de \`main\` (\`${{ github.sha }}\`).
+
+          Detalle: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          \`main\` no tiene branch protection, así que un merge manual puede haber entrado sin pasar el gate de \`tests.yml\`. Revisar el diff reciente en \`main\` y corregir; este issue queda abierto hasta que la próxima corrida programada vuelva a pasar (o alguien lo cierre a mano).
+          EOF
+          gh issue create --repo "${{ github.repository }}" \
+            --title "main no pasa el gate (lint/tests/selfcheck) — corrida programada" \
+            --label "$ETIQUETA" \
+            --body-file /tmp/issue_body.md
+
+      - name: Cerrar el issue si main volvió a estar sano
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          abiertos=$(gh issue list --repo "${{ github.repository }}" \
+            --label "$ETIQUETA" --state open --json number --jq '.[].number')
+          for n in $abiertos; do
+            gh issue comment "$n" --repo "${{ github.repository }}" \
+              --body "La corrida programada de \`Salud de main\` volvió a pasar contra \`${{ github.sha }}\`. Cerrando."
+            gh issue close "$n" --repo "${{ github.repository }}"
+          done

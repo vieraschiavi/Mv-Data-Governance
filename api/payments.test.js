@@ -1209,6 +1209,104 @@ async function main() {
       });
   }
 
+  // ------------------------------------------------------- api/suscripcion.js
+  {
+    delete require.cache[require.resolve("./suscripcion")];
+    const suscripcion = require("./suscripcion");
+
+    const kvFalso = () => {
+      const store = new Map();
+      return {
+        store,
+        fetch: async (url, opts) => {
+          const cmds = JSON.parse(opts.body);
+          return { ok: true, json: async () => cmds.map(([op, k, v]) => {
+            if (op === "SET") { store.set(k, v); return { result: "OK" }; }
+            return { result: store.has(k) ? store.get(k) : null };
+          }) };
+        },
+      };
+    };
+    const conKV = async (kv, mpBody, subId) => {
+      const res = mockRes();
+      const env = {
+        MP_ACCESS_TOKEN: process.env.MP_ACCESS_TOKEN,
+        LICENSE_PRIVATE_KEY: process.env.LICENSE_PRIVATE_KEY,
+        KV_REST_API_URL: process.env.KV_REST_API_URL,
+        KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+      };
+      process.env.MP_ACCESS_TOKEN = "token-de-test";
+      const b64u = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      process.env.LICENSE_PRIVATE_KEY = b64u(crypto.randomBytes(32));
+      if (kv) { process.env.KV_REST_API_URL = "https://kv.de.test"; process.env.KV_REST_API_TOKEN = "tok"; }
+      else { delete process.env.KV_REST_API_URL; delete process.env.KV_REST_API_TOKEN; }
+      try {
+        await withMockFetch(
+          async (url, opts) => (String(url).includes("kv.de.test")
+            ? kv.fetch(url, opts)
+            : { ok: true, json: async () => mpBody }),
+          async () => { await suscripcion({ query: { id: subId } }, res); }
+        );
+        return res._body;
+      } finally {
+        for (const [k, v] of Object.entries(env)) {
+          if (v !== undefined) process.env[k] = v; else delete process.env[k];
+        }
+      }
+    };
+    const subAutorizada = () => ({ status: "authorized", payer_email: "c@x.com" });
+    const ID_SUB = "abcDEF123456";
+
+    await check("suscripcion: id invalido -> 400, no llega a preguntarle nada a MP", async () => {
+      const res = mockRes();
+      await suscripcion({ query: { id: "***" } }, res);
+      assert.strictEqual(res._status, 400);
+    });
+
+    await check("suscripcion: HALLAZGO DE AUDITORIA -- un preapproval_id filtrado " +
+                "NO puede canjearse por licencias infinitas", async () => {
+      const kv = kvFalso();
+      const a = await conKV(kv, subAutorizada(), ID_SUB);
+      assert.ok(a.license_key, "la primera vez si tiene que emitir");
+      // Alguien mas (o el mismo programa, dos veces seguidas) pide de nuevo
+      // el MISMO id, SEGUNDOS despues -- exactamente el escenario que
+      // encontro la auditoria: el id viaja en la URL de retorno, no es
+      // secreto, y antes de este fix se podia canjear las veces que fuera.
+      const b = await conKV(kv, subAutorizada(), ID_SUB);
+      assert.strictEqual(b.license_key, null,
+        "un segundo pedido inmediato del MISMO id NO tiene que emitir otra licencia");
+      assert.strictEqual(b.motivo, "renovada_recientemente");
+      assert.strictEqual(b.activa, true, "la suscripcion real sigue activa, no es un error");
+    });
+    await check("suscripcion: pasado el cooldown, la MISMA suscripcion SI renueva", async () => {
+      // Este es el caso legitimo que el fix no puede romper: el programa
+      // del cliente que paga vuelve a pedir la licencia dias despues,
+      // cerca del vencimiento de la anterior.
+      const kv = kvFalso();
+      const a = await conKV(kv, subAutorizada(), ID_SUB);
+      assert.ok(a.license_key);
+      const clave = "mvdg:sub:" + ID_SUB;
+      kv.store.set(clave, String(Date.now() - 21 * 3600_000));  // hace 21h > cooldown (20h)
+      const b = await conKV(kv, subAutorizada(), ID_SUB);
+      assert.ok(b.license_key, "pasado el cooldown, la renovacion real tiene que andar");
+    });
+    await check("suscripcion: si el KV se cae, la renovacion NO se corta", async () => {
+      const kv = { fetch: async () => { throw new Error("KV caido"); } };
+      const b = await conKV(kv, subAutorizada(), ID_SUB);
+      assert.ok(b.license_key, "una caida del KV no puede bloquear una renovacion real");
+    });
+    await check("suscripcion: sin KV configurado, se comporta como antes del fix", async () => {
+      const b = await conKV(null, subAutorizada(), ID_SUB);
+      assert.ok(b.license_key);
+    });
+    await check("suscripcion: suscripcion NO autorizada -> no emite, cooldown no aplica", async () => {
+      const kv = kvFalso();
+      const b = await conKV(kv, { status: "cancelled" }, ID_SUB);
+      assert.strictEqual(b.activa, false);
+      assert.strictEqual(b.license_key, undefined);
+    });
+  }
+
   console.log(`\nTodos los checks de pago/licencia pasaron (${checks}).`);
 }
 
