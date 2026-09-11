@@ -819,8 +819,15 @@ def test_connectors_load_table_no_ejecuta_nombres_maliciosos(tmp_path, monkeypat
     perfil = {"engine": "sqlite", "database": db}
 
     import pandas.errors
+    from sqlalchemy.exc import OperationalError
+    # pandas >=3 envuelve el error del driver en pandas.errors.DatabaseError
+    # (ver SQLDatabase.execute); pandas 2.x -- la única serie con wheel para
+    # Python 3.10, que es parte de la matriz de este repo -- lo deja pasar
+    # tal cual, como sqlalchemy.exc.OperationalError. El error real es el
+    # mismo en los dos casos ("no such table": todo el payload quedó citado
+    # como UN identificador), así que se aceptan ambas formas.
     payload = "clientes WHERE 1=0 UNION SELECT sql FROM sqlite_master--"
-    with pytest.raises(pandas.errors.DatabaseError):  # "no such table" -- todo el payload es UN identificador citado
+    with pytest.raises((pandas.errors.DatabaseError, OperationalError)):
         C.load_table(perfil, payload)
 
 
