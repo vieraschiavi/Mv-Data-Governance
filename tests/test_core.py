@@ -791,6 +791,97 @@ def test_connectors_guards():
     assert ok is False and "driver" in msg.lower()
 
 
+def test_connectors_load_table_no_ejecuta_nombres_maliciosos(tmp_path, monkeypatch):
+    """Hallazgo real de la auditoría: load_table armaba
+    f"SELECT * FROM {schema}.{name}" SIN escapar. Un nombre de tabla que
+    llega tal cual desde /api/ingenieria/sql/analizar (un endpoint
+    público) podía inyectar SQL.
+
+    OJO con el payload elegido: uno con ";" (sentencias apiladas) queda
+    "protegido" por casualidad en sqlite, porque el driver de Python
+    (sqlite3) rechaza ejecutar mas de una sentencia por llamada — eso NO
+    prueba que el escapado funcione, prueba que sqlite tiene esa regla.
+    Se verificó a mano: contra el codigo VIEJO (sin comillas), un
+    UNION SELECT de UNA sola sentencia SI devuelve el DDL interno de
+    sqlite_master (la tabla real "clientes" nunca se toca, pero el
+    contenido que vuelve no es el de esa tabla) — asi que este es el
+    payload que de verdad ejercita el citado, no la proteccion de otro
+    componente."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    pytest.importorskip("sqlalchemy")
+    import sqlite3
+    from mvdg import connectors as C
+
+    db = str(tmp_path / "ataque.db")
+    con = sqlite3.connect(db)
+    pd.DataFrame({"id": [1, 2]}).to_sql("clientes", con, index=False)
+    con.close()
+    perfil = {"engine": "sqlite", "database": db}
+
+    import pandas.errors
+    from sqlalchemy.exc import OperationalError
+    # pandas >=3 envuelve el error del driver en pandas.errors.DatabaseError
+    # (ver SQLDatabase.execute); pandas 2.x -- la única serie con wheel para
+    # Python 3.10, que es parte de la matriz de este repo -- lo deja pasar
+    # tal cual, como sqlalchemy.exc.OperationalError. El error real es el
+    # mismo en los dos casos ("no such table": todo el payload quedó citado
+    # como UN identificador), así que se aceptan ambas formas.
+    payload = "clientes WHERE 1=0 UNION SELECT sql FROM sqlite_master--"
+    with pytest.raises((pandas.errors.DatabaseError, OperationalError)):
+        C.load_table(perfil, payload)
+
+
+def test_connectors_run_query_rechaza_sentencias_apiladas_y_ctes_de_escritura(
+        tmp_path, monkeypatch):
+    """El chequeo viejo de run_query ("empieza con select o with") dejaba
+    pasar dos ataques reales:
+    1. Sentencias apiladas: "SELECT 1; DROP TABLE clientes;--" empieza
+       con select.
+    2. CTE de escritura: "WITH x AS (DELETE FROM t RETURNING *) SELECT
+       * FROM x" empieza con with y borra datos igual.
+
+    Ambos tienen que rechazarse ANTES de tocar la base, y la tabla real
+    tiene que sobrevivir el intento."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    pytest.importorskip("sqlalchemy")
+    import sqlite3
+    from mvdg import connectors as C
+
+    db = str(tmp_path / "ataque2.db")
+    con = sqlite3.connect(db)
+    pd.DataFrame({"id": [1, 2, 3]}).to_sql("clientes", con, index=False)
+    con.close()
+    perfil = {"engine": "sqlite", "database": db}
+
+    ataques = [
+        "SELECT 1; DROP TABLE clientes;--",
+        "WITH x AS (DELETE FROM clientes RETURNING *) SELECT * FROM x",
+        "select * from clientes; delete from clientes",
+    ]
+    for sql in ataques:
+        with pytest.raises(ValueError):
+            C.run_query(perfil, sql)
+
+    con = sqlite3.connect(db)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM clientes").fetchone()[0] == 3, (
+            "la tabla clientes cambio: alguna de las consultas se ejecuto")
+    finally:
+        con.close()
+
+    # y las consultas LEGITIMAS -- incluida una con una columna cuyo
+    # nombre CONTIENE una de las palabras vetadas -- siguen andando, para
+    # no convertir el fix en un falso positivo generalizado.
+    con = sqlite3.connect(db)
+    con.execute("ALTER TABLE clientes ADD COLUMN created_at TEXT")
+    con.execute("UPDATE clientes SET created_at = '2026-01-01'")
+    con.commit()
+    con.close()
+    df = C.run_query(perfil, "SELECT id, created_at FROM clientes WHERE id > 0")
+    assert len(df) == 3 and "created_at" in df.columns
+
+
 def _sqlite_grande(ruta, filas=60_000, relleno=200):
     """Una tabla lo bastante grande como para que se note la diferencia entre
     traerla entera y cortar en las primeras filas."""
@@ -6528,6 +6619,39 @@ def test_server_check_password_correct_and_constant_time(monkeypatch):
     assert server.check_password("cualquiera") is False  # sin var seteada, nunca entra
 
 
+def test_app_avisa_dato_compartido_en_modo_servidor(monkeypatch, tmp_path):
+    """HALLAZGO DE AUDITORIA -- organigrama.json, conexiones.json,
+    clientes.json y curaduria.json se guardan en MVDG_DATA_DIR del PROCESO
+    DEL SERVIDOR, no en la máquina de quien los ve en el navegador. Varios
+    textos de la app (rs_local_note, con_local_note, etc.) dicen "solo en tu
+    equipo", que en modo servidor es directamente falso: es un disco
+    COMPARTIDO entre TODOS los que abren esa URL. Antes esto era silencioso
+    -- ni una sola pantalla lo mencionaba. Ahora se avisa en cada carga.
+
+    En modo escritorio (el caso normal, sin MVDG_SERVER_MODE) el aviso NO
+    tiene que aparecer: no aplica y sería ruido para el 99% de los clientes
+    que corren el .exe/.bat en su propia PC."""
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MVDG_SERVER_MODE", raising=False)
+    at_escritorio = AppTest.from_file(os.path.join(_repo_root(), "app", "app.py"),
+                                      default_timeout=300)
+    at_escritorio.run()
+    avisos_escritorio = " ".join(w.value for w in at_escritorio.warning).upper()
+    assert "COMPARTID" not in avisos_escritorio, (
+        "el aviso de servidor compartido aparece incluso en modo escritorio")
+
+    monkeypatch.setenv("MVDG_SERVER_MODE", "1")
+    at_servidor = AppTest.from_file(os.path.join(_repo_root(), "app", "app.py"),
+                                    default_timeout=300)
+    at_servidor.run()
+    avisos = " ".join(w.value for w in at_servidor.warning)
+    assert "COMPARTID" in avisos.upper(), (
+        "modo servidor no avisa que el disco de datos es compartido entre "
+        "todos los usuarios de esta URL")
+
+
 def test_server_run_server_sets_server_mode_flag(monkeypatch, tmp_path):
     """run_server() marca MVDG_SERVER_MODE escribiendo os.environ
     directamente (a propósito: tiene que sobrevivir mientras el proceso de
@@ -9391,6 +9515,26 @@ def test_el_exe_puede_perfilar_un_archivo_propio(tmp_path, monkeypatch):
         "archivo": ("uy.csv", b"nombre;importe\nAna;1,5\nLuis;2,5\n", "text/csv")})
     assert r.status_code == 200
     assert len(r.json()["perfil"]) == 2, "no reconocio el punto y coma"
+
+
+def test_el_perfilador_lee_csv_latin1_igual_que_ingenieria_de_archivo(tmp_path, monkeypatch):
+    """HALLAZGO DE AUDITORIA -- /api/perfilar usaba pd.read_csv/read_excel a
+    mano, con un try/except que asumía UTF-8, mientras /api/ingenieria/archivo
+    ya pasaba por mvdg.dataeng.leer_archivo_bytes(), que prueba varias
+    codificaciones. El MISMO archivo (un CSV en latin-1/cp1252, común en
+    exportaciones de Excel en español/portugués con tildes o ñ) se perfilaba
+    bien en un endpoint y se rechazaba con un mensaje genérico en el otro --
+    dos resultados distintos para el mismo dato, sin ninguna razón real.
+
+    Ahora los dos endpoints comparten el mismo motor de lectura."""
+    c = _api_cliente(tmp_path, monkeypatch)
+
+    crudo = "nombre,ciudad\nJosé,Montevideo\nBegoña,Asunción\n".encode("latin-1")
+    r = c.post("/api/perfilar", files={"archivo": ("clientes_uy.csv", crudo, "text/csv")})
+    assert r.status_code == 200, r.text[:300]
+    d = r.json()
+    assert d["resumen"]["rows"] == 2
+    assert [col["column"] for col in d["perfil"]] == ["nombre", "ciudad"]
 
 
 def test_el_perfilador_no_se_come_la_memoria_ni_acepta_cualquier_cosa(tmp_path, monkeypatch):

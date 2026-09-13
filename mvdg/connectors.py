@@ -50,6 +50,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import uuid
 
 import pandas as pd
@@ -334,13 +335,37 @@ def build_url(profile: dict, password: str | None = None):
     )
 
 
+# Timeout de conexión (segundos) por familia de driver -- todos los
+# conectores HTTP del motor (Purview, Collibra, Azure, Tableau, Power BI,
+# IA) ya tienen el suyo; este era el único que corría sin ninguno. Un host
+# inalcanzable con firewall silencioso (típico en una red corporativa)
+# colgaba el hilo indefinidamente al "Probar conexión" en vez de fallar
+# con un mensaje. Cada driver usa su propio nombre de parámetro -- se
+# verificó cada uno instalando el paquete real, no de memoria.
+_TIMEOUT_SEGUNDOS = 20
+_CONNECT_ARGS_POR_MOTOR = {
+    "postgresql": {"connect_timeout": _TIMEOUT_SEGUNDOS},   # libpq estándar
+    "mysql": {"connect_timeout": _TIMEOUT_SEGUNDOS},         # pymysql
+    "sqlserver": {"timeout": _TIMEOUT_SEGUNDOS},             # pyodbc (login timeout)
+    "synapse": {"timeout": _TIMEOUT_SEGUNDOS},               # mismo driver que sqlserver
+    "oracle": {"tcp_connect_timeout": _TIMEOUT_SEGUNDOS},    # python-oracledb
+    # sqlite: sin red, no aplica. snowflake/bigquery/databricks: SDKs
+    # propios con su propia autenticación -- forzar connect_args acá
+    # arriesga romper esos dialectos por un kwarg que no esperan.
+}
+
+
 def _engine(profile: dict, password: str | None = None):
     from sqlalchemy import create_engine
     kwargs = {"pool_pre_ping": True}
-    if profile.get("engine") == "bigquery":
+    motor = profile.get("engine")
+    if motor == "bigquery":
         creds = (profile.get("extra") or {}).get("credentials_path")
         if creds:
             kwargs["credentials_path"] = creds
+    connect_args = _CONNECT_ARGS_POR_MOTOR.get(motor)
+    if connect_args:
+        kwargs["connect_args"] = connect_args
     return create_engine(build_url(profile, password), **kwargs)
 
 
@@ -422,6 +447,20 @@ def _leer_sql(sql: str, eng, limit: int) -> pd.DataFrame:
     return pd.concat(trozos, ignore_index=True).head(limit)
 
 
+def _quote_ident(eng, name: str) -> str:
+    """Cita un identificador (tabla, columna) con las reglas del motor
+    REAL, vía el preparer de SQLAlchemy -- no un f-string a mano.
+
+    Esto es lo que cierra una inyección real: antes, un nombre de tabla
+    con un punto (p.ej. ``"public.clientes; DROP TABLE clientes;--"``,
+    que puede llegar tal cual desde /api/ingenieria/sql/analizar) se
+    partía en schema/nombre y se pegaba SIN comillas en el SQL. El
+    preparer conoce el caracter de cita de cada uno de los 9 motores
+    soportados y duplica/escapa cualquier comilla embebida en el nombre
+    real -- que un f-string nunca hacía."""
+    return eng.dialect.identifier_preparer.quote(name)
+
+
 def load_table(profile: dict, table: str, limit: int = MAX_ROWS,
                password: str | None = None) -> pd.DataFrame:
     """Trae una tabla a un DataFrame. ``limit=0`` trae la tabla entera."""
@@ -429,20 +468,46 @@ def load_table(profile: dict, table: str, limit: int = MAX_ROWS,
     eng = _engine(profile, password)
     if "." in table:
         schema, name = table.split(".", 1)
-        ref = f"{schema}.{name}"
-    elif profile["engine"] == "mysql":
-        ref = f"`{table}`"
+        ref = f"{_quote_ident(eng, schema)}.{_quote_ident(eng, name)}"
     else:
-        ref = f'"{table}"'
+        ref = _quote_ident(eng, table)
     return _leer_sql(f"SELECT * FROM {ref}", eng, limit)
+
+
+# Palabras de escritura/DDL que NO tienen que aparecer en una consulta que
+# se dice de solo lectura. Es una lista negra, no un parser SQL real -- no
+# reemplaza que la conexión que configura el cliente use un usuario de
+# base de datos de SOLO LECTURA (recomendado en docs/BI_INTEGRATION.md);
+# esto achica la superficie de ataque, no la cierra del todo. \b evita
+# falsos positivos contra columnas como "created_at"/"delete_flag" (el
+# guion bajo es caracter de palabra, así que no hay borde ahí), a costa de
+# poder rechazar una consulta legitima si el texto buscado dentro de un
+# literal contiene una de estas palabras (p.ej. WHERE texto LIKE '%into%')
+# -- un falso rechazo es mucho mejor que dejar pasar un DELETE.
+_PALABRAS_DE_ESCRITURA = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|"
+    r"exec|execute|merge|call|into)\b", re.IGNORECASE)
 
 
 def run_query(profile: dict, sql: str, limit: int = MAX_ROWS,
               password: str | None = None) -> pd.DataFrame:
-    """Ejecuta una consulta SELECT. ``limit=0`` devuelve todas las filas."""
-    if not sql.strip().lower().startswith(("select", "with")):
+    """Ejecuta una consulta SELECT/WITH de solo lectura. ``limit=0``
+    devuelve todas las filas.
+
+    El chequeo de antes (¿"empieza con select o with"?) no alcanza: un CTE
+    de escritura -- ``WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM
+    x`` -- empieza con "with" y borra datos igual. Ahora se rechaza
+    cualquier palabra de escritura en TODA la consulta (no solo el
+    inicio) y cualquier sentencia apilada con ";"."""
+    limpio = sql.strip()
+    if not limpio.lower().startswith(("select", "with")):
         raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
-    return _leer_sql(sql, _engine(profile, password), max(0, int(limit)))
+    sin_punto_final = limpio[:-1].strip() if limpio.endswith(";") else limpio
+    if ";" in sin_punto_final:
+        raise ValueError("No se permite más de una sentencia por consulta.")
+    if _PALABRAS_DE_ESCRITURA.search(limpio):
+        raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
+    return _leer_sql(limpio, _engine(profile, password), max(0, int(limit)))
 
 
 def purview_qualified_name(profile: dict, table: str) -> str | None:

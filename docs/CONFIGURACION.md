@@ -98,6 +98,31 @@ Nada de esto hace falta para vender: el programa anda sin configurar nada.
 | `MVDG_LICENCIAS_URL` | El emisor embebido en `mvdg/licensing.py` |
 | `MVDG_AI_PROVIDER` / `MVDG_AI_BASE_URL` | IA externa apagada. **La API key de IA no es una variable de entorno**: se guarda en el keyring del sistema operativo desde la pestaña Ayuda, con la cuenta del propio cliente. |
 
+### 3.1 Modo servidor: un servidor por cliente, nunca dos clientes en el mismo
+
+`mvdg.server` (o `./run_server.sh`) sirve el dashboard a varios navegadores a
+la vez, pero es **un solo proceso con un solo disco** (`MVDG_DATA_DIR`,
+por defecto `~/.mv_data_governance` en la máquina donde corre `mvdg.server`,
+no en la del navegador que lo abre). Ahí se guardan `conexiones.json`,
+`organigrama.json`, `responsables.json`, `clientes.json` y `curaduria.json`
+— y **todos** los que abren esa misma URL leen y escriben el mismo archivo.
+No hay separación por usuario ni por sesión de navegador: `st.session_state`
+aísla lo que cada uno ve en pantalla en ese momento, pero no lo que queda
+guardado en disco entre sesiones.
+
+Consecuencia directa: si dos clientes/proyectos distintos comparten un mismo
+servidor, el organigrama, las conexiones a bases de datos (con sus
+contraseñas) y la cartera de clientes de uno quedan visibles — y editables —
+para cualquiera que entre con la URL del otro. `MVDG_SERVER_PASSWORD` protege
+la ENTRADA al dashboard, no aísla los datos de un cliente de los de otro una
+vez adentro.
+
+**Política obligatoria: un servidor/VM dedicado por cliente o proyecto.**
+Nunca reutilices el mismo proceso `mvdg.server` (ni el mismo `MVDG_DATA_DIR`)
+para dos clientes distintos. El dashboard avisa esto en pantalla, en cada
+carga, mientras esté en modo servidor (no aparece en modo escritorio /
+.exe / .bat, donde cada usuario tiene su propio disco).
+
 ---
 
 ## 4. Conectores empresariales — apagados por defecto, a propósito

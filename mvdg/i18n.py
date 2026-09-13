@@ -629,6 +629,26 @@ _T: dict[str, dict[str, str]] = {
     "auth_prompt": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
     "auth_button": {"es": "Entrar", "en": "Sign in", "pt": "Entrar"},
     "auth_wrong": {"es": "Contraseña incorrecta.", "en": "Wrong password.", "pt": "Senha incorreta."},
+    "srv_shared_data_warning": {
+        "es": "Modo servidor: este servidor es COMPARTIDO. Todo lo que se "
+              "guarda en disco acá (conexiones, organigrama, responsables, "
+              "clientes, curaduría) queda visible para CUALQUIERA que abra "
+              "esta misma URL — no es \"tu equipo\", es este servidor. Usá "
+              "un servidor dedicado por cliente/proyecto; nunca compartas uno "
+              "entre dos clientes distintos.",
+        "en": "Server mode: this server is SHARED. Everything saved to "
+              "disk here (connections, org chart, responsibles, clients, "
+              "curation) is visible to ANYONE who opens this same URL — it "
+              "is not \"your machine\", it is this server. Use one dedicated "
+              "server per client/project; never share one server between "
+              "two different clients.",
+        "pt": "Modo servidor: este servidor é COMPARTILHADO. Tudo o que é "
+              "salvo em disco aqui (conexões, organograma, responsáveis, "
+              "clientes, curadoria) fica visível para QUALQUER UM que abra "
+              "esta mesma URL — não é \"seu equipamento\", é este servidor. "
+              "Use um servidor dedicado por cliente/projeto; nunca "
+              "compartilhe um servidor entre dois clientes diferentes.",
+    },
     # ----------------------------------------------------------------- tabs
     "tab_overview": {"es": "Panorama", "en": "Overview", "pt": "Panorama"},
     "tab_catalog": {"es": "Catálogo", "en": "Catalog", "pt": "Catálogo"},

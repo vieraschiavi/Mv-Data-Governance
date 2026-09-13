@@ -477,11 +477,8 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
 
     No requiere licencia. No guarda nada.
     """
-    import io
-
-    import pandas as pd
-
-    from mvdg import profiler
+    from mvdg import dataeng, profiler
+    from mvdg.errors import friendly_error
 
     nombre = (archivo.filename or "").strip()
     if not nombre.lower().endswith(_EXT_OK):
@@ -506,22 +503,21 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
 
     try:
         # nrows=None es "todas": con _MAX_FILAS en 0 se lee el archivo entero.
+        # dataeng.leer_archivo_bytes -- MISMO motor que /api/ingenieria/archivo,
+        # no un pd.read_csv/read_excel de acá: antes, un CSV en latin-1/cp1252
+        # (comun en exportaciones de Excel) se leia bien en un endpoint y se
+        # rechazaba con un mensaje generico en este -- mismo archivo, dos
+        # resultados distintos, sin ninguna razon real. Se toma la PRIMERA
+        # tabla del resultado (para un Excel multi-hoja, la primera hoja) --
+        # esto perfila UNA tabla, igual que antes.
         _filas = _MAX_FILAS or None
-        if nombre.lower().endswith((".xlsx", ".xlsm", ".xls")):
-            df = pd.read_excel(io.BytesIO(crudo), nrows=_filas)
-        else:
-            # sep=None + engine="python" deja que pandas descubra si es coma,
-            # punto y coma o tabulador. En Uruguay el Excel exporta con punto y
-            # coma por el separador decimal, asi que asumir la coma daria una
-            # sola columna con todo adentro y un perfil que no dice nada.
-            df = pd.read_csv(io.BytesIO(crudo), sep=None, engine="python",
-                             nrows=_filas)
+        tablas = dataeng.leer_archivo_bytes(nombre, crudo, muestra=_filas)
+        df = next(iter(tablas.values()))
     except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
+        mensajes = {idioma: friendly_error(exc, idioma, "archivo")[0] for idioma in LANGS}
         raise HTTPException(400, {
             "error": "no_se_pudo_leer", "tipo": type(exc).__name__,
-            "es": "No se pudo leer el archivo. ¿Está completo y bien formado?",
-            "en": "The file could not be read. Is it complete and well formed?",
-            "pt": "Não foi possível ler o arquivo. Está completo e bem formado?",
+            **mensajes,
         }) from exc
 
     if df.empty or not len(df.columns):
