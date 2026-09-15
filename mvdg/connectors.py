@@ -6,8 +6,10 @@ MV Data Governance · Conectores directos a bases de datos.
 Además de CSV/Excel, MV Data Governance se conecta directo a cualquier base de
 datos vía SQLAlchemy: PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, SQLite,
 y los data warehouse/lake de nube más usados — Snowflake, Google BigQuery,
-Databricks SQL Warehouse y Azure Synapse (SQL pool, vía el mismo driver que
-SQL Server, con el que es compatible por protocolo). El usuario carga
+Databricks SQL Warehouse, Azure Synapse (SQL pool, vía el mismo driver que
+SQL Server, con el que es compatible por protocolo) y Microsoft Fabric
+(Lakehouse SQL analytics endpoint y Warehouse, con Entra ID — ver la sección
+"Microsoft Fabric" más abajo, que NO es un SQL Server más). El usuario carga
 servidor, puerto, base, usuario y contraseña (o los parámetros que
 correspondan a cada nube — ver ``extra`` más abajo), prueba la conexión,
 lista las tablas y trae una tabla (o el resultado de una consulta) al mismo
@@ -71,6 +73,8 @@ ENGINES: dict[str, dict] = {
                "port": None, "pip": None},
     "synapse": {"label": "Azure Synapse (SQL pool)", "driver": "mssql+pyodbc",
                "port": 1433, "pip": "pyodbc"},
+    "fabric": {"label": "Microsoft Fabric (Lakehouse / Warehouse)",
+               "driver": "mssql+pyodbc", "port": 1433, "pip": "pyodbc"},
     "snowflake": {"label": "Snowflake", "driver": "snowflake",
                  "port": None, "pip": "snowflake-sqlalchemy"},
     "bigquery": {"label": "Google BigQuery", "driver": "bigquery",
@@ -81,7 +85,13 @@ ENGINES: dict[str, dict] = {
 
 # motores cuya conexión no sigue el modelo host+puerto+usuario+contraseña —
 # usan ``profile["extra"]`` (dict) para sus parámetros propios.
-CLOUD_ENGINES = ("snowflake", "bigquery", "databricks")
+#
+# Fabric entra acá aunque hable TDS como SQL Server: el puerto es fijo (1433,
+# no se elige) y el MODO DE AUTENTICACIÓN es un parámetro más, porque Fabric
+# no acepta usuario+contraseña de SQL. Al estar en esta lista, el formulario
+# de Mis datos ya muestra host + base + usuario + secreto + el JSON de
+# ``extra`` — que es exactamente lo que Fabric pide — sin tocar la UI.
+CLOUD_ENGINES = ("snowflake", "bigquery", "databricks", "fabric")
 
 # ejemplo de "extra" por motor cloud, para mostrar como placeholder en la UI
 # y en la documentación — no son valores reales.
@@ -93,6 +103,7 @@ EXTRA_EXAMPLE: dict[str, dict] = {
     "databricks": {"server_hostname": "adb-1234567890.azuredatabricks.net",
                    "http_path": "/sql/1.0/warehouses/abc123", "catalog": "main",
                    "schema": "default"},
+    "fabric": {"auth": "service_principal", "tenant_id": "00000000-0000-0000-0000-000000000000"},
 }
 
 # Tope POR DEFECTO al traer una tabla, no un techo: se puede pedir más, y
@@ -280,6 +291,104 @@ def secret_backend_label(profile: dict) -> str:
     return profile.get("secret_backend") or "obfuscated"
 
 
+# ----------------------------------------------------------- Microsoft Fabric
+# Fabric (Lakehouse SQL analytics endpoint y Warehouse) habla el MISMO
+# protocolo que SQL Server —TDS sobre el puerto 1433— pero con una diferencia
+# que rompe todo si se la ignora:
+#
+#   FABRIC NO ACEPTA AUTENTICACIÓN SQL. Ni usuario+contraseña de base, ni
+#   nada que no sea Microsoft Entra ID.
+#
+# Textual de la documentación ("Considerations and limitations"): «SQL
+# Authentication isn't supported». Por eso este motor va aparte de
+# "sqlserver" en vez de reusarlo: alguien que cargue el host de Fabric como
+# si fuera SQL Server carga usuario y contraseña, y recibe un error de login
+# que no dice en ningún lado que el problema es el MODO de autenticación.
+# Acá se elige el modo explícitamente y, si falta, se explica por qué.
+#
+# Los tres modos y el nombre EXACTO que espera el driver salen de la tabla
+# de "Microsoft Entra Authentication in Fabric Data Warehouse" (ODBC):
+#   DRIVER={ODBC Driver 18 for SQL Server};SERVER=<conn string>;
+#   DATABASE=<DBName>;UID=<Client_ID@domain>;PWD=<Secret>;
+#   Authentication=ActiveDirectoryServicePrincipal
+#
+# Verificado contra Microsoft Learn el 2026-09-15 (docs actualizadas el
+# 2026-09-09) — mismo criterio de honestidad que Purview/Collibra/Tableau:
+# está implementado según la documentación oficial, NO probado en vivo
+# contra un tenant real de Fabric (no hay uno en este entorno). Antes de
+# confiar en él, usá "Probar conexión" contra el tenant del cliente.
+_FABRIC_AUTH = {
+    "service_principal": "ActiveDirectoryServicePrincipal",
+    "interactive": "ActiveDirectoryInteractive",
+    "password": "ActiveDirectoryPassword",
+}
+# "Only ODBC 18 or higher versions are supported" — los modos de Entra ID
+# de arriba no existen en el Driver 17.
+FABRIC_ODBC_DRIVER = "ODBC Driver 18 for SQL Server"
+FABRIC_HOST_SUFFIX = "datawarehouse.fabric.microsoft.com"
+FABRIC_PORT = 1433
+
+
+def _fabric_host(host: str) -> str:
+    """El "SQL connection string" que da el portal de Fabric, normalizado.
+
+    El portal lo da pelado (``<guid>.datawarehouse.fabric.microsoft.com``),
+    pero se copia y pega también desde SSMS o desde un ejemplo de la doc,
+    donde aparece como ``tcp:<host>,1433``. Las dos formas describen el
+    mismo servidor; sin limpiarlas, el driver intenta resolver un host que
+    incluye el prefijo y devuelve un error de red que no se parece en nada
+    a "pegaste el puerto adentro del nombre"."""
+    limpio = (host or "").strip()
+    if limpio.lower().startswith("tcp:"):
+        limpio = limpio[4:]
+    if "," in limpio:                      # "host,1433" -> "host"
+        limpio = limpio.split(",", 1)[0]
+    return limpio.strip().rstrip("/")
+
+
+def _fabric_url(profile: dict, pwd: str | None, extra: dict):
+    from sqlalchemy.engine import URL
+
+    modo = str(extra.get("auth") or "").strip().lower()
+    if not modo:
+        # Sin modo elegido se deduce del dato que haya: con secreto cargado,
+        # lo normal es un service principal (automatización); sin secreto,
+        # solo puede ser interactivo (el navegador pide las credenciales).
+        modo = "service_principal" if pwd else "interactive"
+    if modo not in _FABRIC_AUTH:
+        raise ValueError(
+            "Modo de autenticación no válido para Microsoft Fabric: "
+            f"{modo!r}. Fabric NO acepta autenticación SQL (usuario y "
+            "contraseña de base de datos): solo Microsoft Entra ID. Poné "
+            f'"auth" en uno de {sorted(_FABRIC_AUTH)} dentro de los '
+            "parámetros extra de la conexión.")
+
+    host = _fabric_host(profile.get("host", ""))
+    query = {
+        "driver": FABRIC_ODBC_DRIVER,
+        "Authentication": _FABRIC_AUTH[modo],
+        "Encrypt": "yes",
+        "TrustServerCertificate": "no",
+    }
+    # El modo interactivo abre el diálogo de Entra (con MFA si el tenant lo
+    # exige): mandar una contraseña ahí no aporta nada y deja un secreto
+    # viajando de más.
+    secreto = None if modo == "interactive" else (pwd or None)
+    return URL.create(
+        "mssql+pyodbc",
+        username=profile.get("user") or None,
+        password=secreto,
+        host=host or None,
+        port=FABRIC_PORT,
+        # El nombre del item (warehouse o lakehouse) es el "Initial Catalog".
+        # Sin él, Fabric conecta a `master`, donde no están las tablas del
+        # cliente y no se puede crear nada — se ve como "conectó pero no hay
+        # datos", que es peor que un error.
+        database=profile.get("database") or None,
+        query=query,
+    )
+
+
 # -------------------------------------------------------------------- URL
 def build_url(profile: dict, password: str | None = None):
     """Arma la URL SQLAlchemy. Para SQLite, ``database`` es la ruta al archivo.
@@ -325,6 +434,9 @@ def build_url(profile: dict, password: str | None = None):
                           host=extra.get("server_hostname") or profile.get("host") or None,
                           query=query)
 
+    if engine_key == "fabric":
+        return _fabric_url(profile, pwd, extra)
+
     return URL.create(
         eng["driver"],
         username=profile.get("user") or None,
@@ -348,6 +460,7 @@ _CONNECT_ARGS_POR_MOTOR = {
     "mysql": {"connect_timeout": _TIMEOUT_SEGUNDOS},         # pymysql
     "sqlserver": {"timeout": _TIMEOUT_SEGUNDOS},             # pyodbc (login timeout)
     "synapse": {"timeout": _TIMEOUT_SEGUNDOS},               # mismo driver que sqlserver
+    "fabric": {"timeout": _TIMEOUT_SEGUNDOS},                # pyodbc, igual que sqlserver
     "oracle": {"tcp_connect_timeout": _TIMEOUT_SEGUNDOS},    # python-oracledb
     # sqlite: sin red, no aplica. snowflake/bigquery/databricks: SDKs
     # propios con su propia autenticación -- forzar connect_args acá

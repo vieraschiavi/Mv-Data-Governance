@@ -97,6 +97,7 @@ Nada de esto hace falta para vender: el programa anda sin configurar nada.
 | `MVDG_SERVER_LICENSE_TOKEN` | Vacío. Solo aplica en modo servidor (`mvdg.server`): si se define con una licencia firmada y **atada al id de ESE servidor** (`packaging/licencias.py firmar --plan owner --maquina <id>`), se activa antes de abrir el dashboard — nadie pega nada en la pestaña Licencia. Pensado para el propio dueño desplegando en un servidor que no es su máquina (p. ej. la VM de un cliente que no deja instalar ni un .exe/.bat). Un token que no verifica no activa nada; el servidor sigue en el plan que ya tuviera. |
 | `MVDG_LICENCIAS_URL` | El emisor embebido en `mvdg/licensing.py` |
 | `MVDG_AI_PROVIDER` / `MVDG_AI_BASE_URL` | IA externa apagada. **La API key de IA no es una variable de entorno**: se guarda en el keyring del sistema operativo desde la pestaña Ayuda, con la cuenta del propio cliente. |
+| `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_ENDPOINT` / `MVDG_AI_MODEL_AZURE` | Vacías. Las tres juntas habilitan **Azure OpenAI** como proveedor de IA — el camino de una empresa que ya tiene su propio recurso en Azure y no quiere que el prompt salga de su tenant. Hacen falta las tres: sin recurso no hay a dónde ir y sin *deployment* no hay URL, así que con una sola cargada el proveedor queda **no configurado** en vez de fallar en cada llamada. Opcional `AZURE_OPENAI_API_VERSION` (por defecto `2024-10-21`). Ver [`FABRIC.md`](FABRIC.md). |
 
 ### 3.1 Modo servidor: un servidor por cliente, nunca dos clientes en el mismo
 

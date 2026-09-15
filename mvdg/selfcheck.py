@@ -121,19 +121,24 @@ def _check_09():
 def _check_10():
     from .connectors import CLOUD_ENGINES, ENGINES, build_url, test_connection
     assert {"postgresql", "mysql", "sqlserver", "oracle", "sqlite",
-           "synapse", "snowflake", "bigquery", "databricks"} <= set(ENGINES)
+           "synapse", "snowflake", "bigquery", "databricks", "fabric"} <= set(ENGINES)
     ok, _msg = test_connection({"engine": "sqlite", "database": ":memory:"})
     assert ok
-    # build_url() de los 3 motores cloud: lógica pura, sin conexión real
-    # (no probado contra una cuenta real de Snowflake/BigQuery/Databricks
-    # en este entorno — ver docs/CLOUD_CONNECTORS.md)
+    # build_url() de los motores cloud: lógica pura, sin conexión real
+    # (no probado contra una cuenta real de Snowflake/BigQuery/Databricks/
+    # Fabric en este entorno — ver docs/CLOUD_CONNECTORS.md y docs/FABRIC.md)
+    #
+    # Se compara contra el DRIVER de cada motor y no contra su nombre: para
+    # tres de ellos coinciden, pero Fabric habla el dialecto de SQL Server
+    # (mssql+pyodbc) porque su endpoint es TDS. Comparar contra el nombre
+    # daba por roto un conector que está bien.
     for eng in CLOUD_ENGINES:
-        url = str(build_url({"engine": eng, "extra": {
+        url = str(build_url({"engine": eng, "host": "h", "extra": {
             "account": "acc", "warehouse": "wh", "role": "r", "schema": "s",
             "project": "p", "dataset": "d", "server_hostname": "h", "http_path": "/x",
             "catalog": "c",
         }, "database": "db", "user": "u"}, password="pw"))
-        assert url.startswith(eng if eng != "bigquery" else "bigquery")
+        assert url.startswith(ENGINES[eng]["driver"]), eng
     return f"{len(ENGINES)} motores ({len(CLOUD_ENGINES)} cloud DW/lake), SQLite verificado"
 
 @check("Proyecto por cliente (etapas persistentes + export/import ZIP)")

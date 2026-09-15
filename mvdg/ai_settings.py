@@ -86,6 +86,20 @@ PROVEEDORES = {
         "listado": "openai",          # xAI expone la API con forma de OpenAI
         "default": "grok-2-latest",
     },
+    "azure": {
+        "etiqueta": "Azure OpenAI (Microsoft)",
+        "env_key": "AZURE_OPENAI_API_KEY",
+        # El recurso sale de AZURE_OPENAI_ENDPOINT (ver ai_provider): no se
+        # guarda acá para no tener el mismo dato en dos lugares.
+        "base": "",
+        # Sin listado en vivo a propósito: en Azure lo que se elige no es un
+        # modelo del catálogo sino un DEPLOYMENT, cuyo nombre lo pone quien
+        # lo crea. No hay una lista que pedir con esta key, y salir a
+        # buscarla a una URL no verificada sería una llamada que falla en la
+        # red del cliente. El nombre lo escribe quien administra el recurso.
+        "listado": "azure",
+        "default": "",
+    },
     "compatible": {
         "etiqueta": "Otro (compatible con OpenAI)",
         "env_key": "MVDG_AI_API_KEY",
@@ -229,6 +243,8 @@ def listar_modelos(proveedor: str) -> list[str]:
     key = leer_key(proveedor)
     if not cfg or not key:
         return []
+    if cfg["listado"] == "azure":
+        return []                   # no hay catálogo que pedir (ver PROVEEDORES)
     base = base_url(proveedor)
     if not base:
         return []
