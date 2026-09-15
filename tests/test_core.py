@@ -1001,8 +1001,8 @@ def test_streamlit_acepta_archivos_grandes():
 # ------------------------------------------------- conectores Cloud DW/Lake
 def test_connectors_cloud_engines_registered():
     from mvdg import connectors as C
-    assert {"synapse", "snowflake", "bigquery", "databricks"} <= set(C.ENGINES)
-    assert set(C.CLOUD_ENGINES) == {"snowflake", "bigquery", "databricks"}
+    assert {"synapse", "snowflake", "bigquery", "databricks", "fabric"} <= set(C.ENGINES)
+    assert set(C.CLOUD_ENGINES) == {"snowflake", "bigquery", "databricks", "fabric"}
     for eng in C.CLOUD_ENGINES:
         assert eng in C.EXTRA_EXAMPLE and C.ENGINES[eng]["pip"]
 
@@ -1050,6 +1050,95 @@ def test_connectors_synapse_reuses_mssql_driver():
     url = str(C.build_url(profile, password="pw"))
     assert url.startswith("mssql+pyodbc://admin:")
     assert "myws.sql.azuresynapse.net:1433/mydb" in url
+
+
+def test_connectors_fabric_url_usa_entra_id_y_odbc_18():
+    """Microsoft Fabric es la arquitectura de datos del cliente que lo pidió,
+    así que el conector tiene que salir igual al string que documenta
+    Microsoft, no "parecido":
+
+        DRIVER={ODBC Driver 18 for SQL Server};SERVER=<conn string>;
+        DATABASE=<DBName>;UID=<Client_ID@domain>;PWD=<Secret>;
+        Authentication=ActiveDirectoryServicePrincipal
+
+    Los tres puntos que, si se equivocan, dan un error que no se entiende:
+    el Driver 18 (los modos de Entra ID no existen en el 17), el puerto
+    1433 fijo, y el nombre del item como Initial Catalog — sin eso Fabric
+    conecta a `master`, donde no está ninguna tabla del cliente."""
+    from mvdg import connectors as C
+
+    perfil = {"engine": "fabric", "user": "cliente-id",
+              "host": "abc123.datawarehouse.fabric.microsoft.com",
+              "database": "AdiumWarehouse",
+              "extra": {"auth": "service_principal"}}
+    url = C.build_url(perfil, password="SECRETO")
+    assert str(url).startswith("mssql+pyodbc://cliente-id:")
+    assert url.host == "abc123.datawarehouse.fabric.microsoft.com"
+    assert url.port == 1433
+    assert url.database == "AdiumWarehouse"
+    q = dict(url.query)
+    assert q["driver"] == "ODBC Driver 18 for SQL Server"
+    assert q["Authentication"] == "ActiveDirectoryServicePrincipal"
+    assert q["Encrypt"] == "yes"
+
+    # Interactivo: el usuario es un mail y NO viaja contraseña (la pide el
+    # diálogo de Entra, con MFA si el tenant lo exige). El @ tiene que
+    # sobrevivir el ida y vuelta por la URL: el driver espera UID con @.
+    inter = C.build_url({**perfil, "user": "persona@empresa.com",
+                         "extra": {"auth": "interactive"}}, password="no-va")
+    assert inter.username == "persona@empresa.com"
+    assert inter.password is None
+    assert dict(inter.query)["Authentication"] == "ActiveDirectoryInteractive"
+
+
+def test_connectors_fabric_rechaza_auth_sql_explicando_por_que():
+    """«SQL Authentication isn't supported» — documentación de Fabric.
+
+    Quien viene de SQL Server carga usuario y contraseña y espera que
+    funcione. Si el programa lo deja pasar en silencio, el cliente recibe
+    un error de login del driver que no menciona en ningún lado que el
+    problema es el MODO de autenticación, y el diagnóstico se lo come el
+    consultor. Acá se corta antes, diciendo qué hacer."""
+    from mvdg import connectors as C
+
+    perfil = {"engine": "fabric", "user": "sa", "database": "W",
+              "host": "abc.datawarehouse.fabric.microsoft.com",
+              "extra": {"auth": "sql"}}
+    with pytest.raises(ValueError) as exc:
+        C.build_url(perfil, password="pw")
+    mensaje = str(exc.value)
+    assert "Entra" in mensaje, "el error no dice cuál es la alternativa válida"
+    assert "service_principal" in mensaje, "el error no dice qué poner"
+
+
+def test_connectors_fabric_normaliza_el_host_pegado_desde_ssms():
+    """El portal de Fabric da el host pelado, pero el mismo servidor se
+    copia también como `tcp:<host>,1433` (SSMS, ejemplos de la doc). Sin
+    limpiarlo, el driver busca un host que incluye el prefijo y devuelve un
+    error de red que no se parece a "está mal pegado"."""
+    from mvdg import connectors as C
+
+    for pegado in ("tcp:abc.datawarehouse.fabric.microsoft.com,1433",
+                   "abc.datawarehouse.fabric.microsoft.com,1433",
+                   "  abc.datawarehouse.fabric.microsoft.com  "):
+        url = C.build_url({"engine": "fabric", "host": pegado, "database": "W",
+                           "user": "u", "extra": {}}, password="s")
+        assert url.host == "abc.datawarehouse.fabric.microsoft.com", pegado
+        assert url.port == 1433
+
+
+def test_connectors_fabric_sin_driver_avisa_en_vez_de_explotar(tmp_path, monkeypatch):
+    """En una PC sin el ODBC Driver 18 (el caso del día 1 en cualquier
+    empresa) "Probar conexión" tiene que decir qué falta, no tirar un
+    traceback: es el primer contacto del cliente con el conector."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from mvdg import connectors as C
+
+    ok, msg = C.test_connection({"engine": "fabric", "user": "u", "password": "p",
+                                 "host": "abc.datawarehouse.fabric.microsoft.com",
+                                 "database": "W", "extra": {"auth": "service_principal"}})
+    assert ok is False
+    assert "pyodbc" in msg or "driver" in msg.lower()
 
 
 def test_connectors_save_connection_persists_extra(tmp_path, monkeypatch):
@@ -1641,6 +1730,107 @@ def test_ai_provider_prompt_never_includes_raw_data():
                               "Payment Method completo", 3178, "es")
     assert "cafe_sales_kaggle" in prompt and "Payment Method" in prompt and "3178" in prompt
     assert "root_cause" in prompt  # pide el JSON con esas claves
+
+
+def _sin_keys_de_ia(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
+                "XAI_API_KEY", "MVDG_AI_API_KEY", "MVDG_AI_PROVIDER",
+                "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT",
+                "AZURE_OPENAI_API_VERSION", "MVDG_AI_MODEL_AZURE",
+                "MVDG_AI_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_ai_provider_azure_manda_la_key_en_el_header_que_espera_azure(monkeypatch):
+    """Azure OpenAI es la puerta por la que una empresa grande usa GPT sin
+    que el dato salga de su tenant, y este archivo AFIRMABA cubrirlo por el
+    proveedor "compatible". No lo cubría, por dos motivos que dan 401 y 404:
+
+      · la key va en el header `api-key` — `Authorization: Bearer` en Azure
+        es para tokens de Entra ID, no para una API key;
+      · la URL lleva el DEPLOYMENT y un `api-version` obligatorio, no es
+        `{base}/chat/completions`.
+
+    Un conector que dice estar y no está es peor que no estar: el cliente
+    configura, prueba, falla, y no hay nada en pantalla que explique por qué.
+    """
+    from mvdg import ai_provider as ap
+    _sin_keys_de_ia(monkeypatch)
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "clave-del-recurso")
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://empresa-ia.openai.azure.com/")
+    monkeypatch.setenv("MVDG_AI_MODEL_AZURE", "gpt-4o-corporativo")
+
+    assert ap.configured_provider() == "azure"
+
+    visto = {}
+
+    def falso_post(url, headers, body):
+        visto.update(url=url, headers=headers, body=body)
+        return {"choices": [{"message": {"content": '{"causa":"x","accion":"y"}'}}]}
+
+    monkeypatch.setattr(ap, "_post_json", falso_post)
+    ap._CALLERS["azure"]("un prompt", "clave-del-recurso", "gpt-4o-corporativo")
+
+    assert visto["url"] == ("https://empresa-ia.openai.azure.com/openai/deployments/"
+                            "gpt-4o-corporativo/chat/completions?api-version=2024-10-21")
+    assert visto["headers"]["api-key"] == "clave-del-recurso"
+    assert "Authorization" not in visto["headers"], (
+        "Azure rechaza la API key mandada como Bearer")
+    # el deployment va en la URL, no en el cuerpo
+    assert "model" not in visto["body"]
+
+
+def test_ai_provider_azure_falla_cerrado_sin_recurso_ni_deployment(monkeypatch):
+    """Una key suelta no alcanza: sin recurso no hay a dónde ir y sin
+    deployment no hay URL. Darlo por configurado pondría en la interfaz una
+    opción que siempre falla — mismo criterio que "compatible"."""
+    from mvdg import ai_provider as ap
+    _sin_keys_de_ia(monkeypatch)
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "clave")
+    assert ap.configured_provider() is None, "sin endpoint ni deployment"
+
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x.openai.azure.com")
+    assert ap.configured_provider() is None, "todavía falta el deployment"
+
+    monkeypatch.setenv("MVDG_AI_MODEL_AZURE", "mi-deployment")
+    assert ap.configured_provider() == "azure"
+
+
+def test_ai_provider_azure_respeta_la_api_version_del_cliente(monkeypatch):
+    """Cada recurso de Azure puede estar fijado a otra api-version, y el
+    número lo sabe el área que administra el recurso, no este programa."""
+    from mvdg import ai_provider as ap
+    _sin_keys_de_ia(monkeypatch)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+    assert ap.azure_url("dep").endswith("?api-version=2025-01-01-preview")
+
+
+def test_ai_provider_compatible_usa_la_base_cargada_desde_la_interfaz(
+        tmp_path, monkeypatch):
+    """Agujero silencioso: `_disponible` preguntaba la URL base a
+    ai_settings (entorno -> ajustes guardados) pero la llamada la leía de
+    os.environ. Una base cargada DESDE LA INTERFAZ daba "proveedor
+    configurado" y después armaba "/chat/completions" sin base: la pantalla
+    decía que la IA estaba lista y cada llamada fallaba."""
+    from mvdg import ai_provider as ap
+    from mvdg import ai_settings
+    _sin_keys_de_ia(monkeypatch)
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MVDG_AI_API_KEY", "k")
+    # guardada por la interfaz, NO por variable de entorno
+    ai_settings.guardar_base_url("https://gateway.empresa.com/v1")
+    assert ap.configured_provider() == "compatible"
+
+    visto = {}
+
+    def falso_post(url, headers, body):
+        visto["url"] = url
+        return {"choices": [{"message": {"content": "{}"}}]}
+
+    monkeypatch.setattr(ap, "_post_json", falso_post)
+    ap._CALLERS["compatible"]("p", "k", "m")
+    assert visto["url"] == "https://gateway.empresa.com/v1/chat/completions"
 
 
 def test_ai_provider_label_and_copilot_not_offered():
@@ -4043,7 +4233,7 @@ def test_landing_viewport_favicon_y_lang(archivo):
 def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
     """La landing tiene que nombrar las integraciones reales -- no
     "conectate a tus fuentes de datos" generico -- Y el numero que declara
-    (9 motores) tiene que coincidir con lo que el codigo soporta de verdad,
+    (10 motores) tiene que coincidir con lo que el codigo soporta de verdad,
     para que agregar/sacar un conector sin actualizar la landing rompa esto
     en vez de quedar mintiendo en silencio."""
     from mvdg.connectors import ENGINES
@@ -4052,8 +4242,8 @@ def test_landing_menciona_integraciones_concretas_no_lenguaje_generico():
     for nombre in ("Power BI", "Tableau", "Purview", "Collibra"):
         assert nombre in html, f"falta mencionar {nombre} por su nombre"
     # el numero de motores que la landing declara tiene que ser el real
-    assert len(ENGINES) == 9, "cambio la cantidad de motores: actualizar la landing"
-    assert "9 motores" in html
+    assert len(ENGINES) == 10, "cambio la cantidad de motores: actualizar la landing"
+    assert "10 motores" in html
     # no se inventan capacidades que el codigo no tiene (ERPs, "en todos los
     # paises", etc.) -- ausencia deliberada, no un genericazo disfrazado
     assert "SAP" not in html and "Dynamics 365" not in html and "NetSuite" not in html
@@ -7895,6 +8085,52 @@ def test_governance_tables_suma_lo_del_usuario_sin_pisar_lo_demas():
     assert "clientes_crm" in set(con["catalog"]["dataset"])
 
 
+def test_governance_tables_solo_usuario_no_mezcla_la_demo():
+    """El gobierno que se deja corriendo en la casa del cliente (p. ej.
+    escrito a un Lakehouse de Fabric) no puede llevar los datasets
+    sintéticos de la demo adentro: nadie quiere "ventas_demo" al lado de
+    sus tablas reales en un Power BI de producción, y un índice de calidad
+    calculado sobre defectos inyectados a propósito NO es su calidad.
+
+    Lo que no cambia es el esquema: las mismas 9 tablas con las mismas
+    columnas, para que un tablero armado contra un modo siga funcionando
+    contra el otro."""
+    from mvdg.exporters import governance_tables
+    ud = {"clientes_crm": _df_usuario()}
+    solo = governance_tables("es", user_datasets=ud, solo_usuario=True)
+    mixto = governance_tables("es", user_datasets=ud)
+
+    assert set(solo) == set(mixto), "cambió el juego de tablas"
+    for tabla in solo:
+        assert list(solo[tabla].columns) == list(mixto[tabla].columns), (
+            f"{tabla} cambió de columnas entre modos")
+
+    # el universo es exclusivamente del cliente
+    assert set(solo["catalog"]["dataset"]) == {"clientes_crm"}
+    assert set(solo["quality_results"]["dataset"]) == {"clientes_crm"}
+    assert len(solo["quality_results"]) < len(mixto["quality_results"])
+    # el linaje llega al BI del cliente y no arrastra los nodos de la demo
+    assert set(solo["lineage"]["target"]) >= {"clientes_crm"}
+    assert "mart_ventas_360" not in set(solo["lineage"]["target"])
+    # glosario vacío pero CON columnas: los términos de la demo son
+    # inventados y un glosario de negocio solo lo escribe la organización.
+    assert solo["glossary"].empty
+    assert list(solo["glossary"].columns) == list(mixto["glossary"].columns)
+    # los KPIs se calculan sobre las reglas del cliente, no sobre 0 filas
+    kpis = dict(zip(solo["kpis"]["kpi"], solo["kpis"]["value"], strict=True))
+    assert kpis["rules_total"] == len(solo["quality_results"]) > 0
+
+
+def test_governance_tables_solo_usuario_sin_datos_falla_claro():
+    """Sin datasets, este modo no puede caer en silencio al universo de la
+    demo: eso es exactamente lo que evita. Mejor un error que diga qué
+    falta que un Lakehouse de cliente lleno de datos sintéticos."""
+    from mvdg.exporters import governance_tables
+    for vacio in ({}, None, {"tabla": pd.DataFrame()}):
+        with pytest.raises(ValueError, match="solo_usuario"):
+            governance_tables("es", user_datasets=vacio, solo_usuario=True)
+
+
 def test_governance_tables_sin_usuario_no_cambia():
     """Compatibilidad: la API y los tests existentes no pueden ver ninguna
     diferencia si nadie cargó nada."""
@@ -11012,3 +11248,151 @@ def test_la_landing_describe_los_modulos_nuevos_en_los_tres_idiomas():
         assert len(traducciones) == 2, (
             f"{clave} tiene {len(traducciones)} traducciones y necesita 2 "
             f"(inglés y portugués): el español sale del propio HTML")
+
+
+# ============================================================================
+# mvdg/fabric.py — el gobierno corriendo DENTRO de un notebook de Fabric
+# ============================================================================
+# Fabric no se puede probar en vivo desde acá (haría falta un tenant), pero
+# la forma en que este módulo lo usa sí: se le pasa una sesión de Spark
+# falsa que registra qué se le pidió. Eso cubre lo que de verdad se puede
+# romper del lado del programa — qué API se llama, con qué nombres, y qué
+# se escribe — sin fingir que se probó contra Microsoft.
+
+class _SparkFalso:
+    """Lo mínimo de la API de Spark que usa mvdg/fabric.py, registrando todo."""
+
+    class _Tabla:
+        def __init__(self, pdf):
+            self._pdf, self.limite = pdf, None
+
+        def limit(self, n):
+            self.limite = n
+            return _SparkFalso._Tabla(self._pdf.head(n))
+
+        def toPandas(self):                      # noqa: N802 - API de Spark
+            return self._pdf.copy()
+
+    class _Escritor:
+        def __init__(self, padre, pdf):
+            self._padre, self._pdf, self._modo = padre, pdf, None
+
+        def mode(self, modo):
+            self._modo = modo
+            return self
+
+        def saveAsTable(self, nombre):           # noqa: N802 - API de Spark
+            self._padre.guardadas[nombre] = (self._pdf, self._modo)
+
+    class _Df:
+        def __init__(self, padre, pdf):
+            self.write = _SparkFalso._Escritor(padre, pdf)
+
+    class _Catalogo:
+        def __init__(self, nombres):
+            self._nombres = nombres
+
+        def listTables(self):                    # noqa: N802 - API de Spark
+            return [type("T", (), {"name": n})() for n in self._nombres]
+
+    def __init__(self, tablas):
+        self._tablas = tablas
+        self.guardadas = {}
+        self.catalog = _SparkFalso._Catalogo(list(tablas))
+        self.read = self
+
+    def table(self, nombre):
+        return _SparkFalso._Tabla(self._tablas[nombre])
+
+    def createDataFrame(self, pdf):              # noqa: N802 - API de Spark
+        return _SparkFalso._Df(self, pdf)
+
+
+def _lakehouse_falso():
+    return _SparkFalso({
+        "FactVentas": pd.DataFrame({
+            "id_cliente": [1, 2, 3, None],
+            "email": ["a@adium.com", "b@adium.com", None, "d@adium.com"],
+            "monto": [10.5, 20.0, 30.0, 10.5]}),
+        "DimCliente": pd.DataFrame({
+            "id_cliente": [1, 2, 3],
+            "pais": ["UY", "AR", "BR"]}),
+    })
+
+
+def test_fabric_gobierna_el_lakehouse_y_escribe_las_tablas_de_vuelta():
+    """El caso completo de una celda de notebook: leer el Lakehouse,
+    gobernarlo y dejar las 9 tablas como tablas del Lakehouse (Delta), que
+    es lo que Power BI lee nativo sin exportar nada."""
+    from mvdg import fabric
+
+    spark = _lakehouse_falso()
+    r = fabric.gobernar_lakehouse(spark=spark)
+
+    assert r["tablas_leidas"] == {"FactVentas": 4, "DimCliente": 3}
+    assert r["formato"] == "delta"
+    # las 9 tablas de gobierno, con prefijo para no mezclarse con las del negocio
+    assert len(r["escritas"]) == 9
+    assert set(r["escritas"]) == {f"gobierno_{t}" for t in r["gobierno"]}
+    assert "gobierno_quality_results" in spark.guardadas
+    assert spark.guardadas["gobierno_catalog"][1] == "overwrite"
+
+    # Y lo que se escribió es el gobierno del CLIENTE: sus dos tablas, sin
+    # un solo dataset de la demo.
+    catalogo = spark.guardadas["gobierno_catalog"][0]
+    assert set(catalogo["dataset"]) == {"FactVentas", "DimCliente"}
+
+
+def test_fabric_no_escribe_si_no_se_lo_piden():
+    """Antes de dejar algo publicado en el Lakehouse de una empresa, poder
+    mirarlo. `escribir=False` no toca nada."""
+    from mvdg import fabric
+
+    spark = _lakehouse_falso()
+    r = fabric.gobernar_lakehouse(spark=spark, escribir=False)
+    assert r["escritas"] == []
+    assert spark.guardadas == {}
+    assert len(r["gobierno"]) == 9
+
+
+def test_fabric_avisa_cuando_muestrea_en_vez_de_mentir():
+    """Una tabla de Fabric puede no entrar en memoria, así que hay tope de
+    filas. Pero un perfil calculado sobre una parte, presentado como el
+    total, es un dato equivocado con cara de dato bueno: el resultado tiene
+    que decir qué se cortó y en cuánto."""
+    from mvdg import fabric
+
+    spark = _lakehouse_falso()
+    r = fabric.gobernar_lakehouse(spark=spark, muestra=2, escribir=False)
+    assert r["muestreadas"] == {"FactVentas": 2, "DimCliente": 2}
+    assert r["tablas_leidas"] == {"FactVentas": 2, "DimCliente": 2}
+
+    # sin tope, nada figura como muestreado
+    completo = fabric.gobernar_lakehouse(spark=spark, muestra=0, escribir=False)
+    assert completo["muestreadas"] == {}
+    assert completo["tablas_leidas"] == {"FactVentas": 4, "DimCliente": 3}
+
+
+def test_fabric_se_importa_y_falla_claro_sin_spark():
+    """El motor se importa sin Spark instalado (regla de la casa) y, si
+    alguien llama a esto fuera de un notebook, el error dice qué hacer en
+    vez de tirar un ImportError de pyspark."""
+    from mvdg import fabric
+
+    assert fabric.sesion_spark() is None
+    with pytest.raises(RuntimeError) as exc:
+        fabric.gobernar_lakehouse()
+    assert "notebook" in str(exc.value).lower()
+
+
+def test_fabric_lakehouse_vacio_no_escribe_gobierno_de_la_nada():
+    """Un notebook sin Lakehouse por defecto asignado lee cero tablas. Si
+    eso siguiera de largo, escribiría tablas de gobierno vacías encima de
+    las buenas — con modo overwrite, borrando el gobierno anterior."""
+    from mvdg import fabric
+
+    spark = _SparkFalso({"Vacia": pd.DataFrame({"a": []})})
+    with pytest.raises(RuntimeError) as exc:
+        fabric.gobernar_lakehouse(spark=spark)
+    assert "Lakehouse" in str(exc.value)
+    assert spark.guardadas == {}

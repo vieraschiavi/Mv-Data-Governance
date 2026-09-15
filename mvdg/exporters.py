@@ -15,6 +15,7 @@ import pandas as pd
 
 from .catalog import catalog_df, dictionary_df
 from .glossary import glossary_df
+from .lineage import NODES as _LINEAGE_NODES
 from .lineage import lineage_df
 from .policies import policies_df
 from .quality import (overall_index, quality_by_dataset,
@@ -29,7 +30,8 @@ def scope_lineage_df(grafo) -> pd.DataFrame:
 
 def governance_tables(lang: str = "es",
                       include_samples: bool = False,
-                      user_datasets: dict | None = None) -> dict[str, pd.DataFrame]:
+                      user_datasets: dict | None = None,
+                      solo_usuario: bool = False) -> dict[str, pd.DataFrame]:
     """Todas las tablas de gobierno, listas para exportar o servir por API.
 
     Con ``include_samples=True`` el universo es el combinado demo + casos de
@@ -41,12 +43,51 @@ def governance_tables(lang: str = "es",
     usuario. Es lo que hace que el Excel que subió termine en el bundle de
     Power BI y en la API, y no solo en la pestaña donde lo cargó — que era
     justamente el agujero: el cliente exportaba a BI y se llevaba la demo.
+
+    ``solo_usuario=True`` cambia el universo entero: SOLO ``user_datasets``,
+    cero filas de la demo. Existe para el gobierno que se deja corriendo
+    dentro de la casa del cliente (p. ej. escrito de vuelta a un Lakehouse
+    de Fabric, ver ``mvdg.fabric``). Ahí la demo no es una ayuda, es un
+    error: nadie quiere ver "ventas_demo" al lado de sus tablas reales en
+    un tablero de Power BI de producción, y un índice de calidad calculado
+    sobre defectos sintéticos inyectados a propósito no es su índice de
+    calidad. Mismo esquema de columnas en las 9 tablas — lo que cambia son
+    las filas.
+
+    El glosario queda VACÍO (con sus columnas) en ese modo: el glosario de
+    la demo son términos inventados para mostrar el producto, y un glosario
+    de negocio solo lo puede escribir la organización. Devolver el de la
+    demo sería meterle definiciones falsas a un activo de gobierno.
     """
     # El grafo de linaje se lleva aparte del DataFrame porque sumarle los
     # datasets del usuario se hace sobre NODOS y ARISTAS, no sobre la tabla
     # ya aplanada. Aplanarlo antes de tiempo hacía que el linaje del usuario
     # reemplazara al de los casos de ejemplo en vez de sumarse.
     grafo = None
+    if solo_usuario:
+        from . import scope
+        if not scope._items(user_datasets):
+            raise ValueError(
+                "solo_usuario=True necesita al menos un dataset con filas en "
+                "user_datasets: sin datos del cliente no hay nada que gobernar "
+                "y devolver la demo sería justamente lo que este modo evita.")
+        results = scope.user_results(user_datasets, lang)
+        catalog = scope.user_catalog(user_datasets, lang)
+        dictionary = scope.user_dictionary(user_datasets, lang)
+        # El grafo arranca sin los nodos de la demo, con UNA excepción: el
+        # nodo de BI, al que todo dataset del usuario apunta. No es de la
+        # demo (es genérico: "Dashboard BI (Power BI / Tableau / Looker…)")
+        # y sin él el linaje del cliente queda con aristas que apuntan a un
+        # nodo inexistente.
+        lineage = scope.lineage_to_df(
+            *scope.user_lineage(user_datasets, lang,
+                                nodes=[n for n in _LINEAGE_NODES
+                                       if n["id"] == "bi_dashboard"],
+                                edges=[]))
+        glossary = glossary_df(lang).iloc[0:0]
+        policies = policies_df(lang, results, catalog=catalog, dictionary=dictionary)
+        return _con_kpis(catalog, dictionary, results, lineage, glossary, policies)
+
     if include_samples:
         from . import scope
         results = scope.combined_results(lang)
@@ -80,6 +121,13 @@ def governance_tables(lang: str = "es",
     # dispararían ninguna política.
     policies = (policies_df(lang, results, catalog=catalog, dictionary=dictionary)
                 if (include_samples or user_datasets) else policies_df(lang, results))
+    return _con_kpis(catalog, dictionary, results, lineage, glossary, policies)
+
+
+def _con_kpis(catalog, dictionary, results, lineage, glossary, policies) -> dict:
+    """Las 9 tablas con los KPIs derivados. En una sola función para que los
+    dos universos (demo/combinado y solo-cliente) no puedan divergir en el
+    esquema: lo que cambia entre modos son las FILAS, nunca las columnas."""
     kpis = pd.DataFrame([{
         "kpi": "quality_index", "value": overall_index(results)},
         {"kpi": "rules_total", "value": len(results)},

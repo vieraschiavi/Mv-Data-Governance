@@ -6,7 +6,8 @@ MV Data Governance · IA externa opcional para las sugerencias de corrección.
 Por defecto, las sugerencias de "cómo corregir cada falla" (mvdg.remediation)
 son 100% locales y determinísticas — nada sale de la máquina. Este módulo
 agrega una capa OPCIONAL: si el usuario configura su propia API key —Claude,
-ChatGPT, Gemini, Grok, o cualquier servicio compatible con OpenAI— cada regla
+ChatGPT, Gemini, Grok, Azure OpenAI (el camino de una empresa que ya tiene su
+propio recurso en Azure), o cualquier servicio compatible con OpenAI— cada regla
 puede pedir además una sugerencia generada en vivo por ese modelo. Qué
 proveedor y qué MODELO se usan sale de mvdg/ai_settings.py.
 
@@ -45,13 +46,31 @@ _PROVIDERS = {
     "openai": ("OPENAI_API_KEY", "ChatGPT (OpenAI)", "gpt-4o-mini", "MVDG_AI_MODEL_OPENAI"),
     "gemini": ("GEMINI_API_KEY", "Gemini (Google)", "gemini-1.5-flash", "MVDG_AI_MODEL_GEMINI"),
     "grok": ("XAI_API_KEY", "Grok (xAI)", "grok-2-latest", "MVDG_AI_MODEL_GROK"),
+    # Azure OpenAI: la puerta por la que una empresa grande usa GPT sin que
+    # el dato salga de su tenant. Va SEPARADO de "compatible" aunque el
+    # cuerpo del pedido sea el mismo, porque las dos cosas que lo rodean no
+    # lo son (ver _call_azure): la key viaja en el header `api-key`, no como
+    # `Authorization: Bearer`, y la URL lleva el DEPLOYMENT y un
+    # `api-version` obligatorio. Mandarlo como si fuera OpenAI da 401 o 404,
+    # que es exactamente lo que pasaba cuando este archivo decía que Azure
+    # entraba por "compatible".
+    #
+    # "modelo", acá, es el nombre del DEPLOYMENT (lo elige quien lo crea en
+    # Azure, no tiene por qué llamarse como el modelo), así que no hay
+    # default posible: sin ese dato no hay URL a la cual pegarle.
+    "azure": ("AZURE_OPENAI_API_KEY", "Azure OpenAI (Microsoft)", "",
+              "MVDG_AI_MODEL_AZURE"),
     # Cualquier OTRO servicio que hable el formato de OpenAI
     # (/chat/completions). Es la respuesta a "que cada cliente use el agente
     # que quiera": escribir un conector por proveedor deja el producto siempre
     # atrás del que salió ayer. Con esto entran OpenRouter —que a su vez
     # enruta a Claude, GPT, Gemini, Llama y decenas más—, Groq, Mistral,
-    # DeepSeek, Together, Azure OpenAI y los locales tipo Ollama o LM Studio,
-    # sin tocar una línea de este archivo.
+    # DeepSeek, Together y los locales tipo Ollama o LM Studio, sin tocar una
+    # línea de este archivo.
+    #
+    # Azure OpenAI NO entra acá, aunque este comentario decía que sí: su
+    # key va en otro header y su URL lleva deployment y api-version. Tiene
+    # su propio proveedor abajo.
     #
     # Necesita DOS datos, no uno: la key y a dónde apuntar.
     "compatible": ("MVDG_AI_API_KEY", "Compatible con OpenAI", "gpt-4o-mini", "MVDG_AI_MODEL"),
@@ -59,11 +78,27 @@ _PROVIDERS = {
 # Orden de preferencia si hay más de una key cargada; MVDG_AI_PROVIDER fuerza
 # una. "compatible" va último: si alguien configuró la key oficial de su
 # proveedor, esa es la vía directa.
-_PRIORITY = ["claude", "openai", "gemini", "grok", "compatible"]
+_PRIORITY = ["claude", "openai", "azure", "gemini", "grok", "compatible"]
 
 # A dónde apunta el proveedor compatible. Sin esto no se puede usar: una key
 # suelta no dice contra qué servicio va.
 _BASE_URL_ENV = "MVDG_AI_BASE_URL"
+
+# Azure OpenAI necesita tres datos, no uno: key, recurso y deployment. Los
+# nombres de las dos variables son los que ya usa el SDK oficial de Azure,
+# así que en una empresa que ya tiene Azure OpenAI configurado no hay que
+# inventar ninguna.
+_AZURE_ENDPOINT_ENV = "AZURE_OPENAI_ENDPOINT"
+_AZURE_API_VERSION_ENV = "AZURE_OPENAI_API_VERSION"
+# GA documentada para chat completions. Se puede pisar por variable de
+# entorno porque cada recurso de Azure puede estar fijado a otra: el número
+# lo sabe el área que administra el recurso, no este programa.
+_AZURE_API_VERSION = "2024-10-21"
+
+
+def _azure_endpoint() -> str:
+    """El recurso de Azure OpenAI (``https://<recurso>.openai.azure.com``)."""
+    return os.environ.get(_AZURE_ENDPOINT_ENV, "").strip().rstrip("/")
 
 
 def _key_for(provider: str) -> str:
@@ -86,6 +121,11 @@ def _disponible(provider: str) -> bool:
     if provider == "compatible":
         from . import ai_settings
         return bool(ai_settings.base_url("compatible"))
+    if provider == "azure":
+        # Sin recurso no hay a dónde ir, y sin deployment no hay URL: dar
+        # por configurado algo así ofrecería en la interfaz una opción que
+        # siempre falla — el mismo criterio que "compatible".
+        return bool(_azure_endpoint() and _model_for("azure"))
     return True
 
 
@@ -224,13 +264,17 @@ def _openai_shape(prompt: str, api_key: str, model: str, base: str) -> str:
 def _call_compatible(prompt: str, api_key: str, model: str) -> str:
     """Cualquier servicio con la forma de OpenAI: /chat/completions.
 
-    La URL base se toma tal cual la puso el usuario, sacándole una barra final
-    y el /chat/completions si ya lo escribió — es el error de tipeo más común
-    al copiar la doc de un proveedor, y terminaría en un 404 que se ve como
-    "la IA no anda"."""
-    base = os.environ.get(_BASE_URL_ENV, "").strip().rstrip("/")
-    if base.endswith("/chat/completions"):
-        base = base[: -len("/chat/completions")]
+    La URL base sale de ``ai_settings``, que resuelve entorno -> ajustes
+    guardados y ya le saca la barra final y el /chat/completions si el
+    usuario lo pegó de la doc del proveedor.
+
+    Leerla de ``os.environ`` (como hacía antes) tenía un agujero silencioso:
+    ``_disponible`` la pide a ai_settings, así que una base cargada DESDE LA
+    INTERFAZ daba "proveedor configurado" y después armaba la URL sin base
+    — o sea "/chat/completions" a secas. La interfaz decía que la IA estaba
+    lista y cada llamada fallaba."""
+    from . import ai_settings
+    base = ai_settings.base_url("compatible")
     body = {"model": model, "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 400}
     headers = {"Authorization": f"Bearer {api_key}", "content-type": "application/json"}
@@ -238,9 +282,36 @@ def _call_compatible(prompt: str, api_key: str, model: str) -> str:
     return data["choices"][0]["message"]["content"]
 
 
+def azure_url(deployment: str) -> str:
+    """La URL de chat completions de un deployment de Azure OpenAI.
+
+    Forma documentada:
+        {endpoint}/openai/deployments/{deployment}/chat/completions?api-version=...
+
+    Pública para que el test la verifique sin salir a la red: es justo la
+    parte que estaba mal cuando se creía que Azure entraba por "compatible".
+    """
+    version = os.environ.get(_AZURE_API_VERSION_ENV, "").strip() or _AZURE_API_VERSION
+    return (f"{_azure_endpoint()}/openai/deployments/{deployment}"
+            f"/chat/completions?api-version={version}")
+
+
+def _call_azure(prompt: str, api_key: str, model: str) -> str:
+    """Azure OpenAI. Mismo cuerpo que OpenAI, distinto todo lo demás.
+
+    Dos diferencias que no son detalles: la key va en el header ``api-key``
+    (``Authorization: Bearer`` en Azure es para tokens de Entra ID, no para
+    una API key) y el modelo NO viaja en el cuerpo — es el deployment, y va
+    en la URL."""
+    body = {"messages": [{"role": "user", "content": prompt}], "max_tokens": 400}
+    headers = {"api-key": api_key, "content-type": "application/json"}
+    data = _post_json(azure_url(model), headers, body)
+    return data["choices"][0]["message"]["content"]
+
+
 _CALLERS = {"claude": _call_claude, "openai": _call_openai,
             "gemini": _call_gemini, "grok": _call_grok,
-            "compatible": _call_compatible}
+            "azure": _call_azure, "compatible": _call_compatible}
 
 
 def ai_suggest_fix(dataset: str, column: str, dimension: str, description: str,
