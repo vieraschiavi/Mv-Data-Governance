@@ -10,6 +10,8 @@ categorías inconsistentes y fechas viejas.
 """
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 import pandas as pd
 
@@ -109,11 +111,25 @@ def make_payments(n: int = 3200) -> pd.DataFrame:
     return df
 
 
-def load_demo_tables() -> dict[str, pd.DataFrame]:
-    """Devuelve los cuatro datasets de la demo, siempre idénticos (semilla fija)."""
+@functools.lru_cache(maxsize=1)
+def _demo_tables_base() -> dict[str, pd.DataFrame]:
     return {
         "dim_customers": make_customers(),
         "dim_products": make_products(),
         "fct_sales": make_sales(),
         "fct_payments": make_payments(),
     }
+
+
+def load_demo_tables() -> dict[str, pd.DataFrame]:
+    """Devuelve los cuatro datasets de la demo, siempre idénticos (semilla fija).
+
+    Se generan UNA vez por proceso y se devuelven copias: la generación
+    (semilla, nombres, defectos inyectados) tarda ~25 ms y la interfaz la
+    pedía **65 veces por render** —el catálogo, cada ficha de producto, cada
+    contrato la vuelven a pedir— o sea 1,5 de los 4,6 segundos de cada clic
+    en el dashboard, medidos con cProfile. Copias y no las mismas tablas
+    para que quien modifique una (el laboratorio de calidad, por ejemplo)
+    no le cambie los datos al siguiente que pida la demo.
+    """
+    return {nombre: df.copy() for nombre, df in _demo_tables_base().items()}
