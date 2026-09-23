@@ -21,6 +21,7 @@ gobierno adicional, no un reemplazo.
 """
 from __future__ import annotations
 
+import functools
 import os
 
 import numpy as np
@@ -764,9 +765,18 @@ def sample_meta(key: str, lang: str = "es") -> dict:
     }
 
 
-def load_sample_table(key: str) -> pd.DataFrame:
+@functools.lru_cache(maxsize=32)
+def _sample_table_base(key: str) -> pd.DataFrame:
     path = os.path.join(_SAMPLES_DIR, SAMPLES[key]["file"])
     return pd.read_csv(path)
+
+
+def load_sample_table(key: str) -> pd.DataFrame:
+    """El CSV del caso de ejemplo, leído UNA vez por proceso; se devuelve
+    una copia para que nadie le cambie los datos al siguiente. La interfaz
+    lo leía del disco 70 veces por render —cada ficha, cada contrato, cada
+    corrida de reglas—: medio segundo de cada clic, medido con cProfile."""
+    return _sample_table_base(key).copy()
 
 
 def sample_dictionary_df(key: str, lang: str = "es") -> pd.DataFrame:

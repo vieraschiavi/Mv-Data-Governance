@@ -10,6 +10,8 @@ en los tres idiomas (es/en/pt) y se resuelven con ``lang``.
 """
 from __future__ import annotations
 
+import functools
+
 import pandas as pd
 
 from .demo_data import TODAY, load_demo_tables
@@ -146,8 +148,24 @@ def dataset_names() -> list[str]:
 
 
 def catalog_df(lang: str = "es", tables: dict[str, pd.DataFrame] | None = None) -> pd.DataFrame:
-    """Catálogo de datasets como DataFrame plano, listo para mostrar o exportar."""
-    tables = tables or load_demo_tables()
+    """Catálogo de datasets como DataFrame plano, listo para mostrar o exportar.
+
+    Sin `tables` es el catálogo de la DEMO, que no cambia entre llamadas:
+    se arma una vez por idioma y se devuelve una copia. Hacía falta porque
+    cada ficha de producto (`contracts._product_row`) lo volvía a armar —
+    63 veces por render del dashboard, medido.
+    """
+    if tables is None:
+        return _catalog_demo(lang).copy()
+    return _catalog_build(lang, tables)
+
+
+@functools.lru_cache(maxsize=8)
+def _catalog_demo(lang: str) -> pd.DataFrame:
+    return _catalog_build(lang, load_demo_tables())
+
+
+def _catalog_build(lang: str, tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for d in _DATASETS:
         df = tables.get(d["dataset"])
