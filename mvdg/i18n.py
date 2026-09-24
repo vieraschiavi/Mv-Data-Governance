@@ -433,9 +433,9 @@ _T: dict[str, dict[str, str]] = {
         "pt": "{nulos}% nulos · {distintos} valores distintos.",
     },
     "scope_user_badge": {
-        "es": "Estás viendo también **{n}** dataset(s) cargados por vos: {nombres}.",
-        "en": "You are also seeing **{n}** dataset(s) you loaded: {nombres}.",
-        "pt": "Você também está vendo **{n}** dataset(s) carregados por você: {nombres}.",
+        "es": "Estás viendo SOLO tus datos (**{n}** dataset/s): {nombres}. La demo está oculta en todo el programa.",
+        "en": "You are seeing ONLY your data (**{n}** dataset/s): {nombres}. The demo is hidden across the whole program.",
+        "pt": "Você está vendo SÓ os seus dados (**{n}** dataset/s): {nombres}. A demo está oculta em todo o programa.",
     },
     "scope_user_none": {
         "es": "Todavía no cargaste ningún dataset. Subí tu Excel, CSV o conectá "
@@ -448,9 +448,34 @@ _T: dict[str, dict[str, str]] = {
               "conecte um banco na aba \"Meus dados\", e verá tudo governado aqui "
               "e em todas as outras abas.",
     },
-    "scope_user_clear": {"es": "Quitar mis datasets cargados",
-                         "en": "Remove my loaded datasets",
-                         "pt": "Remover meus datasets carregados"},
+    "scope_user_clear": {"es": "Quitar mis datos y volver a la demo",
+                         "en": "Remove my data and go back to the demo",
+                         "pt": "Remover meus dados e voltar à demo"},
+    "fuente_propia_aviso": {
+        "es": "Fuente activa: tus datos ({nombres}). Todas las pestañas los usan y la demo no aparece. Para volver a la demo, usá el botón de la barra lateral.",
+        "en": "Active source: your data ({nombres}). Every tab uses it and the demo does not appear. To go back to the demo, use the button in the sidebar.",
+        "pt": "Fonte ativa: os seus dados ({nombres}). Todas as abas os usam e a demo não aparece. Para voltar à demo, use o botão da barra lateral.",
+    },
+    "fuente_sin_historia": {
+        "es": "La evolución de la calidad se arma corrida a corrida sobre tus datos: todavía no hay historia. (La curva de la demo es sintética y no se muestra con datos reales.)",
+        "en": "Quality evolution is built run by run on your data: there is no history yet. (The demo curve is synthetic and is not shown with real data.)",
+        "pt": "A evolução da qualidade é construída execução a execução sobre os seus dados: ainda não há histórico. (A curva da demo é sintética e não é exibida com dados reais.)",
+    },
+    "fuente_glosario_vacio": {
+        "es": "Con tus datos cargados, el glosario de la demo no se muestra: un glosario de negocio lo escribe tu organización. Importalo desde Purview o Collibra más abajo, o cargalo en Curaduría.",
+        "en": "With your data loaded, the demo glossary is not shown: a business glossary is written by your organization. Import it from Purview or Collibra below, or add it in Curation.",
+        "pt": "Com os seus dados carregados, o glossário da demo não é exibido: um glossário de negócio é escrito pela sua organização. Importe-o do Purview ou Collibra abaixo, ou adicione-o em Curadoria.",
+    },
+    "fuente_lab_oculto": {
+        "es": "El laboratorio es un recorrido guiado sobre un dataset de demo degradado a propósito (antes/después). Con tus datos cargados no se muestra; volvé a la demo desde la barra lateral para recorrerlo.",
+        "en": "The lab is a guided walkthrough on a deliberately degraded demo dataset (before/after). It is hidden while your data is loaded; go back to the demo from the sidebar to use it.",
+        "pt": "O laboratório é um percurso guiado sobre um dataset de demo degradado de propósito (antes/depois). Com os seus dados carregados não é exibido; volte à demo pela barra lateral para percorrê-lo.",
+    },
+    "fuente_entregable_oculto": {
+        "es": "Este entregable se arma sobre los casos de ejemplo. Con tus datos cargados no se muestra: el entregable de TUS datos está en la pestaña de trazabilidad.",
+        "en": "This deliverable is built on the example cases. It is hidden while your data is loaded: the deliverable for YOUR data is in the traceability tab.",
+        "pt": "Este entregável é montado sobre os casos de exemplo. Com os seus dados carregados não é exibido: o entregável dos SEUS dados está na aba de rastreabilidade.",
+    },
     "scope_hint": {
         "es": "Con esto activado, los 4 casos reales de Mis datos (Rotulado, Dirty Cafe, Bank Marketing, openFDA) fluyen por Panorama, Catálogo, Calidad, Linaje, Glosario, Políticas y BI & API — el recorrido end-to-end completo. Apagalo para ver solo la demo sintética.",
         "en": "With this on, the 4 real cases from My data (Food labels, Dirty Cafe, Bank Marketing, openFDA) flow through Overview, Catalog, Quality, Lineage, Glossary, Policies and BI & API — the full end-to-end journey. Turn it off to see only the synthetic demo.",
