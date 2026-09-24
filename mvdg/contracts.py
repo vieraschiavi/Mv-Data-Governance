@@ -102,9 +102,10 @@ def delete_agreement(dataset: str) -> None:
 # Linaje: consumidores e impacto aguas abajo (recorrido real del grafo)
 # ---------------------------------------------------------------------------
 
-def _lineage_maps(lang: str) -> tuple[dict[str, str], dict[str, list[str]]]:
-    """(id→label, id→hijos directos) del linaje combinado real."""
-    nodes, edges = scope.combined_lineage(lang)
+def _lineage_maps(lang: str, grafo=None) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """(id→label, id→hijos directos) del linaje combinado real, o del grafo
+    que se le pasa (el de los datos del usuario)."""
+    nodes, edges = grafo if grafo is not None else scope.combined_lineage(lang)
     labels = {n["id"]: n["label"] for n in nodes}
     children: dict[str, list[str]] = {}
     for src, dst in edges:
@@ -112,9 +113,9 @@ def _lineage_maps(lang: str) -> tuple[dict[str, str], dict[str, list[str]]]:
     return labels, children
 
 
-def downstream(dataset: str, lang: str = "es") -> list[str]:
+def downstream(dataset: str, lang: str = "es", grafo=None) -> list[str]:
     """Etiquetas de TODOS los nodos aguas abajo del dataset (BFS en el grafo)."""
-    labels, children = _lineage_maps(lang)
+    labels, children = _lineage_maps(lang, grafo)
     seen: list[str] = []
     queue = list(children.get(dataset, []))
     visited = {dataset}
@@ -132,15 +133,20 @@ def downstream(dataset: str, lang: str = "es") -> list[str]:
 # Productos de datos: catálogo real → producto + roles del modelo
 # ---------------------------------------------------------------------------
 
-def product_keys(lang: str = "es") -> list[str]:
+def product_keys(lang: str = "es", catalogo: pd.DataFrame | None = None) -> list[str]:
+    """Los productos de datos: los del catálogo que se pasa (el del usuario,
+    cuando cargó sus datos) o, sin catálogo, la demo más los casos."""
+    if catalogo is not None:
+        return catalogo["dataset"].tolist()
     demo = catalog.catalog_df(lang)["dataset"].tolist()
     return demo + samples.sample_keys()
 
 
-def _product_row(dataset: str, lang: str) -> dict:
-    """Ficha de producto desde el catálogo real (demo o caso)."""
-    demo = catalog.catalog_df(lang)
-    hit = demo[demo["dataset"] == dataset]
+def _product_row(dataset: str, lang: str, catalogo: pd.DataFrame | None = None,
+                 grafo=None) -> dict:
+    """Ficha de producto desde el catálogo real (demo, caso o del usuario)."""
+    base = catalogo if catalogo is not None else catalog.catalog_df(lang)
+    hit = base[base["dataset"] == dataset]
     if len(hit):
         row = hit.iloc[0].to_dict()
     else:
@@ -154,7 +160,7 @@ def _product_row(dataset: str, lang: str) -> dict:
         "domain_owner": row.get("owner", ""),
         "product_owner": row.get("steward", ""),
         "producer": row.get("source", ""),
-        "consumers": ", ".join(downstream(dataset, lang)) or "—",
+        "consumers": ", ".join(downstream(dataset, lang, grafo)) or "—",
         "sla_refresh": row.get("refresh", ""),
         "classification": row.get("classification", ""),
     }
@@ -183,13 +189,18 @@ def _compliance(sub: pd.DataFrame) -> tuple[str, float]:
 
 
 def contracts_df(lang: str = "es",
-                 results: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Un contrato por producto de datos, evaluado con resultados reales."""
+                 results: pd.DataFrame | None = None,
+                 catalogo: pd.DataFrame | None = None, grafo=None) -> pd.DataFrame:
+    """Un contrato por producto de datos, evaluado con resultados reales.
+
+    ``catalogo`` y ``grafo`` son los del usuario cuando cargó sus datos: sin
+    ellos los productos eran siempre los de la demo, y el cliente veía
+    contratos de ``ventas_demo`` al lado de los suyos."""
     if results is None:
         results = scope.combined_results(lang)
     rows = []
-    for key in product_keys(lang):
-        prod = _product_row(key, lang)
+    for key in product_keys(lang, catalogo):
+        prod = _product_row(key, lang, catalogo, grafo)
         sub = results[results["dataset"] == key]
         comp, pct = _compliance(sub)
         agr = agreement_for(key)
@@ -210,13 +221,15 @@ def contracts_df(lang: str = "es",
 
 
 def alerts_df(lang: str = "es",
-              results: pd.DataFrame | None = None) -> pd.DataFrame:
+              results: pd.DataFrame | None = None,
+              catalogo: pd.DataFrame | None = None, grafo=None) -> pd.DataFrame:
     """Alarmística: una alerta por regla no aprobada, con impacto aguas abajo
     (linaje real), a quién avisar (roles reales) y acción inmediata sugerida
     (motor de remediación existente)."""
     if results is None:
         results = scope.combined_results(lang)
-    prods = {k: _product_row(k, lang) for k in product_keys(lang)}
+    prods = {k: _product_row(k, lang, catalogo, grafo)
+             for k in product_keys(lang, catalogo)}
     rows = []
     for _, r in results[results["status"] != "pass"].iterrows():
         prod = prods.get(r["dataset"])
@@ -252,10 +265,11 @@ def alerts_df(lang: str = "es",
 
 
 def kpis(lang: str = "es",
-         results: pd.DataFrame | None = None) -> dict:
+         results: pd.DataFrame | None = None,
+         catalogo: pd.DataFrame | None = None, grafo=None) -> dict:
     """KPIs del tablero de contratos (todo derivado de datos reales)."""
-    con = contracts_df(lang, results)
-    ale = alerts_df(lang, results)
+    con = contracts_df(lang, results, catalogo, grafo)
+    ale = alerts_df(lang, results, catalogo, grafo)
     return {
         "products": len(con),
         "ok": int((con["compliance"] == "cumple").sum()),
@@ -396,14 +410,17 @@ _SHEETS = {
 
 
 def contracts_xlsx_bytes(lang: str = "es",
-                         results: pd.DataFrame | None = None) -> bytes:
+                         results: pd.DataFrame | None = None,
+                         catalogo: pd.DataFrame | None = None, grafo=None) -> bytes:
     if results is None:
         results = scope.combined_results(lang)
     s_con, s_ale, s_teo = _SHEETS.get(lang, _SHEETS["es"])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter",
                         engine_kwargs={"options": {"in_memory": True}}) as xw:
-        contracts_df(lang, results).to_excel(xw, sheet_name=s_con, index=False)
-        alerts_df(lang, results).to_excel(xw, sheet_name=s_ale, index=False)
+        contracts_df(lang, results, catalogo, grafo).to_excel(
+            xw, sheet_name=s_con, index=False)
+        alerts_df(lang, results, catalogo, grafo).to_excel(
+            xw, sheet_name=s_ale, index=False)
         theory_df(lang).to_excel(xw, sheet_name=s_teo, index=False)
     return buf.getvalue()

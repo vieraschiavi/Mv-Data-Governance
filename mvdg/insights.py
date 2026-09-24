@@ -79,15 +79,55 @@ def governance_coverage(lang: str = "es") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def governance_summary(lang: str = "es") -> dict:
-    """Resumen ejecutivo: % de cada cobertura + índice de gobierno (0-100)."""
-    df = governance_coverage(lang)
+def coverage_for(catalog: pd.DataFrame, results: pd.DataFrame,
+                 lang: str = "es") -> pd.DataFrame:
+    """La misma tabla de coberturas que ``governance_coverage``, pero sobre
+    el catálogo que se le pasa y no sobre el de la demo.
+
+    Es la que usa el programa cuando el usuario cargó sus datos: antes el
+    «índice de gobierno» de Panorama se calculaba siempre sobre los datasets
+    de la demo, así que el cliente veía un 80 % de dueños asignados que no
+    eran suyos. Dueño y steward salen del organigrama (o de Curaduría) si
+    están; la clasificación, del catálogo; las reglas, de los resultados.
+    """
+    from . import curation, orgchart
+
+    asg = orgchart.load_assignments()
+    asg_by_ds = (asg.set_index("dataset").to_dict("index")
+                 if asg is not None and len(asg) else {})
+    cur = curation.list_items(lang)
+    con_reglas = set(results["dataset"]) if len(results) else set()
+    rows = []
+    for d in catalog.to_dict("records"):
+        ds = d["dataset"]
+        a = asg_by_ds.get(ds, {})
+        cur_ds = cur[cur["dataset"] == ds] if len(cur) else cur
+        reviewed = ((cur_ds["status"] != "sugerido_ia").mean() * 100
+                    if len(cur_ds) else 0.0)
+        rows.append({
+            "dataset": ds,
+            "owner_named": _named(a.get("owner_name")) or _named(d.get("owner")),
+            "steward_named": (_named(a.get("steward_name"))
+                              or _named(d.get("steward"))),
+            "classified": d.get("classification") not in (None, "", "Sin clasificar"),
+            "has_rules": ds in con_reglas,
+            "curation_pct": round(reviewed, 1),
+        })
+    return pd.DataFrame(rows, columns=["dataset", "owner_named", "steward_named",
+                                       "classified", "has_rules", "curation_pct"])
+
+
+def summary_of(df: pd.DataFrame) -> dict:
+    """El resumen de una tabla de coberturas, sea de la demo o del usuario.
+    Sin datasets devuelve ceros en vez de dividir por cero."""
     n = len(df)
-    owner_pct = round(100.0 * int(df["owner_named"].sum()) / n, 1)
-    steward_pct = round(100.0 * int(df["steward_named"].sum()) / n, 1)
-    class_pct = round(100.0 * int(df["classified"].sum()) / n, 1)
-    rules_pct = round(100.0 * int(df["has_rules"].sum()) / n, 1)
-    curation_pct = round(float(df["curation_pct"].mean()), 1)
+
+    def pct(col: str) -> float:
+        return round(100.0 * int(df[col].sum()) / n, 1) if n else 0.0
+
+    owner_pct, steward_pct = pct("owner_named"), pct("steward_named")
+    class_pct, rules_pct = pct("classified"), pct("has_rules")
+    curation_pct = round(float(df["curation_pct"].mean()), 1) if n else 0.0
     index = round((owner_pct + steward_pct + class_pct + rules_pct + curation_pct) / 5, 1)
     return {
         "datasets": n,
@@ -98,3 +138,8 @@ def governance_summary(lang: str = "es") -> dict:
         "curation_pct": curation_pct,
         "governance_index": index,
     }
+
+
+def governance_summary(lang: str = "es") -> dict:
+    """Resumen ejecutivo de la demo: % de cada cobertura + índice (0-100)."""
+    return summary_of(governance_coverage(lang))

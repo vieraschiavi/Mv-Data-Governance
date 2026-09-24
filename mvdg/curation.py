@@ -182,13 +182,21 @@ def _imported_items(lang: str) -> list[dict]:
     return imported.curation_items(lang)
 
 
-def list_items(lang: str = "es") -> pd.DataFrame:
+def list_items(lang: str = "es", solo_propios: bool = False) -> pd.DataFrame:
     """Inventario completo de definiciones curables, con su estado actual,
     el texto vigente (pre-establecido u oficial del responsable) y quién
-    lo validó/modificó."""
+    lo validó/modificó.
+
+    ``solo_propios=True`` deja afuera la demo y los casos de ejemplo: es lo
+    que muestra el programa cuando el usuario cargó sus datos. Quedan las
+    definiciones que trajo él mismo (importadas de Purview/Collibra o de su
+    catálogo); curar «dim_customers» no tiene sentido para quien no la tiene.
+    """
     records = load_records()
     rows = []
-    for it in _demo_items(lang) + _sample_items(lang) + _imported_items(lang):
+    fuentes = ([] if solo_propios else _demo_items(lang) + _sample_items(lang)) \
+        + _imported_items(lang)
+    for it in fuentes:
         rec = records.get(it["item_id"], {}).get(lang)
         status = rec["status"] if rec else "sugerido_ia"
         effective = (rec["text"] if rec and rec["status"] == "modificado"
@@ -204,7 +212,10 @@ def list_items(lang: str = "es") -> pd.DataFrame:
             "notes": rec["notes"] if rec else "",
             "default_owner": it["default_owner"],
         })
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["item_id", "kind", "dataset", "label", "status",
+                                       "text", "proposed", "responsible_name",
+                                       "responsible_role", "validated_at", "notes",
+                                       "default_owner"])
 
 
 def effective_text(item_id: str, lang: str, fallback: str) -> str:
@@ -216,10 +227,10 @@ def effective_text(item_id: str, lang: str, fallback: str) -> str:
     return fallback
 
 
-def summary(lang: str = "es") -> dict:
+def summary(lang: str = "es", solo_propios: bool = False) -> dict:
     """Métricas del avance de curaduría: cuántas definiciones hay en cada
     estado y % de revisadas por un responsable."""
-    df = list_items(lang)
+    df = list_items(lang, solo_propios)
     total = len(df)
     counts = df["status"].value_counts().to_dict()
     reviewed = counts.get("validado", 0) + counts.get("modificado", 0)

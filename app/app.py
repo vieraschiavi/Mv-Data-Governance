@@ -61,6 +61,7 @@ from mvdg import imported as ext_imported
 from mvdg import deliverable as case_deliverable
 from mvdg import contracts as data_contracts
 from mvdg import samples as ext_samples
+from mvdg import fuente
 from mvdg import scope as gov_scope
 from mvdg import server as mvdg_server
 from mvdg import workspace as ws
@@ -237,15 +238,21 @@ with st.sidebar:
     )
     st.caption(t("sidebar_help", lang))
     st.divider()
-    incl_samples = st.toggle(t("scope_toggle", lang), value=True, key="scope_samples")
+    _propios_sb = fuente.solo_propios(_mis_datasets())
+    # Con datos propios cargados el interruptor de los casos de ejemplo no
+    # tiene nada que decidir —la demo y los casos se ocultan en todo el
+    # programa—, así que se deshabilita en vez de mentir que suma algo.
+    incl_samples = st.toggle(t("scope_toggle", lang), value=True, key="scope_samples",
+                             disabled=_propios_sb)
     st.caption(t("scope_hint", lang))
-    # Qué datasets propios están alimentando al programa ahora mismo. Sin
-    # esto no hay forma de saber, mirando una pestaña cualquiera, si lo que
-    # se está viendo incluye lo que uno cargó o sigue siendo la demo.
-    if _mis_datasets():
+    # Qué fuente está alimentando al programa ahora mismo. Sin esto no hay
+    # forma de saber, mirando una pestaña cualquiera, si lo que se está
+    # viendo son tus datos o la demo.
+    if _propios_sb:
         st.divider()
         st.success(t("scope_user_badge", lang).format(
-            n=len(_mis_datasets()), nombres=", ".join(_mis_datasets())))
+            n=len(fuente.nombres(_mis_datasets())),
+            nombres=", ".join(fuente.nombres(_mis_datasets()))))
         if st.button(t("scope_user_clear", lang), key="scope_user_clear_btn"):
             st.session_state["mvdg_user_datasets"] = {}
             # También el registro de "ya lo vi": si no, volver a subir el
@@ -302,10 +309,83 @@ def _results_combined(lang: str):
 # Los datasets del usuario NO dependen del toggle "incluir casos de ejemplo":
 # ese toggle decide si se muestran los 4 casos que trae el programa. Lo que
 # cargó el usuario es suyo y va siempre.
-results = _con_usuario(_results_combined(lang) if incl_samples else _results(lang),
-                       "results", lang)
-tables = dict(_tables())
-tables.update(_mis_datasets())
+# La fuente activa, UNA para todo el programa (ver `mvdg/fuente.py`). Con
+# datos propios cargados —archivo, SQLite o conexión SQL— todas las pestañas
+# ven SOLO eso y la demo desaparece; sin nada cargado, la demo de siempre.
+# Antes lo cargado se sumaba a la demo: el catálogo mezclaba tus tablas con
+# `ventas_demo`, el índice de calidad promediaba tus reglas con defectos
+# inyectados a propósito, y Calidad, Linaje, Glosario, MDM y Contratos
+# seguían leyendo la demo como si tu archivo no existiera.
+SOLO_PROPIOS = fuente.solo_propios(_mis_datasets())
+
+
+def _universo_usuario(lang: str) -> dict:
+    """El universo del usuario, recalculado sólo cuando cambia lo cargado."""
+    firma = ("universo",) + _firma_datasets(lang)
+    if st.session_state.get("_mvdg_uni_firma") != firma:
+        st.session_state["_mvdg_uni"] = fuente.universo(lang, _mis_datasets())
+        st.session_state["_mvdg_uni_firma"] = firma
+    return st.session_state["_mvdg_uni"]
+
+
+UNI = _universo_usuario(lang) if SOLO_PROPIOS else None
+if SOLO_PROPIOS:
+    incl_samples = False
+    results = UNI["quality_results"]
+    tables = dict(UNI["tables"])
+else:
+    results = _results_combined(lang) if incl_samples else _results(lang)
+    tables = dict(_tables())
+
+
+def _piso(valores) -> float:
+    """El piso del eje de calidad. En la demo todo está entre 90 y 100 y un
+    eje desde 90 muestra las diferencias; con datos reales un dataset en 70
+    quedaba fuera del gráfico. Se baja lo necesario, de a 10."""
+    try:
+        minimo = float(pd.Series(valores).dropna().min())
+    except (TypeError, ValueError):
+        return 90.0
+    if not minimo == minimo or minimo >= 90:      # NaN o todo arriba de 90
+        return 90.0
+    return max(0.0, float(int(minimo // 10) * 10))
+
+
+def _catalogo():
+    """El catálogo de la fuente activa."""
+    if SOLO_PROPIOS:
+        return UNI["catalog"]
+    return (gov_scope.combined_catalog(lang, tables) if incl_samples
+            else catalog_df(lang, tables))
+
+
+def _diccionario(ds: str | None = None):
+    """El diccionario de la fuente activa (de un dataset o de todos)."""
+    if SOLO_PROPIOS:
+        dic = UNI["dictionary"]
+        return dic[dic["dataset"] == ds].reset_index(drop=True) if ds else dic
+    return (gov_scope.combined_dictionary(lang, ds) if incl_samples
+            else dictionary_df(lang, ds))
+
+
+def _gobierno_activo() -> dict:
+    """Las nueve tablas de gobierno de la fuente activa (BI, trazabilidad,
+    proyecto): con datos propios, SOLO los propios."""
+    if SOLO_PROPIOS:
+        # Sólo las nueve tablas: el universo trae además el grafo, la PII y
+        # la cobertura, que no son tablas y la API las listaría como tales.
+        return {k: v for k, v in UNI.items() if k in _TABLAS_GOBIERNO}
+    return governance_tables(lang, include_samples=incl_samples)
+
+
+_TABLAS_GOBIERNO = ("catalog", "dictionary", "quality_results",
+                    "quality_by_dataset", "quality_by_dimension", "lineage",
+                    "glossary", "policies", "kpis")
+
+
+if SOLO_PROPIOS:
+    st.info(t("fuente_propia_aviso", lang).format(
+        nombres=", ".join(fuente.nombres(_mis_datasets()))))
 
 (tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
  tab_p, tab_pr, tab_bi, tab_tz, tab_del, tab_pbi, tab_tab, tab_cl, tab_srv, tab_mtg,
@@ -419,10 +499,8 @@ def _render_fixes(results_df, lang, ns=""):
 
 # --------------------------------------------------------------- Panorama
 with tab_ov:
-    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
-                       else catalog_df(lang, tables), "catalog", lang)
-    dic = _con_usuario(gov_scope.combined_dictionary(lang) if incl_samples
-                       else dictionary_df(lang), "dictionary", lang)
+    cat = _catalogo()
+    dic = _diccionario()
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("kpi_datasets", lang), len(cat))
     c2.metric(t("kpi_columns", lang), len(dic))
@@ -430,9 +508,9 @@ with tab_ov:
     npass = int((results["status"] == "pass").sum())
     c4.metric(t("kpi_rules_pass", lang), f"{npass} / {len(results)}")
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric(t("kpi_pii", lang), len(pii_columns()))
+    c5.metric(t("kpi_pii", lang), len(UNI["pii"]) if SOLO_PROPIOS else len(pii_columns()))
     c6.metric(t("kpi_stewards", lang), cat["steward"].nunique())
-    c7.metric(t("kpi_terms", lang), term_count())
+    c7.metric(t("kpi_terms", lang), 0 if SOLO_PROPIOS else term_count())
     c8.metric(t("kpi_rules", lang), len(results))
 
     col_a, col_b = st.columns(2)
@@ -443,7 +521,7 @@ with tab_ov:
                      title=t("ov_quality_by_domain", lang),
                      color_discrete_sequence=[BRAND["amber"]])
         fig.update_traces(texttemplate="%{text:.1f}")
-        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[90, 100.5],
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[_piso(by_ds["quality_index"]), 100.5],
                           xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig, width="stretch")
     with col_b:
@@ -454,13 +532,18 @@ with tab_ov:
             fill="toself", line={"color": BRAND["amber"]},
             fillcolor="rgba(242,180,65,.25)"))
         fig.update_layout(**_PLOTLY_LAYOUT, title=t("ov_quality_by_dim", lang),
-                          polar={"radialaxis": {"range": [90, 100],
+                          polar={"radialaxis": {"range": [_piso(by_dim["quality_index"]), 100],
                                                 "color": BRAND["muted"]},
                                  "bgcolor": "rgba(255,255,255,.03)"})
         st.plotly_chart(fig, width="stretch")
 
     col_c, col_d = st.columns(2)
     with col_c:
+      if SOLO_PROPIOS:
+        # La serie de la demo es sintética: con datos reales la evolución se
+        # construye corrida a corrida, y dibujar una inventada sería mentir.
+        st.info(t("fuente_sin_historia", lang))
+      else:
         trend = quality_trend(results)
         fig = px.area(trend, x="month", y="quality_index",
                       title=t("ov_trend", lang),
@@ -485,7 +568,7 @@ with tab_ov:
     st.divider()
     st.subheader(t("gi_title", lang))
     st.caption(t("gi_caption", lang))
-    _gi = insights.governance_summary(lang)
+    _gi = UNI["summary"] if SOLO_PROPIOS else insights.governance_summary(lang)
     g1, g2, g3, g4, g5, g6 = st.columns(6)
     g1.metric(t("gi_index", lang), f"{_gi['governance_index']} / 100")
     g2.metric(t("gi_owner", lang), f"{_gi['owner_pct']}%")
@@ -494,7 +577,7 @@ with tab_ov:
     g5.metric(t("gi_rules", lang), f"{_gi['rules_pct']}%")
     g6.metric(t("gi_curation", lang), f"{_gi['curation_pct']}%")
     with st.expander(t("gi_detail", lang), expanded=False):
-        _gi_df = insights.governance_coverage(lang)
+        _gi_df = UNI["coverage"] if SOLO_PROPIOS else insights.governance_coverage(lang)
         _B = {True: "", False: "—"}
         st.dataframe(
             _gi_df.assign(owner_named=_gi_df["owner_named"].map(_B),
@@ -513,124 +596,127 @@ with tab_ov:
 
 # ------------------------------------------------------------ Laboratorio
 with tab_lab:
-    st.info(t("lab_intro", lang))
-    steps = {s["step_id"]: s for s in lab_steps(lang)}
-    lab = _lab(lang)
+    if SOLO_PROPIOS:
+        st.info(t("fuente_lab_oculto", lang))
+    else:
+        st.info(t("lab_intro", lang))
+        steps = {s["step_id"]: s for s in lab_steps(lang)}
+        lab = _lab(lang)
 
-    def _theory(step_id: str):
-        s = steps[step_id]
-        st.subheader(s["title"])
-        tc1, tc2 = st.columns(2)
-        tc1.markdown(f"**{t('lab_plain', lang)}**  \n{s['plain']}")
-        tc2.markdown(f"**{t('lab_tech', lang)}**  \n{s['tech']}")
-        if s["dmbok_area"]:
-            st.caption(f"{t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
+        def _theory(step_id: str):
+            s = steps[step_id]
+            st.subheader(s["title"])
+            tc1, tc2 = st.columns(2)
+            tc1.markdown(f"**{t('lab_plain', lang)}**  \n{s['plain']}")
+            tc2.markdown(f"**{t('lab_tech', lang)}**  \n{s['tech']}")
+            if s["dmbok_area"]:
+                st.caption(f"{t('lab_dmbok_tag', lang)}: {s['dmbok_area']}")
 
-    # 0. Contexto
-    _theory("contexto")
-    st.divider()
+        # 0. Contexto
+        _theory("contexto")
+        st.divider()
 
-    # 1. Catalogar
-    _theory("catalogar")
-    cat_lab = catalog_df(lang, tables)
-    st.dataframe(cat_lab[["dataset", "domain", "owner", "steward",
-                          "classification", "refresh"]].rename(columns={
-        "dataset": t("col_dataset", lang), "domain": t("cat_domain", lang),
-        "owner": t("col_owner", lang), "steward": t("col_steward", lang),
-        "classification": t("col_classification", lang),
-        "refresh": t("col_freshness", lang),
-    }), width="stretch", hide_index=True)
-    with st.expander(t("tbl_dictionary", lang)):
-        st.dataframe(dictionary_df(lang, "dim_customers").drop(columns=["dataset"]),
-                    width="stretch", hide_index=True)
-    st.divider()
-
-    # 2. Medir ANTES
-    _theory("medir_antes")
-    b = lab["summary_before"]
-    c1, c2, c3 = st.columns(3)
-    c1.metric(t("lab_index", lang), f"{b['indice']} / 100")
-    c2.metric(t("lab_rows_affected", lang), f"{b['filas_afectadas']:,}")
-    c3.metric(t("lab_rules_fail", lang), f"{b['fallas']} / {b['reglas_total']}")
-    issues_before = lab["issues_before"].copy()
-    issues_before["dimension"] = issues_before["dimension"].map(_DIM_LABEL)
-    with st.expander(t("lab_issues_before", lang)):
-        st.dataframe(issues_before.rename(columns={
-            "rule_id": "ID", "dataset": t("col_dataset", lang),
-            "column": t("col_column", lang), "dimension": t("q_dimension", lang),
-            "severity": t("q_status", lang), "score": t("q_score", lang),
-            "affected_rows": t("q_affected", lang),
+        # 1. Catalogar
+        _theory("catalogar")
+        cat_lab = catalog_df(lang, tables)
+        st.dataframe(cat_lab[["dataset", "domain", "owner", "steward",
+                              "classification", "refresh"]].rename(columns={
+            "dataset": t("col_dataset", lang), "domain": t("cat_domain", lang),
+            "owner": t("col_owner", lang), "steward": t("col_steward", lang),
+            "classification": t("col_classification", lang),
+            "refresh": t("col_freshness", lang),
         }), width="stretch", hide_index=True)
-    st.divider()
+        with st.expander(t("tbl_dictionary", lang)):
+            st.dataframe(dictionary_df(lang, "dim_customers").drop(columns=["dataset"]),
+                        width="stretch", hide_index=True)
+        st.divider()
 
-    # 3. Gobernar
-    _theory("gobernar")
-    st.dataframe(glossary_df(lang).drop(columns=["term_id"]).rename(columns={
-        "term": t("g_term", lang), "definition": t("g_definition", lang),
-        "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
-    }), width="stretch", hide_index=True)
-    st.divider()
+        # 2. Medir ANTES
+        _theory("medir_antes")
+        b = lab["summary_before"]
+        c1, c2, c3 = st.columns(3)
+        c1.metric(t("lab_index", lang), f"{b['indice']} / 100")
+        c2.metric(t("lab_rows_affected", lang), f"{b['filas_afectadas']:,}")
+        c3.metric(t("lab_rules_fail", lang), f"{b['fallas']} / {b['reglas_total']}")
+        issues_before = lab["issues_before"].copy()
+        issues_before["dimension"] = issues_before["dimension"].map(_DIM_LABEL)
+        with st.expander(t("lab_issues_before", lang)):
+            st.dataframe(issues_before.rename(columns={
+                "rule_id": "ID", "dataset": t("col_dataset", lang),
+                "column": t("col_column", lang), "dimension": t("q_dimension", lang),
+                "severity": t("q_status", lang), "score": t("q_score", lang),
+                "affected_rows": t("q_affected", lang),
+            }), width="stretch", hide_index=True)
+        st.divider()
 
-    # 4. Medir DESPUÉS + comparación
-    _theory("medir_despues")
-    a = lab["summary_after"]
-    c4, c5, c6 = st.columns(3)
-    c4.metric(t("lab_index", lang), f"{a['indice']} / 100", delta=f"+{lab['mejora_indice']}")
-    c5.metric(t("lab_rows_affected", lang), f"{a['filas_afectadas']:,}",
-             delta=f"-{lab['reduccion_filas_pct']}%")
-    c6.metric(t("lab_rules_fail", lang), f"{a['fallas']} / {a['reglas_total']}")
+        # 3. Gobernar
+        _theory("gobernar")
+        st.dataframe(glossary_df(lang).drop(columns=["term_id"]).rename(columns={
+            "term": t("g_term", lang), "definition": t("g_definition", lang),
+            "owner": t("col_owner", lang), "linked_datasets": t("g_linked", lang),
+        }), width="stretch", hide_index=True)
+        st.divider()
 
-    by_dim = lab["by_dimension"].copy()
-    by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
-    by_dim_long = by_dim.melt(id_vars="dimension", value_vars=["antes", "despues"],
-                              var_name="momento", value_name="quality_index")
-    by_dim_long["momento"] = by_dim_long["momento"].map(
-        {"antes": t("lab_before", lang), "despues": t("lab_after", lang)})
-    fig = px.bar(by_dim_long, x="dimension", y="quality_index", color="momento",
-                barmode="group", title=t("lab_compare_dim", lang),
-                color_discrete_map={t("lab_before", lang): BRAND["red"],
-                                    t("lab_after", lang): BRAND["green"]})
-    fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
-                      xaxis_title=None, yaxis_title=None, legend_title=None)
-    st.plotly_chart(fig, width="stretch", key="lab_compare_dim")
-    st.divider()
+        # 4. Medir DESPUÉS + comparación
+        _theory("medir_despues")
+        a = lab["summary_after"]
+        c4, c5, c6 = st.columns(3)
+        c4.metric(t("lab_index", lang), f"{a['indice']} / 100", delta=f"+{lab['mejora_indice']}")
+        c5.metric(t("lab_rows_affected", lang), f"{a['filas_afectadas']:,}",
+                 delta=f"-{lab['reduccion_filas_pct']}%")
+        c6.metric(t("lab_rules_fail", lang), f"{a['fallas']} / {a['reglas_total']}")
 
-    # 5. Linaje
-    _theory("linaje")
-    lab_layer_titles = {
-        "source": t("lin_layer_source", lang), "raw": t("lin_layer_raw", lang),
-        "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
-        "bi": t("lin_layer_bi", lang),
-    }
-    st.plotly_chart(lineage_figure(None, lab_layer_titles), width="stretch", key="lab_lineage")
-    st.divider()
+        by_dim = lab["by_dimension"].copy()
+        by_dim["dimension"] = by_dim["dimension"].map(_DIM_LABEL)
+        by_dim_long = by_dim.melt(id_vars="dimension", value_vars=["antes", "despues"],
+                                  var_name="momento", value_name="quality_index")
+        by_dim_long["momento"] = by_dim_long["momento"].map(
+            {"antes": t("lab_before", lang), "despues": t("lab_after", lang)})
+        fig = px.bar(by_dim_long, x="dimension", y="quality_index", color="momento",
+                    barmode="group", title=t("lab_compare_dim", lang),
+                    color_discrete_map={t("lab_before", lang): BRAND["red"],
+                                        t("lab_after", lang): BRAND["green"]})
+        fig.update_layout(**_PLOTLY_LAYOUT, yaxis_range=[0, 101],
+                          xaxis_title=None, yaxis_title=None, legend_title=None)
+        st.plotly_chart(fig, width="stretch", key="lab_compare_dim")
+        st.divider()
 
-    # 6. Políticas
-    _theory("politicas")
-    pdf_lab = policies_df(lang, lab["results_after"])
-    status_label_lab = {"compliant": t("p_compliant", lang),
-                        "partial": t("p_partial", lang),
-                        "noncompliant": t("p_noncompliant", lang)}
-    pdf_lab["status"] = pdf_lab["status"].map(status_label_lab)
-    st.dataframe(pdf_lab.rename(columns={
-        "policy_id": "ID", "policy": t("p_policy", lang),
-        "category": t("p_category", lang), "status": t("p_compliance", lang),
-        "evidence": t("p_evidence", lang),
-    }), width="stretch", hide_index=True)
-    st.divider()
+        # 5. Linaje
+        _theory("linaje")
+        lab_layer_titles = {
+            "source": t("lin_layer_source", lang), "raw": t("lin_layer_raw", lang),
+            "curated": t("lin_layer_curated", lang), "mart": t("lin_layer_mart", lang),
+            "bi": t("lin_layer_bi", lang),
+        }
+        st.plotly_chart(lineage_figure(None, lab_layer_titles), width="stretch", key="lab_lineage")
+        st.divider()
 
-    # 7. BI
-    _theory("bi")
-    st.divider()
+        # 6. Políticas
+        _theory("politicas")
+        pdf_lab = policies_df(lang, lab["results_after"])
+        status_label_lab = {"compliant": t("p_compliant", lang),
+                            "partial": t("p_partial", lang),
+                            "noncompliant": t("p_noncompliant", lang)}
+        pdf_lab["status"] = pdf_lab["status"].map(status_label_lab)
+        st.dataframe(pdf_lab.rename(columns={
+            "policy_id": "ID", "policy": t("p_policy", lang),
+            "category": t("p_category", lang), "status": t("p_compliance", lang),
+            "evidence": t("p_evidence", lang),
+        }), width="stretch", hide_index=True)
+        st.divider()
 
-    # Resultado final
-    st.subheader(t("lab_summary_title", lang))
-    r1, r2 = st.columns(2)
-    r1.metric(t("lab_delta", lang), f"+{lab['mejora_indice']} pts",
-             help=f"{b['indice']} → {a['indice']}")
-    r2.metric(t("lab_rows_cut", lang), f"-{lab['reduccion_filas_pct']}%",
-             help=f"{b['filas_afectadas']:,} → {a['filas_afectadas']:,}")
-    st.caption(t("lab_reproducible", lang))
+        # 7. BI
+        _theory("bi")
+        st.divider()
+
+        # Resultado final
+        st.subheader(t("lab_summary_title", lang))
+        r1, r2 = st.columns(2)
+        r1.metric(t("lab_delta", lang), f"+{lab['mejora_indice']} pts",
+                 help=f"{b['indice']} → {a['indice']}")
+        r2.metric(t("lab_rows_cut", lang), f"-{lab['reduccion_filas_pct']}%",
+                 help=f"{b['filas_afectadas']:,} → {a['filas_afectadas']:,}")
+        st.caption(t("lab_reproducible", lang))
 
 # ----------------------------------------------------------- Tutorial DMBOK
 with tab_dk:
@@ -805,8 +891,7 @@ with tab_dk:
 # --------------------------------------------------------------- Catálogo
 with tab_cat:
     st.info(t("cat_intro", lang))
-    cat = _con_usuario(gov_scope.combined_catalog(lang, tables) if incl_samples
-                       else catalog_df(lang, tables), "catalog", lang)
+    cat = _catalogo()
     f1, f2 = st.columns([2, 1])
     query = f1.text_input(t("cat_search", lang), "")
     domains = [t("cat_all", lang)] + sorted(cat["domain"].unique().tolist())
@@ -828,13 +913,13 @@ with tab_cat:
     }), width="stretch", hide_index=True)
 
     st.subheader(t("cat_detail", lang))
-    _cat_ds_opts = (list(_mis_datasets()) + dataset_names()
+    _cat_ds_opts = (fuente.nombres(_mis_datasets()) if SOLO_PROPIOS
+                    else dataset_names()
                     + (ext_samples.sample_keys() if incl_samples else []))
     # Los datasets del usuario van PRIMEROS en la lista: si cargó algo, es lo
     # que vino a mirar.
     ds = st.selectbox(t("cat_pick", lang), _cat_ds_opts)
-    dic = _con_usuario(gov_scope.combined_dictionary(lang, ds) if incl_samples
-                       else dictionary_df(lang, ds), "dictionary", lang)
+    dic = _diccionario(ds)
     if ds:
         dic = dic[dic["dataset"] == ds].reset_index(drop=True)
     st.dataframe(dic.rename(columns={
@@ -851,9 +936,10 @@ with tab_mdm:
     # Deduplicar es de las cosas más útiles que se le pueden hacer a un
     # archivo propio; que MDM solo ofreciera la demo dejaba afuera justo el
     # caso que le interesa a quien está evaluando el producto.
-    _mdm_usuario = dict(_mis_datasets())
-    _mdm_demo_options = {"dim_customers": tables["dim_customers"]}
-    _mdm_sample_keys = ext_samples.sample_keys()
+    _mdm_usuario = dict(UNI["tables"]) if SOLO_PROPIOS else {}
+    # Con datos propios, sólo ellos: la demo y los casos no se ofrecen.
+    _mdm_demo_options = {} if SOLO_PROPIOS else {"dim_customers": tables["dim_customers"]}
+    _mdm_sample_keys = [] if SOLO_PROPIOS else ext_samples.sample_keys()
     mdm_source_names = (list(_mdm_usuario) + list(_mdm_demo_options)
                         + list(_mdm_sample_keys))
 
@@ -926,8 +1012,14 @@ with tab_mdm:
 with tab_q:
     st.info(t("q_intro", lang))
     if st.button(t("q_run", lang)):
-        _results.clear()
-        results = _results(lang)
+        if SOLO_PROPIOS:
+            # Volver a correr las reglas sobre TUS datos, no sobre la demo.
+            st.session_state.pop("_mvdg_uni_firma", None)
+            UNI = _universo_usuario(lang)
+            results = UNI["quality_results"]
+        else:
+            _results.clear()
+            results = _results(lang)
     show = results.copy()
     show["dimension"] = show["dimension"].map(_DIM_LABEL)
     show["status"] = show["status"].map(_STATUS_LABEL)
@@ -946,23 +1038,21 @@ with tab_q:
     matrix.columns = [_DIM_LABEL[c] for c in matrix.columns]
     fig = px.imshow(matrix, text_auto=".1f", aspect="auto",
                     color_continuous_scale=["#e05c5c", "#f2b441", "#00c896"],
-                    zmin=90, zmax=100, title=t("q_heatmap", lang))
+                    zmin=_piso(matrix.stack()), zmax=100, title=t("q_heatmap", lang))
     fig.update_layout(**_PLOTLY_LAYOUT, height=380)
     st.plotly_chart(fig, width="stretch")
 
 # ----------------------------------------------------------------- Linaje
 with tab_lin:
     st.info(t("lin_intro", lang))
-    if incl_samples:
+    if SOLO_PROPIOS:
+        # El linaje honesto de lo cargado —origen → dataset → BI— y nada de
+        # la demo alrededor.
+        _lin_nodes, _lin_edges = UNI["lineage_graph"]
+    elif incl_samples:
         _lin_nodes, _lin_edges = gov_scope.combined_lineage(lang)
     else:
         _lin_nodes, _lin_edges = NODES, None
-    # El linaje honesto de lo que cargó el usuario: origen → dataset → BI.
-    # Sin esto, su dataset aparecía en el catálogo y en calidad pero el grafo
-    # seguía siendo el de la demo, como si su archivo no existiera.
-    if _mis_datasets():
-        _lin_nodes, _lin_edges = gov_scope.user_lineage(
-            _mis_datasets(), lang, nodes=_lin_nodes, edges=_lin_edges)
     _lin_propio = _lin_edges is not None
     labels = {n["id"]: n["label"] for n in _lin_nodes}
     focus = st.selectbox(t("lin_focus", lang),
@@ -987,7 +1077,15 @@ with tab_lin:
 # --------------------------------------------------------------- Glosario
 with tab_g:
     st.info(t("g_intro", lang))
-    gdf = gov_scope.combined_glossary(lang) if incl_samples else glossary_df(lang)
+    if SOLO_PROPIOS:
+        # El glosario de la demo son términos inventados para mostrar el
+        # producto: con tus datos queda vacío hasta que lo importes o lo
+        # escribas (Purview/Collibra, abajo), no se le mezclan definiciones
+        # ajenas.
+        gdf = fuente.vacio_como(glossary_df(lang))
+        st.info(t("fuente_glosario_vacio", lang))
+    else:
+        gdf = gov_scope.combined_glossary(lang) if incl_samples else glossary_df(lang)
     gq = st.text_input(t("g_search", lang), "")
     if gq:
         mask = gdf.apply(lambda r: gq.lower() in " ".join(map(str, r)).lower(), axis=1)
@@ -1047,7 +1145,9 @@ with tab_g:
 # --------------------------------------------------------------- Curaduría
 with tab_cu:
     st.info(t("cu_intro", lang))
-    _cu_sum = curation.summary(lang)
+    # Con tus datos cargados, sólo lo tuyo: las definiciones de la demo y de
+    # los casos de ejemplo no se curan en tu proyecto.
+    _cu_sum = curation.summary(lang, SOLO_PROPIOS)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(t("cu_total", lang), _cu_sum["total"])
     c2.metric(t("cu_pending", lang), _cu_sum["sugerido_ia"])
@@ -1056,7 +1156,7 @@ with tab_cu:
     st.progress(_cu_sum["reviewed_pct"] / 100.0,
                 text=t("cu_progress", lang).format(pct=_cu_sum["reviewed_pct"]))
 
-    _cu_df = curation.list_items(lang)
+    _cu_df = curation.list_items(lang, SOLO_PROPIOS)
     _CU_KIND = {"glossary": t("cu_kind_glossary", lang),
                 "catalog": t("cu_kind_catalog", lang),
                 "column": t("cu_kind_column", lang)}
@@ -1266,12 +1366,10 @@ with tab_resp:
 # --------------------------------------------------------------- Políticas
 with tab_p:
     st.info(t("p_intro", lang))
-    if incl_samples:
-        pdf = policies_df(lang, results,
-                          catalog=_con_usuario(gov_scope.combined_catalog(lang, tables),
-                                               "catalog", lang),
-                          dictionary=_con_usuario(gov_scope.combined_dictionary(lang),
-                                                  "dictionary", lang))
+    if SOLO_PROPIOS:
+        pdf = UNI["policies"].copy()
+    elif incl_samples:
+        pdf = policies_df(lang, results, catalog=_catalogo(), dictionary=_diccionario())
     else:
         pdf = policies_df(lang, results)
     status_label = {"compliant": t("p_compliant", lang),
@@ -1506,8 +1604,14 @@ with tab_pr:
     st.info(t("pr_intro", lang))
     _SRC_LABEL = {"example": t("pr_src_example", lang),
                   "file": t("pr_src_file", lang), "db": t("pr_src_db", lang)}
+    # Con datos propios cargados, los casos de ejemplo no se ofrecen: el
+    # perfilador sirve para sumar otra fuente tuya, no para volver a la demo
+    # por la puerta de atrás (para eso está «Volver a la demo»).
+    _pr_opts = ["file", "db"] if SOLO_PROPIOS else ["example", "file", "db"]
+    if st.session_state.get("pr_source") not in _pr_opts:
+        st.session_state["pr_source"] = _pr_opts[0]
     source = st.radio(t("pr_source", lang),
-                      ["example", "file", "db"], horizontal=True, key="pr_source",
+                      _pr_opts, horizontal=True, key="pr_source",
                       format_func=lambda k: _SRC_LABEL[k])
 
     if source == "example":
@@ -1756,8 +1860,7 @@ with tab_pr:
 # ---------------------------------------------------------------- BI & API
 with tab_bi:
     st.info(t("bi_intro", lang))
-    gov = governance_tables(lang, include_samples=incl_samples,
-                            user_datasets=_mis_datasets())
+    gov = _gobierno_activo()
 
     st.subheader(t("bi_files", lang))
     table_labels = {
@@ -2483,9 +2586,9 @@ with tab_ws:
                     if _key == "governance":
                         # Guardar en el proyecto del cliente el gobierno que
                         # está viendo, no el de la demo pelada.
-                        for _gk, _gv in governance_tables(
-                                lang, include_samples=incl_samples,
-                                user_datasets=_mis_datasets()).items():
+                        for _gk, _gv in _gobierno_activo().items():
+                            if not isinstance(_gv, pd.DataFrame):
+                                continue
                             _tables[f"gob_{_gk}"] = _gv
                     else:
                         _tables.update(candidates[_key][1])
@@ -2711,8 +2814,7 @@ with tab_tz:
     # de cada etapa sale de ESTA corrida — con lo que el usuario tenga cargado
     # en este momento, no con números de folleto.
     st.info(t("tz_intro", lang))
-    _tz_gov = governance_tables(lang, include_samples=incl_samples,
-                                user_datasets=_mis_datasets())
+    _tz_gov = _gobierno_activo()
     _tz_ctx = dict(
         datasets=_mis_datasets(),
         catalog=_tz_gov["catalog"], dictionary=_tz_gov["dictionary"],
@@ -2761,68 +2863,71 @@ with tab_tz:
                        f"{_tz_nombre}.pdf", "application/pdf", width="stretch")
 
 with tab_del:
-    st.info(t("del_intro", lang))
-    _del_keys = case_deliverable.case_keys()
-    _del_key = st.selectbox(
-        t("del_pick", lang), _del_keys,
-        format_func=lambda k: ext_samples.sample_meta(k, lang)["name"])
-    _del = case_deliverable.build_deliverable(_del_key, lang)
-    _dm, _dk, _dmig = _del["meta"], _del["kpis"], _del["migration"]
+    if SOLO_PROPIOS:
+        st.info(t("fuente_entregable_oculto", lang))
+    else:
+        st.info(t("del_intro", lang))
+        _del_keys = case_deliverable.case_keys()
+        _del_key = st.selectbox(
+            t("del_pick", lang), _del_keys,
+            format_func=lambda k: ext_samples.sample_meta(k, lang)["name"])
+        _del = case_deliverable.build_deliverable(_del_key, lang)
+        _dm, _dk, _dmig = _del["meta"], _del["kpis"], _del["migration"]
 
-    st.subheader(f"{_dm['name']}")
-    st.caption(f"{_dm['domain']} · {_dm['classification']} · "
-               f"{t('del_owner', lang)}: {_dm['owner']} · "
-               f"{t('col_steward', lang)}: {_dm['steward']}")
-    st.caption(f"{t('del_source', lang)}: {_dm['source']}")
+        st.subheader(f"{_dm['name']}")
+        st.caption(f"{_dm['domain']} · {_dm['classification']} · "
+                   f"{t('del_owner', lang)}: {_dm['owner']} · "
+                   f"{t('col_steward', lang)}: {_dm['steward']}")
+        st.caption(f"{t('del_source', lang)}: {_dm['source']}")
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric(t("del_kpi_rows", lang), f"{_dk['rows']:,} × {_dk['columns']}")
-    k2.metric(t("kpi_quality", lang), f"{_dk['quality_index']} / 100")
-    k3.metric(t("del_kpi_rules", lang), f"{_dk['rules_pass']} / {_dk['rules_total']}")
-    k4.metric(t("del_kpi_curation", lang),
-              f"{_dk['curation_pct']}% ({_dk['curation_reviewed']}/{_dk['curation_total']})")
-    k5, k6, k7 = st.columns(3)
-    k5.metric(t("del_kpi_documented", lang), f"{_dk['documented_pct']}%")
-    k6.metric(t("del_kpi_pii", lang), _dk["pii_columns"])
-    k7.metric(t("del_kpi_fails", lang), len(_del["findings"]))
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric(t("del_kpi_rows", lang), f"{_dk['rows']:,} × {_dk['columns']}")
+        k2.metric(t("kpi_quality", lang), f"{_dk['quality_index']} / 100")
+        k3.metric(t("del_kpi_rules", lang), f"{_dk['rules_pass']} / {_dk['rules_total']}")
+        k4.metric(t("del_kpi_curation", lang),
+                  f"{_dk['curation_pct']}% ({_dk['curation_reviewed']}/{_dk['curation_total']})")
+        k5, k6, k7 = st.columns(3)
+        k5.metric(t("del_kpi_documented", lang), f"{_dk['documented_pct']}%")
+        k6.metric(t("del_kpi_pii", lang), _dk["pii_columns"])
+        k7.metric(t("del_kpi_fails", lang), len(_del["findings"]))
 
-    if len(_del["findings"]):
-        with st.expander(t("del_findings", lang), expanded=True):
-            st.caption(t("del_findings_note", lang))
-            st.dataframe(_del["findings"], width="stretch", hide_index=True)
+        if len(_del["findings"]):
+            with st.expander(t("del_findings", lang), expanded=True):
+                st.caption(t("del_findings_note", lang))
+                st.dataframe(_del["findings"], width="stretch", hide_index=True)
 
-    with st.expander(t("tbl_dictionary", lang)):
-        st.dataframe(_del["dictionary"], width="stretch", hide_index=True)
-    with st.expander(t("tbl_quality", lang)):
-        st.dataframe(_del["quality_results"], width="stretch", hide_index=True)
-    with st.expander(t("tbl_glossary", lang)):
-        st.dataframe(_del["glossary"], width="stretch", hide_index=True)
-    with st.expander(t("tbl_lineage", lang)):
-        st.dataframe(_del["lineage"], width="stretch", hide_index=True)
+        with st.expander(t("tbl_dictionary", lang)):
+            st.dataframe(_del["dictionary"], width="stretch", hide_index=True)
+        with st.expander(t("tbl_quality", lang)):
+            st.dataframe(_del["quality_results"], width="stretch", hide_index=True)
+        with st.expander(t("tbl_glossary", lang)):
+            st.dataframe(_del["glossary"], width="stretch", hide_index=True)
+        with st.expander(t("tbl_lineage", lang)):
+            st.dataframe(_del["lineage"], width="stretch", hide_index=True)
 
-    st.subheader(t("del_mig_title", lang))
-    st.caption(t("del_mig_note", lang))
-    g1, g2, g3, g4 = st.columns(4)
-    g1.metric("Purview · entidades", _dmig["purview_entities"])
-    g2.metric("Purview · términos",
-              f"{_dmig['purview_terms']} ({_dmig['purview_terms_approved']} Approved)")
-    g3.metric("Collibra · assets", _dmig["collibra_assets"])
-    g4.metric("Collibra · términos", _dmig["collibra_terms"])
+        st.subheader(t("del_mig_title", lang))
+        st.caption(t("del_mig_note", lang))
+        g1, g2, g3, g4 = st.columns(4)
+        g1.metric("Purview · entidades", _dmig["purview_entities"])
+        g2.metric("Purview · términos",
+                  f"{_dmig['purview_terms']} ({_dmig['purview_terms_approved']} Approved)")
+        g3.metric("Collibra · assets", _dmig["collibra_assets"])
+        g4.metric("Collibra · términos", _dmig["collibra_terms"])
 
-    st.subheader(t("del_download", lang))
-    dd1, dd2 = st.columns(2)
-    dd1.download_button(
-        t("del_download_xlsx", lang),
-        case_deliverable.deliverable_xlsx_bytes(_del_key, lang),
-        f"entregable_{_del_key}_{lang}.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width="stretch")
-    dd2.download_button(
-        t("del_download_md", lang),
-        case_deliverable.executive_summary_md(_del_key, lang).encode("utf-8"),
-        f"entregable_{_del_key}_{lang}.md", "text/markdown",
-        width="stretch")
-    st.caption(t("del_honest_note", lang))
+        st.subheader(t("del_download", lang))
+        dd1, dd2 = st.columns(2)
+        dd1.download_button(
+            t("del_download_xlsx", lang),
+            case_deliverable.deliverable_xlsx_bytes(_del_key, lang),
+            f"entregable_{_del_key}_{lang}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch")
+        dd2.download_button(
+            t("del_download_md", lang),
+            case_deliverable.executive_summary_md(_del_key, lang).encode("utf-8"),
+            f"entregable_{_del_key}_{lang}.md", "text/markdown",
+            width="stretch")
+        st.caption(t("del_honest_note", lang))
 
 # --------------------------------------------------------------- Power BI
 with tab_con:
@@ -2834,10 +2939,13 @@ with tab_con:
             st.markdown(f"**{_th['concept']}** — {_th['plain']}")
             st.caption(f"{_th['practice']}")
 
-    # Siempre sobre el alcance combinado completo (demo + casos): un contrato
-    # por cada producto gobernado, evaluado con la última corrida real.
-    _con_res = _results_combined(lang)
-    _kp = data_contracts.kpis(lang, _con_res)
+    # Un contrato por cada producto gobernado, evaluado con la última corrida
+    # real. Con datos propios, los productos son TUS datasets y su linaje;
+    # sin ellos, la demo y los casos de ejemplo.
+    _con_res = UNI["quality_results"] if SOLO_PROPIOS else _results_combined(lang)
+    _con_cat = UNI["catalog"] if SOLO_PROPIOS else None
+    _con_graf = UNI["lineage_graph"] if SOLO_PROPIOS else None
+    _kp = data_contracts.kpis(lang, _con_res, _con_cat, _con_graf)
     _c1, _c2, _c3, _c4, _c5, _c6 = st.columns(6)
     _c1.metric(t("con_kpi_products", lang), _kp["products"])
     _c2.metric(t("con_kpi_ok", lang), _kp["ok"])
@@ -2848,7 +2956,7 @@ with tab_con:
 
     st.subheader(t("con_table_title", lang))
     st.caption(t("con_table_note", lang))
-    _con_df = data_contracts.contracts_df(lang, _con_res)
+    _con_df = data_contracts.contracts_df(lang, _con_res, _con_cat, _con_graf)
     _con_show = _con_df.copy()
     _con_show["compliance"] = _con_show["compliance"].map(
         lambda v: t(f"con_st_{v}", lang))
@@ -2896,14 +3004,15 @@ with tab_con:
 
     st.subheader(t("con_alerts_title", lang))
     st.caption(t("con_alerts_note", lang))
-    _con_ale = data_contracts.alerts_df(lang, _con_res)
+    _con_ale = data_contracts.alerts_df(lang, _con_res, _con_cat, _con_graf)
     if len(_con_ale):
         st.dataframe(_con_ale, width="stretch", hide_index=True)
     else:
         st.success(t("con_alerts_none", lang))
 
     st.download_button(t("con_dl_xlsx", lang),
-                       data_contracts.contracts_xlsx_bytes(lang, _con_res),
+                       data_contracts.contracts_xlsx_bytes(lang, _con_res, _con_cat,
+                                                           _con_graf),
                        file_name="contratos_datos.xlsx",
                        mime=("application/vnd.openxmlformats-officedocument"
                              ".spreadsheetml.sheet"),
