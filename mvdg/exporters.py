@@ -175,11 +175,19 @@ def to_parquet_bytes(df: pd.DataFrame) -> bytes | None:
         return None
 
 
-def bi_bundle_xlsx(lang: str = "es") -> bytes:
-    """Excel multi-hoja con todo el paquete de gobierno (para cualquier BI)."""
+def bi_bundle_xlsx(lang: str = "es", user_datasets: dict | None = None,
+                   solo_usuario: bool = False) -> bytes:
+    """Excel multi-hoja con todo el paquete de gobierno (para cualquier BI).
+
+    Con ``solo_usuario=True`` y datasets cargados, el paquete es SÓLO de
+    esos datasets. Sin esto, quien exportaba con sus datos a la vista se
+    llevaba el paquete de la demo: el mismo botón, otra información.
+    """
     buf = io.BytesIO()
+    tablas = governance_tables(lang, user_datasets=user_datasets,
+                               solo_usuario=solo_usuario)
     with pd.ExcelWriter(buf, engine="xlsxwriter",
                        engine_kwargs={"options": {"in_memory": True}}) as xw:
-        for name, df in governance_tables(lang).items():
+        for name, df in tablas.items():
             df.to_excel(xw, sheet_name=name[:31], index=False)
     return buf.getvalue()

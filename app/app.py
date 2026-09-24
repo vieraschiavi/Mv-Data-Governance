@@ -1892,7 +1892,11 @@ with tab_bi:
         d4.download_button(t("bi_download_parquet", lang), pq,
                            f"mvdg_{pick}_{lang}.parquet",
                            "application/octet-stream", width="stretch")
-    st.download_button(t("bi_export_all", lang), bi_bundle_xlsx(lang),
+    # Con datos propios, el paquete es de ESOS datos: antes este botón
+    # exportaba la demo aunque la tabla de arriba mostrara lo del usuario.
+    st.download_button(t("bi_export_all", lang),
+                       bi_bundle_xlsx(lang, user_datasets=_mis_datasets(),
+                                      solo_usuario=SOLO_PROPIOS),
                        f"mvdg_bi_bundle_{lang}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
