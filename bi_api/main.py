@@ -446,14 +446,15 @@ def migrar(destino: str, cuerpo: dict = _CUERPO,
 #
 # Ahora los dos se configuran, y por defecto no estorban:
 #
-#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 2048; 0 = sin tope)
+#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 0 = sin tope)
 #   MVDG_MAX_FILAS        tope de filas          (default 0 = sin tope)
 #
-# El tope de bytes sigue existiendo por defecto porque esta API PUEDE
-# publicarse fuera de 127.0.0.1: sin ningún límite, una sola petición basta
-# para voltear el proceso. En una instalación de escritorio se puede poner
-# MVDG_MAX_UPLOAD_MB=0 y el único límite pasa a ser la RAM de la máquina,
-# que es el límite honesto.
+# Por defecto NINGUNO de los dos corta: el dueño pidió «sin límite de tamaño
+# en cada módulo», y la API escucha sólo en 127.0.0.1 (fuera de loopback
+# exige MVDG_API_TOKEN). El único límite pasa a ser la RAM de la máquina,
+# que es el límite honesto. Quien la publique para varios usuarios pone
+# MVDG_MAX_UPLOAD_MB / MVDG_MAX_UPLOAD_DE_MB para que una sola petición no
+# pueda voltear el proceso.
 def _limite(env: str, defecto: int) -> int:
     """Lee un tope numérico del entorno. 0 (o negativo) = sin tope."""
     try:
@@ -463,7 +464,7 @@ def _limite(env: str, defecto: int) -> int:
     return max(0, valor)
 
 
-_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 2048) * 1024 * 1024
+_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 0) * 1024 * 1024
 # 0 = leer el archivo entero. Es el default: truncar en silencio es la peor
 # de las tres opciones (rechazar, truncar avisando, leer todo).
 _MAX_FILAS = _limite("MVDG_MAX_FILAS", 0)
@@ -590,7 +591,7 @@ def _de_error(clave: str, status: int, **extra) -> HTTPException:
 # Acá entran VARIOS archivos a la vez (o un .sqlite con varias tablas), así
 # que el tope es el del conjunto. Configurable con MVDG_MAX_UPLOAD_DE_MB;
 # 0 = sin tope, igual que en /api/perfilar.
-_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 4096) * 1024 * 1024
+_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 0) * 1024 * 1024
 _ARCHIVOS = File(...)
 
 
@@ -644,7 +645,7 @@ async def ingenieria_archivo(
     if not tablas:
         raise _de_error("de_err_vacio", 400)
 
-    truncado_tablas = len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
+    truncado_tablas = bool(dataeng.MAX_TABLAS_MULTIPLES) and len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
     if truncado_tablas:
         tablas = dict(list(tablas.items())[:dataeng.MAX_TABLAS_MULTIPLES])
 
@@ -757,7 +758,7 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         limite = dataeng.MUESTRA_SQL_DEFECTO
 
     query = str(cuerpo.get("query") or "").strip()
-    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES]
+    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES or None]
 
     tablas: dict = {}
     recortes: dict = {}

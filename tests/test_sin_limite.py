@@ -1,3 +1,4 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
 """Sin tope de filas por defecto en la carga de datos.
 
 Pedido del dueño: "¿Hay límite de filas? 100.000 por tabla por defecto...
@@ -166,3 +167,26 @@ def test_textos_nuevos_en_los_tres_idiomas():
         assert set(STRINGS[clave]) >= {"es", "en", "pt"}, clave
     txt = STRINGS["db_recorte"]["es"].format(n=1000, total=FILAS)
     assert "150,000" in txt and "1,000" in txt
+
+
+def test_un_sqlite_con_mas_de_12_tablas_se_lee_entero(tmp_path):
+    """Antes había un tope de 12 tablas por archivo: un SQLite con 20
+    tablas analizaba las primeras 12."""
+    import sqlite3
+
+    from mvdg import dataeng
+
+    ruta = tmp_path / "muchas.sqlite"
+    cx = sqlite3.connect(ruta)
+    for i in range(20):
+        cx.execute(f"CREATE TABLE t{i:02d} (a INTEGER)")
+        cx.executemany(f"INSERT INTO t{i:02d} VALUES (?)", [(j,) for j in range(5)])
+    cx.commit()
+    cx.close()
+    tablas = dataeng._leer_sqlite_bytes(ruta.read_bytes())
+    assert len(tablas) == 20 and all(len(df) == 5 for df in tablas.values())
+
+
+def test_la_api_no_tiene_tope_de_tamano_por_defecto():
+    import bi_api.main as api
+    assert api._MAX_BYTES == 0 and api._MAX_BYTES_DE == 0

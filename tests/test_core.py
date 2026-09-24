@@ -975,7 +975,8 @@ def test_los_topes_de_subida_se_configuran_y_se_pueden_apagar():
     assert api._MAX_FILAS == 0, (
         "sigue habiendo un corte de filas por defecto: el cliente recibiría "
         "el perfil de un pedazo de su archivo con cara de perfil completo")
-    assert api._MAX_BYTES > 200 * 1024 * 1024, "el tope de tamaño sigue siendo chico"
+    # Sin tope de tamaño por defecto: «sin límite de tamaño en cada módulo».
+    assert api._MAX_BYTES == 0 and api._MAX_BYTES_DE == 0, "sigue habiendo tope de tamaño"
     # Y se pueden apagar del todo.
     os.environ["MVDG_MAX_UPLOAD_MB"] = "0"
     try:

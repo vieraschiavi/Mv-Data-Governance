@@ -59,11 +59,12 @@ import pandas as pd
 # cada módulo" — el límite real pasa a ser la memoria de la máquina. Un tope
 # se puede seguir pidiendo explícito (``muestra=N`` / ``limite=N``) y el
 # resultado lo marca (``muestreado`` + ``filas_originales``).
-# Lo que sigue teniendo tope es la CANTIDAD de tablas por pedido, no filas.
+# Tampoco hay tope de CANTIDAD de tablas por pedido (era 12: un SQLite con
+# 20 tablas analizaba las primeras 12). 0 = todas.
 # --------------------------------------------------------------------------
 TOPE_FILAS = 0
 MUESTRA_SQL_DEFECTO = 0
-MAX_TABLAS_MULTIPLES = 12
+MAX_TABLAS_MULTIPLES = 0
 MAX_TABLAS_ESQUEMA_SQL = 15
 
 
@@ -172,7 +173,7 @@ def _leer_sqlite_bytes(datos: bytes, tabla=None, muestra=None) -> dict[str, pd.D
             if tabla:
                 tablas = [t for t in tablas if t.lower() == str(tabla).lower()] or [tabla]
             out = {}
-            for t in tablas[:MAX_TABLAS_MULTIPLES]:
+            for t in tablas[:MAX_TABLAS_MULTIPLES or None]:
                 lim = f" LIMIT {int(muestra)}" if muestra else ""
                 out[t] = pd.read_sql_query(f'SELECT * FROM "{t}"{lim}', cx)
             return out
