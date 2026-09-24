@@ -1244,14 +1244,33 @@ _T: dict[str, dict[str, str]] = {
     "db_delete": {"es": "Eliminar conexión", "en": "Delete connection", "pt": "Excluir conexão"},
     "db_need_name": {"es": "Poné un nombre para la conexión.", "en": "Enter a name for the connection.", "pt": "Informe um nome para a conexão."},
     "db_pick_table": {"es": "Tabla a traer", "en": "Table to load", "pt": "Tabela para trazer"},
-    "db_limit": {"es": "Máximo de filas", "en": "Max rows", "pt": "Máximo de linhas"},
+    "db_limit": {"es": "Tope de filas (0 = sin tope)", "en": "Row cap (0 = no cap)", "pt": "Limite de linhas (0 = sem limite)"},
     "db_limit_help": {
-        "es": "0 = sin límite: trae la tabla entera. El límite real pasa a "
-              "ser la memoria de esta computadora.",
-        "en": "0 = no limit: brings the whole table. The real limit becomes "
-              "this computer's memory.",
-        "pt": "0 = sem limite: traz a tabela inteira. O limite real passa a "
-              "ser a memória deste computador.",
+        "es": "Por defecto 0 = sin tope: trae la tabla entera. El límite real "
+              "pasa a ser la memoria de esta computadora. Si ponés un tope y "
+              "recorta, se avisa con el total real de filas.",
+        "en": "Default 0 = no cap: brings the whole table. The real limit "
+              "becomes this computer's memory. If you set a cap and it cuts "
+              "the data, you're told the real row count.",
+        "pt": "Padrão 0 = sem limite: traz a tabela inteira. O limite real "
+              "passa a ser a memória deste computador. Se você definir um "
+              "limite e ele cortar, avisamos o total real de linhas.",
+    },
+    "db_recorte": {
+        "es": "Se trajeron {n:,} de {total:,} filas por el tope elegido: el análisis "
+              "es sobre ese recorte, no sobre la tabla entera. Poné 0 para traer todo.",
+        "en": "{n:,} of {total:,} rows were loaded because of the chosen cap: the "
+              "analysis covers that cut, not the whole table. Set 0 to load everything.",
+        "pt": "Foram trazidas {n:,} de {total:,} linhas pelo limite escolhido: a análise "
+              "é sobre esse recorte, não sobre a tabela inteira. Use 0 para trazer tudo.",
+    },
+    "db_recorte_sin_total": {
+        "es": "Se trajeron {n:,} filas y el tope elegido pudo haber recortado la tabla "
+              "(no se pudo contar el total). Poné 0 para traer todo.",
+        "en": "{n:,} rows were loaded and the chosen cap may have cut the table "
+              "(the total could not be counted). Set 0 to load everything.",
+        "pt": "Foram trazidas {n:,} linhas e o limite escolhido pode ter cortado a "
+              "tabela (não foi possível contar o total). Use 0 para trazer tudo.",
     },
     "db_load": {"es": "Traer y perfilar tabla", "en": "Load and profile table", "pt": "Trazer e perfilar tabela"},
     "db_query": {"es": "…o una consulta SQL (SELECT)", "en": "…or a SQL query (SELECT)", "pt": "…ou uma consulta SQL (SELECT)"},
@@ -2578,7 +2597,13 @@ _T: dict[str, dict[str, str]] = {
     "de_db_ejecutar_query": {"es": "Analizar el resultado de la consulta",
                              "en": "Analyze the query result",
                              "pt": "Analisar o resultado da consulta"},
-    "de_db_limite": {"es": "Límite de filas", "en": "Row limit", "pt": "Limite de linhas"},
+    "de_db_limite": {"es": "Tope de filas (0 = sin tope)", "en": "Row cap (0 = no cap)",
+                     "pt": "Limite de linhas (0 = sem limite)"},
+    "de_db_recorte": {
+        "es": "«{tabla}»: se analizaron {n} de {total} filas por el tope elegido. Poné 0 para analizar todo.",
+        "en": "«{tabla}»: {n} of {total} rows were analyzed because of the chosen cap. Set 0 to analyze everything.",
+        "pt": "«{tabla}»: foram analisadas {n} de {total} linhas pelo limite escolhido. Use 0 para analisar tudo.",
+    },
     "de_db_sin_tablas": {"es": "La conexión funciona pero no encontramos tablas visibles.",
                          "en": "The connection works but no visible tables were found.",
                          "pt": "A conexão funciona mas não encontramos tabelas visíveis."},

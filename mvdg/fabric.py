@@ -61,10 +61,12 @@ import os
 
 import pandas as pd
 
-# Tope por defecto al traer una tabla del Lakehouse a pandas. Mismo criterio
-# que ``connectors.MAX_ROWS``: es un default, no un techo — con 0 se trae
-# entera, bajo tu propio riesgo de memoria.
-MAX_FILAS = 100_000
+# Tope por defecto al traer una tabla del Lakehouse a pandas: 0 = SIN TOPE,
+# cada tabla entera. Mismo criterio que ``connectors.MAX_ROWS`` (antes era
+# 100.000). Se puede pedir un tope con ``muestra=N``; si recorta, el
+# resultado lo dice en ``muestreadas`` y da el total real en
+# ``filas_totales`` — nunca un recorte mudo.
+MAX_FILAS = 0
 
 # Prefijo de las tablas que se escriben. Con prefijo, el gobierno queda
 # junto y ordenado en la lista del Lakehouse, y se distingue de un vistazo
@@ -140,11 +142,11 @@ def listar_tablas(spark=None) -> list[str]:
 
 
 def leer_tablas(nombres=None, spark=None,
-                muestra: int = MAX_FILAS) -> tuple[dict, dict]:
+                muestra: int | None = MAX_FILAS) -> tuple[dict, dict]:
     """Trae tablas del Lakehouse a pandas.
 
-    ``nombres=None`` trae todas las del Lakehouse por defecto. ``muestra=0``
-    trae cada tabla entera.
+    ``nombres=None`` trae todas las del Lakehouse por defecto. Por defecto
+    (``muestra`` 0 o ``None``) trae cada tabla entera.
 
     Devuelve ``(tablas, muestreadas)``: el segundo dict dice qué tablas se
     cortaron y en cuántas filas, para que el resultado nunca presente un
@@ -153,7 +155,7 @@ def leer_tablas(nombres=None, spark=None,
     ses = _exigir_spark(spark)
     if nombres is None:
         nombres = listar_tablas(ses)
-    muestra = max(0, int(muestra))
+    muestra = max(0, int(muestra or 0))
 
     tablas: dict[str, pd.DataFrame] = {}
     muestreadas: dict[str, int] = {}
@@ -243,8 +245,20 @@ def escribir_tablas(gobierno: dict, spark=None, prefijo: str = PREFIJO,
     return {"escritas": escritas, "formato": "parquet", "destino": destino}
 
 
+def _contar_recortadas(ses, muestreadas: dict) -> dict:
+    """Total real de filas de cada tabla que el tope recortó. Si el conteo
+    falla, queda ``None``: el recorte se sigue avisando en ``muestreadas``."""
+    totales: dict[str, int | None] = {}
+    for nombre in muestreadas:
+        try:
+            totales[nombre] = int(ses.read.table(nombre).count())
+        except Exception:  # noqa: BLE001 - el aviso de recorte no depende del conteo
+            totales[nombre] = None
+    return totales
+
+
 def gobernar_lakehouse(nombres=None, lang: str = "es", spark=None,
-                       prefijo: str = PREFIJO, muestra: int = MAX_FILAS,
+                       prefijo: str = PREFIJO, muestra: int | None = MAX_FILAS,
                        escribir: bool = True, modo: str = "overwrite",
                        ruta: str | None = None) -> dict:
     """Lee el Lakehouse, lo gobierna y escribe el resultado. Una celda.
@@ -253,7 +267,9 @@ def gobernar_lakehouse(nombres=None, lang: str = "es", spark=None,
     para mirar el resultado antes de dejarlo publicado.
 
     El diccionario que devuelve incluye ``muestreadas``: si está vacío, el
-    gobierno se calculó sobre las tablas COMPLETAS.
+    gobierno se calculó sobre las tablas COMPLETAS. Si no, ``filas_totales``
+    dice cuántas filas tenía de verdad cada tabla recortada (un ``count()``
+    de Spark, que se paga SOLO cuando hubo recorte).
     """
     ses = _exigir_spark(spark)
     tablas, muestreadas = leer_tablas(nombres, ses, muestra=muestra)
@@ -266,6 +282,7 @@ def gobernar_lakehouse(nombres=None, lang: str = "es", spark=None,
     salida = {
         "tablas_leidas": {n: len(df) for n, df in tablas.items()},
         "muestreadas": muestreadas,
+        "filas_totales": _contar_recortadas(ses, muestreadas),
         "gobierno": gobierno,
         "escritas": [],
     }

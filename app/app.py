@@ -29,7 +29,7 @@ from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
                           recommended_pack, save_client)
 from mvdg.connectors import (CLOUD_ENGINES, ENGINES, EXTRA_EXAMPLE,
-                             delete_connection, list_tables,
+                             aviso_recorte, delete_connection, list_tables,
                              load_connections, load_table, run_query,
                              save_connection, scan_all_connections,
                              stored_password, test_connection)
@@ -1513,6 +1513,20 @@ def _render_dataeng(user_df, dataset_name: str, lang: str):
             st.code(res["ddl"], language="sql")
 
 
+def _avisar_recorte(profile, df, limit, lang, *, table=None, sql=None, password=None):
+    """Si el tope elegido recortó la tabla, lo dice con el total real
+    (COUNT). Nunca un recorte mudo: un perfil de un pedazo presentado como
+    el total es un dato equivocado con cara de dato bueno."""
+    try:
+        total = aviso_recorte(profile, df, limit, table=table, sql=sql,
+                              password=password)
+    except Exception:  # noqa: BLE001 - si el COUNT falla, igual se avisa el recorte
+        st.warning(t("db_recorte_sin_total", lang).format(n=len(df)))
+        return
+    if total is not None:
+        st.warning(t("db_recorte", lang).format(n=len(df), total=total))
+
+
 def _render_profile(user_df, dataset_name: str | None = None):
     """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
     Además lo deja disponible en session_state para guardarlo en el proyecto
@@ -1832,26 +1846,30 @@ with tab_pr:
                 _db_tables = []
                 _error(exc, lang, "conexion")
             if _db_tables:
-                # El máximo era 100.000 y no se podía subir: quien tenía una
-                # tabla de 3 millones de filas no tenía forma de traerlas.
-                # 0 = sin límite, que es lo que hay que poner para gobernar
-                # la tabla entera; el default sigue siendo chico para que la
-                # primera consulta a una base desconocida no traiga todo.
-                lim = st.number_input(t("db_limit", lang), 0, 100_000_000, 10000,
+                # Sin tope por defecto: 0 = la tabla entera (pedido del dueño,
+                # "sin límite de tamaño cada módulo"). Antes arrancaba en
+                # 10.000 y quien no tocaba el control gobernaba un pedazo.
+                # Se puede seguir poniendo un tope; si recorta, se avisa con
+                # el total real (COUNT) — nunca un recorte mudo.
+                lim = st.number_input(t("db_limit", lang), 0, None, 0,
                                       step=1000, help=t("db_limit_help", lang))
                 p1, p2 = st.columns([2, 1])
                 table = p1.selectbox(t("db_pick_table", lang), _db_tables)
                 if p2.button(t("db_load", lang)):
                     try:
-                        _render_profile(load_table(active, table, int(lim), password=pwd or None),
-                                        dataset_name=table)
+                        _df_db = load_table(active, table, int(lim), password=pwd or None)
+                        _avisar_recorte(active, _df_db, int(lim), lang, table=table,
+                                        password=pwd or None)
+                        _render_profile(_df_db, dataset_name=table)
                     except Exception as exc:  # noqa: BLE001
                         _error(exc, lang, "generico")
                 sql = st.text_area(t("db_query", lang), "")
                 if sql.strip() and st.button(t("db_run_query", lang)):
                     try:
-                        _render_profile(run_query(active, sql, int(lim), password=pwd or None),
-                                        dataset_name="query_result")
+                        _df_db = run_query(active, sql, int(lim), password=pwd or None)
+                        _avisar_recorte(active, _df_db, int(lim), lang, sql=sql,
+                                        password=pwd or None)
+                        _render_profile(_df_db, dataset_name="query_result")
                     except Exception as exc:  # noqa: BLE001
                         _error(exc, lang, "generico")
             else:

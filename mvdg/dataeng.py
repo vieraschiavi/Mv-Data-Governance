@@ -53,13 +53,16 @@ import numpy as np
 import pandas as pd
 
 # --------------------------------------------------------------------------
-# Límites — este motor corre DENTRO de un pedido HTTP con tiempo de espera
-# real del lado del cliente, a diferencia del script de línea de comandos
-# que lo origina. Sin topes, una tabla enorme se lleva puesta la memoria del
-# proceso (o del Python embebido del .exe) y deja al programa sin responder.
+# Límites de FILAS: ninguno por defecto (0 = sin tope). Antes el análisis se
+# cortaba en 200.000 filas y la carga por SQL en 50.000, así que un dataset
+# grande se gobernaba por un pedazo. Pedido del dueño: "sin límite de tamaño
+# cada módulo" — el límite real pasa a ser la memoria de la máquina. Un tope
+# se puede seguir pidiendo explícito (``muestra=N`` / ``limite=N``) y el
+# resultado lo marca (``muestreado`` + ``filas_originales``).
+# Lo que sigue teniendo tope es la CANTIDAD de tablas por pedido, no filas.
 # --------------------------------------------------------------------------
-TOPE_FILAS = 200_000
-MUESTRA_SQL_DEFECTO = 50_000
+TOPE_FILAS = 0
+MUESTRA_SQL_DEFECTO = 0
 MAX_TABLAS_MULTIPLES = 12
 MAX_TABLAS_ESQUEMA_SQL = 15
 
@@ -807,10 +810,9 @@ def analizar_tabla(nombre: str, df: pd.DataFrame, *, target=None, columna_tiempo
     """
     advertencias = []
     filas_originales = len(df)
-    if muestra and len(df) > muestra:
-        df = df.head(muestra)
-    elif len(df) > TOPE_FILAS:
-        df = df.head(TOPE_FILAS)
+    tope = muestra or TOPE_FILAS
+    if tope and len(df) > tope:
+        df = df.head(tope)
 
     df2, err = _etapa("tipado", tipar, df)
     if err:

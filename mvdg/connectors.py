@@ -106,11 +106,14 @@ EXTRA_EXAMPLE: dict[str, dict] = {
     "fabric": {"auth": "service_principal", "tenant_id": "00000000-0000-0000-0000-000000000000"},
 }
 
-# Tope POR DEFECTO al traer una tabla, no un techo: se puede pedir más, y
-# con 0 se trae la tabla entera. Antes era un máximo duro, así que quien
-# tenía tres millones de filas no tenía forma de gobernarlas — el programa
-# le mostraba las primeras cien mil y no había manera de subirlo.
-MAX_ROWS = 100_000
+# Tope POR DEFECTO al traer una tabla: 0 = SIN TOPE, se trae la tabla
+# entera. Historia: primero fue un máximo duro de 100.000 (quien tenía tres
+# millones de filas gobernaba un pedazo sin saberlo), después un default de
+# 100.000 que se podía subir. Pedido del dueño: "sin límite de tamaño cada
+# módulo". El límite real pasa a ser la memoria de la máquina. Quien quiera
+# un tope lo pide explícito, y si recorta, ``aviso_recorte`` da el total
+# real (COUNT) para que nunca haya un recorte mudo.
+MAX_ROWS = 0
 
 
 def _file() -> str:
@@ -574,17 +577,24 @@ def _quote_ident(eng, name: str) -> str:
     return eng.dialect.identifier_preparer.quote(name)
 
 
-def load_table(profile: dict, table: str, limit: int = MAX_ROWS,
-               password: str | None = None) -> pd.DataFrame:
-    """Trae una tabla a un DataFrame. ``limit=0`` trae la tabla entera."""
-    limit = max(0, int(limit))
-    eng = _engine(profile, password)
+def _ref_tabla(eng, table: str) -> str:
     if "." in table:
         schema, name = table.split(".", 1)
-        ref = f"{_quote_ident(eng, schema)}.{_quote_ident(eng, name)}"
-    else:
-        ref = _quote_ident(eng, table)
-    return _leer_sql(f"SELECT * FROM {ref}", eng, limit)
+        return f"{_quote_ident(eng, schema)}.{_quote_ident(eng, name)}"
+    return _quote_ident(eng, table)
+
+
+def _tope(limit) -> int:
+    """``None``/0/negativo = sin tope (0). Cualquier otro número, tal cual."""
+    return max(0, int(limit or 0))
+
+
+def load_table(profile: dict, table: str, limit: int | None = MAX_ROWS,
+               password: str | None = None) -> pd.DataFrame:
+    """Trae una tabla a un DataFrame. Por defecto (y con ``limit`` 0 o
+    ``None``) trae la tabla ENTERA: no hay tope de filas."""
+    eng = _engine(profile, password)
+    return _leer_sql(f"SELECT * FROM {_ref_tabla(eng, table)}", eng, _tope(limit))
 
 
 # Palabras de escritura/DDL que NO tienen que aparecer en una consulta que
@@ -602,16 +612,9 @@ _PALABRAS_DE_ESCRITURA = re.compile(
     r"exec|execute|merge|call|into)\b", re.IGNORECASE)
 
 
-def run_query(profile: dict, sql: str, limit: int = MAX_ROWS,
-              password: str | None = None) -> pd.DataFrame:
-    """Ejecuta una consulta SELECT/WITH de solo lectura. ``limit=0``
-    devuelve todas las filas.
-
-    El chequeo de antes (¿"empieza con select o with"?) no alcanza: un CTE
-    de escritura -- ``WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM
-    x`` -- empieza con "with" y borra datos igual. Ahora se rechaza
-    cualquier palabra de escritura en TODA la consulta (no solo el
-    inicio) y cualquier sentencia apilada con ";"."""
+def _validar_lectura(sql: str) -> str:
+    """Devuelve la consulta limpia (sin ``;`` final) o lanza ValueError si no
+    es de solo lectura. Ver ``run_query``."""
     limpio = sql.strip()
     if not limpio.lower().startswith(("select", "with")):
         raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
@@ -620,7 +623,55 @@ def run_query(profile: dict, sql: str, limit: int = MAX_ROWS,
         raise ValueError("No se permite más de una sentencia por consulta.")
     if _PALABRAS_DE_ESCRITURA.search(limpio):
         raise ValueError("Solo se permiten consultas de lectura (SELECT / WITH).")
-    return _leer_sql(limpio, _engine(profile, password), max(0, int(limit)))
+    return sin_punto_final
+
+
+def run_query(profile: dict, sql: str, limit: int | None = MAX_ROWS,
+              password: str | None = None) -> pd.DataFrame:
+    """Ejecuta una consulta SELECT/WITH de solo lectura. Por defecto (y con
+    ``limit`` 0 o ``None``) devuelve TODAS las filas.
+
+    El chequeo de antes (¿"empieza con select o with"?) no alcanza: un CTE
+    de escritura -- ``WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM
+    x`` -- empieza con "with" y borra datos igual. Ahora se rechaza
+    cualquier palabra de escritura en TODA la consulta (no solo el
+    inicio) y cualquier sentencia apilada con ";"."""
+    limpio = _validar_lectura(sql)
+    return _leer_sql(limpio, _engine(profile, password), _tope(limit))
+
+
+def total_filas(profile: dict, *, table: str | None = None, sql: str | None = None,
+                password: str | None = None) -> int:
+    """Cuántas filas tiene de verdad la tabla (o el resultado de la consulta):
+    un ``COUNT(*)`` del lado del motor, sin traer los datos.
+
+    La consulta pasa por la MISMA validación de solo lectura que
+    ``run_query`` antes de envolverse en el COUNT. El alias de la subconsulta
+    va sin ``AS`` porque Oracle no lo acepta en un alias de tabla."""
+    eng = _engine(profile, password)
+    if table:
+        conteo = f"SELECT COUNT(*) FROM {_ref_tabla(eng, table)}"
+    elif sql:
+        conteo = f"SELECT COUNT(*) FROM ({_validar_lectura(sql)}) mvdg_conteo"
+    else:
+        raise ValueError("Falta la tabla o la consulta a contar.")
+    return int(pd.read_sql(conteo, eng).iloc[0, 0])
+
+
+def aviso_recorte(profile: dict, df: pd.DataFrame, limit: int | None, *,
+                  table: str | None = None, sql: str | None = None,
+                  password: str | None = None) -> int | None:
+    """Si un tope ELEGIDO recortó el resultado, devuelve el total real de
+    filas (COUNT) para avisarlo; si no hubo recorte, ``None``.
+
+    Sin tope nunca hay recorte, así que ni se cuenta. Con tope, solo se
+    cuenta cuando vinieron exactamente ``limit`` filas — si vinieron menos,
+    la tabla ya estaba entera."""
+    tope = _tope(limit)
+    if not tope or len(df) < tope:
+        return None
+    total = total_filas(profile, table=table, sql=sql, password=password)
+    return total if total > len(df) else None
 
 
 def purview_qualified_name(profile: dict, table: str) -> str | None:

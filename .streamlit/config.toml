@@ -21,14 +21,17 @@
 # Streamlit corta las subidas en 200 MB por defecto, y el corte es del
 # SERVIDOR: el archivo se sube entero y recién ahí se rechaza, así que el
 # usuario espera la subida completa de su Excel para que le digan que no.
-# 5 GB es un techo que en la práctica no se toca con un CSV o un Excel; el
-# límite real pasa a ser la RAM de la máquina, que es el límite honesto.
+#
+# Pedido del dueño: "sin límite de tamaño". Streamlit EXIGE un número acá
+# (no acepta 0 ni "sin límite"), así que se pone 200.000 MB (~200 GB): un
+# valor que ningún archivo real alcanza. En la práctica el techo pasa a ser
+# la RAM y el disco de la máquina, que es el límite honesto. Antes era 5.000.
 #
 # Se puede bajar sin tocar código: la variable de entorno
 # STREAMLIT_SERVER_MAX_UPLOAD_SIZE (en MB) pisa este valor. Tiene sentido
 # bajarlo en modo servidor multiusuario, donde varias subidas grandes a la
 # vez sí pueden voltear el proceso.
-maxUploadSize = 5000
+maxUploadSize = 200000
 
 [theme]
 base = "dark"

@@ -502,7 +502,6 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         raise HTTPException(400, {"error": "archivo_vacio"})
 
     try:
-        # nrows=None es "todas": con _MAX_FILAS en 0 se lee el archivo entero.
         # dataeng.leer_archivo_bytes -- MISMO motor que /api/ingenieria/archivo,
         # no un pd.read_csv/read_excel de acá: antes, un CSV en latin-1/cp1252
         # (comun en exportaciones de Excel) se leia bien en un endpoint y se
@@ -510,9 +509,14 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         # resultados distintos, sin ninguna razon real. Se toma la PRIMERA
         # tabla del resultado (para un Excel multi-hoja, la primera hoja) --
         # esto perfila UNA tabla, igual que antes.
-        _filas = _MAX_FILAS or None
-        tablas = dataeng.leer_archivo_bytes(nombre, crudo, muestra=_filas)
+        # El archivo se lee ENTERO siempre (los bytes ya están en memoria):
+        # así, si hay un tope MVDG_MAX_FILAS y recorta, la respuesta da el
+        # total real de filas en vez de un "truncado" sin número.
+        tablas = dataeng.leer_archivo_bytes(nombre, crudo)
         df = next(iter(tablas.values()))
+        filas_totales = int(len(df))
+        if _MAX_FILAS:
+            df = df.head(_MAX_FILAS)
     except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
         mensajes = {idioma: friendly_error(exc, idioma, "archivo")[0] for idioma in LANGS}
         raise HTTPException(400, {
@@ -540,7 +544,8 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         # perfil sobre la mitad de las filas presentado como si fuera el total
         # es un dato equivocado con cara de dato bueno.
         "filas_leidas": int(len(df)),
-        "truncado": bool(_MAX_FILAS and len(df) >= _MAX_FILAS),
+        "filas_totales": filas_totales,
+        "truncado": filas_totales > len(df),
     }
 
 
@@ -742,9 +747,9 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         raise HTTPException(400, "Falta el motor de la conexión.")
 
     try:
-        # Sin techo: `limite=0` trae la tabla entera. Antes se recortaba a
-        # connectors.MAX_ROWS, así que pedir más filas de las permitidas
-        # devolvía menos sin decir nada.
+        # Sin tope por defecto: sin `limite` (o con 0) se trae la tabla
+        # entera. Con un tope que recorta, la respuesta trae `recortes` con
+        # el total real (COUNT) de cada tabla cortada: nunca un recorte mudo.
         crudo_lim = cuerpo.get("limite")
         limite = (max(0, int(crudo_lim)) if crudo_lim is not None
                   else dataeng.MUESTRA_SQL_DEFECTO)
@@ -755,11 +760,20 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
     nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES]
 
     tablas: dict = {}
+    recortes: dict = {}
     try:
         if query:
             tablas["consulta"] = connectors.run_query(profile, query, limite, password=password)
+            total = connectors.aviso_recorte(profile, tablas["consulta"], limite,
+                                             sql=query, password=password)
+            if total is not None:
+                recortes["consulta"] = {"filas": len(tablas["consulta"]), "total": total}
         for nombre in nombres_tablas:
             tablas[nombre] = connectors.load_table(profile, nombre, limite, password=password)
+            total = connectors.aviso_recorte(profile, tablas[nombre], limite,
+                                             table=nombre, password=password)
+            if total is not None:
+                recortes[nombre] = {"filas": len(tablas[nombre]), "total": total}
     except ValueError as exc:  # consulta que no es SELECT/WITH
         raise HTTPException(400, {"error": "consulta_no_permitida", "detalle": str(exc)}) from exc
     except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
@@ -778,7 +792,8 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         for nombre, df in tablas.items()
     }
     joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
-    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang)}
+    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang),
+            "recortes": recortes}
 
 
 @app.post("/api/bi/escanear-tenant", tags=["governance"])

@@ -751,6 +751,13 @@ function ResultadoAnalisis({ resultado, lang }) {
   return (
     <>
       {resultado.truncado_tablas ? <p className="sub">{t("de_truncado_tablas", lang)}</p> : null}
+      {Object.entries(resultado.recortes || {}).map(([tabla, r]) => (
+        <p className="sub" key={`recorte-${tabla}`}>
+          {t("de_db_recorte", lang).replace("{tabla}", tabla)
+            .replace("{n}", Number(r.filas).toLocaleString())
+            .replace("{total}", Number(r.total).toLocaleString())}
+        </p>
+      ))}
       {resultado.joins && resultado.joins.length ? (
         <div className="panel">
           <h3>{t("de_joins_titulo", lang)}</h3>
@@ -831,7 +838,7 @@ function FuenteDb({ lang, onAnalizado, target, setTarget, columnaTiempo, setColu
   const [tablasDisponibles, setTablasDisponibles] = useState([]);
   const [tablasElegidas, setTablasElegidas] = useState([]);
   const [query, setQuery] = useState("");
-  const [limite, setLimite] = useState(10000);
+  const [limite, setLimite] = useState(0);  // 0 = sin tope: la tabla entera
   const [analizando, setAnalizando] = useState(false);
 
   const esSqlite = motor === "sqlite";
@@ -909,7 +916,7 @@ function FuenteDb({ lang, onAnalizado, target, setTarget, columnaTiempo, setColu
     try {
       const cuerpo = {
         ...perfilActual(), tablas: tablasElegidas, query: query.trim(),
-        limite: Number(limite) || undefined, target, columna_tiempo: columnaTiempo,
+        limite: Math.max(0, Number(limite) || 0), target, columna_tiempo: columnaTiempo,
       };
       onAnalizado(await ingenieriaSqlAnalizar(cuerpo, lang));
     } catch (e) {
@@ -1020,7 +1027,7 @@ function FuenteDb({ lang, onAnalizado, target, setTarget, columnaTiempo, setColu
           <input id="de-tcol-db" value={columnaTiempo} placeholder={t("de_tiempo_col_ph", lang)}
                  onChange={(e) => setColumnaTiempo(e.target.value)} /></div>
         <div><label htmlFor="de-limite">{t("de_db_limite", lang)}</label>
-          <input id="de-limite" type="number" min="1" value={limite}
+          <input id="de-limite" type="number" min="0" value={limite}
                  onChange={(e) => setLimite(e.target.value)} /></div>
       </div>
 
