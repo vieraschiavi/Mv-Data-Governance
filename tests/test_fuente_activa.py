@@ -1,3 +1,4 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
 """La fuente activa: con datos propios cargados, la demo desaparece de TODO
 el programa; sin ellos, vuelve.
 

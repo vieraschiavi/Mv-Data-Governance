@@ -1,3 +1,4 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
 """MV Data Governance · La fuente activa: la demo, o SOLO los datos del usuario.
 
 El pedido, textual: «al elegir dataset por archivo o sql debería aplicarse a
