@@ -53,14 +53,18 @@ import numpy as np
 import pandas as pd
 
 # --------------------------------------------------------------------------
-# Límites — este motor corre DENTRO de un pedido HTTP con tiempo de espera
-# real del lado del cliente, a diferencia del script de línea de comandos
-# que lo origina. Sin topes, una tabla enorme se lleva puesta la memoria del
-# proceso (o del Python embebido del .exe) y deja al programa sin responder.
+# Límites de FILAS: ninguno por defecto (0 = sin tope). Antes el análisis se
+# cortaba en 200.000 filas y la carga por SQL en 50.000, así que un dataset
+# grande se gobernaba por un pedazo. Pedido del dueño: "sin límite de tamaño
+# cada módulo" — el límite real pasa a ser la memoria de la máquina. Un tope
+# se puede seguir pidiendo explícito (``muestra=N`` / ``limite=N``) y el
+# resultado lo marca (``muestreado`` + ``filas_originales``).
+# Tampoco hay tope de CANTIDAD de tablas por pedido (era 12: un SQLite con
+# 20 tablas analizaba las primeras 12). 0 = todas.
 # --------------------------------------------------------------------------
-TOPE_FILAS = 200_000
-MUESTRA_SQL_DEFECTO = 50_000
-MAX_TABLAS_MULTIPLES = 12
+TOPE_FILAS = 0
+MUESTRA_SQL_DEFECTO = 0
+MAX_TABLAS_MULTIPLES = 0
 MAX_TABLAS_ESQUEMA_SQL = 15
 
 
@@ -169,7 +173,7 @@ def _leer_sqlite_bytes(datos: bytes, tabla=None, muestra=None) -> dict[str, pd.D
             if tabla:
                 tablas = [t for t in tablas if t.lower() == str(tabla).lower()] or [tabla]
             out = {}
-            for t in tablas[:MAX_TABLAS_MULTIPLES]:
+            for t in tablas[:MAX_TABLAS_MULTIPLES or None]:
                 lim = f" LIMIT {int(muestra)}" if muestra else ""
                 out[t] = pd.read_sql_query(f'SELECT * FROM "{t}"{lim}', cx)
             return out
@@ -807,10 +811,9 @@ def analizar_tabla(nombre: str, df: pd.DataFrame, *, target=None, columna_tiempo
     """
     advertencias = []
     filas_originales = len(df)
-    if muestra and len(df) > muestra:
-        df = df.head(muestra)
-    elif len(df) > TOPE_FILAS:
-        df = df.head(TOPE_FILAS)
+    tope = muestra or TOPE_FILAS
+    if tope and len(df) > tope:
+        df = df.head(tope)
 
     df2, err = _etapa("tipado", tipar, df)
     if err:

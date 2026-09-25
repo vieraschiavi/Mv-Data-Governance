@@ -152,3 +152,46 @@ def test_la_app_sin_datos_propios_muestra_la_demo(tmp_path, monkeypatch):
     at = _correr(monkeypatch, tmp_path, None)
     assert not at.exception, [str(e.value)[:300] for e in at.exception]
     assert set(dataset_names()) & _nombres_en_tablas(at)
+
+
+def _textos_de_todo(at) -> str:
+    """Todo lo escrito en pantalla, más los datos de los gráficos."""
+    partes = []
+    for tipo in ("markdown", "caption", "metric", "info", "warning", "success",
+                 "subheader", "header", "title", "text"):
+        for el in at.get(tipo):
+            partes.append(f"{getattr(el, 'label', '') or ''} "
+                          f"{getattr(el, 'value', '') or ''}")
+    partes += [str(el.proto) for el in at.get("plotly_chart")]
+    return "\n".join(partes)
+
+
+def test_la_app_con_tus_datos_no_nombra_la_demo_ni_en_textos_ni_en_graficos(
+        tmp_path, monkeypatch):
+    """Tablas y selectores ya estaban cubiertos; faltaban los textos, las
+    métricas y los GRÁFICOS, que se arman aparte y podían seguir leyendo la
+    demo sin que ninguna tabla lo delatara."""
+    at = _correr(monkeypatch, tmp_path, _mis_datos())
+    assert not at.exception
+    assert len(at.get("plotly_chart")) > 0      # el barrido vio gráficos
+    todo = _textos_de_todo(at)
+    assert "mis_ventas" in todo
+    fugas = sorted(a for a in AJENOS if a in todo)
+    assert not fugas, f"la demo aparece en textos o gráficos: {fugas}"
+
+
+def test_el_paquete_bi_con_tus_datos_es_solo_de_tus_datos():
+    """El botón «exportar todo» de BI bajaba la demo con datos propios."""
+    import io
+
+    from mvdg.exporters import bi_bundle_xlsx
+    libro = pd.read_excel(io.BytesIO(bi_bundle_xlsx(
+        "es", user_datasets=_mis_datos(), solo_usuario=True)), sheet_name=None)
+    vistos = set()
+    for df in libro.values():
+        if "dataset" in df.columns:
+            vistos |= set(df["dataset"].dropna().astype(str))
+    assert vistos == {"mis_ventas"}
+    # Sin datos propios, el paquete sigue siendo el de la demo.
+    demo = pd.read_excel(io.BytesIO(bi_bundle_xlsx("es")), sheet_name="catalog")
+    assert set(dataset_names()) <= set(demo["dataset"])

@@ -446,14 +446,15 @@ def migrar(destino: str, cuerpo: dict = _CUERPO,
 #
 # Ahora los dos se configuran, y por defecto no estorban:
 #
-#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 2048; 0 = sin tope)
+#   MVDG_MAX_UPLOAD_MB    tope de tamaño en MB   (default 0 = sin tope)
 #   MVDG_MAX_FILAS        tope de filas          (default 0 = sin tope)
 #
-# El tope de bytes sigue existiendo por defecto porque esta API PUEDE
-# publicarse fuera de 127.0.0.1: sin ningún límite, una sola petición basta
-# para voltear el proceso. En una instalación de escritorio se puede poner
-# MVDG_MAX_UPLOAD_MB=0 y el único límite pasa a ser la RAM de la máquina,
-# que es el límite honesto.
+# Por defecto NINGUNO de los dos corta: el dueño pidió «sin límite de tamaño
+# en cada módulo», y la API escucha sólo en 127.0.0.1 (fuera de loopback
+# exige MVDG_API_TOKEN). El único límite pasa a ser la RAM de la máquina,
+# que es el límite honesto. Quien la publique para varios usuarios pone
+# MVDG_MAX_UPLOAD_MB / MVDG_MAX_UPLOAD_DE_MB para que una sola petición no
+# pueda voltear el proceso.
 def _limite(env: str, defecto: int) -> int:
     """Lee un tope numérico del entorno. 0 (o negativo) = sin tope."""
     try:
@@ -463,7 +464,7 @@ def _limite(env: str, defecto: int) -> int:
     return max(0, valor)
 
 
-_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 2048) * 1024 * 1024
+_MAX_BYTES = _limite("MVDG_MAX_UPLOAD_MB", 0) * 1024 * 1024
 # 0 = leer el archivo entero. Es el default: truncar en silencio es la peor
 # de las tres opciones (rechazar, truncar avisando, leer todo).
 _MAX_FILAS = _limite("MVDG_MAX_FILAS", 0)
@@ -502,7 +503,6 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         raise HTTPException(400, {"error": "archivo_vacio"})
 
     try:
-        # nrows=None es "todas": con _MAX_FILAS en 0 se lee el archivo entero.
         # dataeng.leer_archivo_bytes -- MISMO motor que /api/ingenieria/archivo,
         # no un pd.read_csv/read_excel de acá: antes, un CSV en latin-1/cp1252
         # (comun en exportaciones de Excel) se leia bien en un endpoint y se
@@ -510,9 +510,14 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         # resultados distintos, sin ninguna razon real. Se toma la PRIMERA
         # tabla del resultado (para un Excel multi-hoja, la primera hoja) --
         # esto perfila UNA tabla, igual que antes.
-        _filas = _MAX_FILAS or None
-        tablas = dataeng.leer_archivo_bytes(nombre, crudo, muestra=_filas)
+        # El archivo se lee ENTERO siempre (los bytes ya están en memoria):
+        # así, si hay un tope MVDG_MAX_FILAS y recorta, la respuesta da el
+        # total real de filas en vez de un "truncado" sin número.
+        tablas = dataeng.leer_archivo_bytes(nombre, crudo)
         df = next(iter(tablas.values()))
+        filas_totales = int(len(df))
+        if _MAX_FILAS:
+            df = df.head(_MAX_FILAS)
     except Exception as exc:  # noqa: BLE001 — cualquier archivo roto
         mensajes = {idioma: friendly_error(exc, idioma, "archivo")[0] for idioma in LANGS}
         raise HTTPException(400, {
@@ -540,7 +545,8 @@ async def perfilar(archivo: UploadFile = _ARCHIVO,
         # perfil sobre la mitad de las filas presentado como si fuera el total
         # es un dato equivocado con cara de dato bueno.
         "filas_leidas": int(len(df)),
-        "truncado": bool(_MAX_FILAS and len(df) >= _MAX_FILAS),
+        "filas_totales": filas_totales,
+        "truncado": filas_totales > len(df),
     }
 
 
@@ -585,7 +591,7 @@ def _de_error(clave: str, status: int, **extra) -> HTTPException:
 # Acá entran VARIOS archivos a la vez (o un .sqlite con varias tablas), así
 # que el tope es el del conjunto. Configurable con MVDG_MAX_UPLOAD_DE_MB;
 # 0 = sin tope, igual que en /api/perfilar.
-_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 4096) * 1024 * 1024
+_MAX_BYTES_DE = _limite("MVDG_MAX_UPLOAD_DE_MB", 0) * 1024 * 1024
 _ARCHIVOS = File(...)
 
 
@@ -639,7 +645,7 @@ async def ingenieria_archivo(
     if not tablas:
         raise _de_error("de_err_vacio", 400)
 
-    truncado_tablas = len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
+    truncado_tablas = bool(dataeng.MAX_TABLAS_MULTIPLES) and len(tablas) > dataeng.MAX_TABLAS_MULTIPLES
     if truncado_tablas:
         tablas = dict(list(tablas.items())[:dataeng.MAX_TABLAS_MULTIPLES])
 
@@ -742,9 +748,9 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         raise HTTPException(400, "Falta el motor de la conexión.")
 
     try:
-        # Sin techo: `limite=0` trae la tabla entera. Antes se recortaba a
-        # connectors.MAX_ROWS, así que pedir más filas de las permitidas
-        # devolvía menos sin decir nada.
+        # Sin tope por defecto: sin `limite` (o con 0) se trae la tabla
+        # entera. Con un tope que recorta, la respuesta trae `recortes` con
+        # el total real (COUNT) de cada tabla cortada: nunca un recorte mudo.
         crudo_lim = cuerpo.get("limite")
         limite = (max(0, int(crudo_lim)) if crudo_lim is not None
                   else dataeng.MUESTRA_SQL_DEFECTO)
@@ -752,14 +758,23 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         limite = dataeng.MUESTRA_SQL_DEFECTO
 
     query = str(cuerpo.get("query") or "").strip()
-    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES]
+    nombres_tablas = [str(x) for x in (cuerpo.get("tablas") or [])][:dataeng.MAX_TABLAS_MULTIPLES or None]
 
     tablas: dict = {}
+    recortes: dict = {}
     try:
         if query:
             tablas["consulta"] = connectors.run_query(profile, query, limite, password=password)
+            total = connectors.aviso_recorte(profile, tablas["consulta"], limite,
+                                             sql=query, password=password)
+            if total is not None:
+                recortes["consulta"] = {"filas": len(tablas["consulta"]), "total": total}
         for nombre in nombres_tablas:
             tablas[nombre] = connectors.load_table(profile, nombre, limite, password=password)
+            total = connectors.aviso_recorte(profile, tablas[nombre], limite,
+                                             table=nombre, password=password)
+            if total is not None:
+                recortes[nombre] = {"filas": len(tablas[nombre]), "total": total}
     except ValueError as exc:  # consulta que no es SELECT/WITH
         raise HTTPException(400, {"error": "consulta_no_permitida", "detalle": str(exc)}) from exc
     except Exception as exc:  # noqa: BLE001 — el error real de conexión importa acá
@@ -778,7 +793,8 @@ def ingenieria_sql_analizar(cuerpo: dict = _CUERPO,
         for nombre, df in tablas.items()
     }
     joins = dataeng.joins_sugeridos(tablas) if len(tablas) > 1 else []
-    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang)}
+    return {"tablas": resultados, "joins": dataeng.traducir_joins(joins, lang),
+            "recortes": recortes}
 
 
 @app.post("/api/bi/escanear-tenant", tags=["governance"])

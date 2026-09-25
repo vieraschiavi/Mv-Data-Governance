@@ -136,10 +136,11 @@ y escribe **9 tablas Delta** con el prefijo `gobierno_`.
   tablas del Lakehouse: ni una fila de los datasets de demostración del
   programa. Un índice de calidad calculado sobre defectos sintéticos no
   sería tu calidad.
-- **Si se muestrea, se avisa.** Por defecto se leen hasta 100.000 filas por
-  tabla. Si alguna se cortó, aparece en `r["muestreadas"]` — un perfil
-  parcial nunca se presenta como si fuera el total. Con `muestra=0` se lee
-  todo.
+- **Sin tope por defecto.** Cada tabla se lee entera; el límite real es la
+  memoria del cluster. Si pedís un tope (`muestra=100_000`) y alguna tabla
+  se corta, aparece en `r["muestreadas"]` y su total real en
+  `r["filas_totales"]` — un perfil parcial nunca se presenta como si fuera
+  el total.
 - **`overwrite` es el modo por defecto**, así que cada corrida reemplaza el
   gobierno anterior. Es lo que se quiere para una foto vigente; si querés
   histórico, cambiá el prefijo por corrida
