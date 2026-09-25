@@ -186,8 +186,27 @@ def bi_bundle_xlsx(lang: str = "es", user_datasets: dict | None = None,
     buf = io.BytesIO()
     tablas = governance_tables(lang, user_datasets=user_datasets,
                                solo_usuario=solo_usuario)
+    tablas = {**tablas, **steward_sheets(tablas, user_datasets, solo_usuario)}
     with pd.ExcelWriter(buf, engine="xlsxwriter",
                        engine_kwargs={"options": {"in_memory": True}}) as xw:
         for name, df in tablas.items():
             df.to_excel(xw, sheet_name=name[:31], index=False)
     return buf.getvalue()
+
+
+def steward_sheets(tablas: dict, user_datasets: dict | None = None,
+                   solo_usuario: bool = False) -> dict[str, pd.DataFrame]:
+    """Las hojas del Data Steward (ficha, contratos de esquema, incidentes y
+    cambios de criterio) del MISMO universo que ``tablas``.
+
+    Se acotan al catálogo de ``tablas``: con ``solo_usuario`` son sólo los
+    datasets del cliente, y un cambio general (un término del glosario de la
+    demo) tampoco entra. Sin efectos en disco: exportar no abre incidentes.
+    """
+    from . import scope, steward
+    from .demo_data import load_demo_tables
+    propias = dict(scope._items(user_datasets))
+    fuentes = propias if solo_usuario else {**load_demo_tables(), **propias}
+    return steward.tablas_steward(tablas["catalog"], tablas["quality_results"],
+                                  tablas["dictionary"], fuentes,
+                                  incluir_generales=not solo_usuario)
