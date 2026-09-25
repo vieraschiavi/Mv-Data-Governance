@@ -81,9 +81,30 @@ def save_validation(item_id: str, lang: str, status: str, text: str,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
     records = load_records()
+    previo = records.get(item_id, {}).get(lang)
     records.setdefault(item_id, {})[lang] = record
     _write(records)
+    _auditar(item_id, previo, record)
     return record
+
+
+def _auditar(item_id: str, previo: dict | None, record: dict) -> None:
+    """Deja el cambio de definición en el registro de cambios de criterio
+    (auditoría del steward): antes/después, quién, cuándo y por qué."""
+    from . import steward
+    partes = item_id.split(":")
+    tipo = "glosario" if partes[0] == "glossary" else "definicion"
+    dataset = partes[1] if partes[0] == "column" else (
+        partes[2] if partes[0] == "catalog" and len(partes) > 2 else "")
+
+    def _txt(r):
+        if not r:
+            return "sugerido_ia"
+        return f"{r['status']}: {r['text']}" if r.get("text") else r["status"]
+
+    steward.registrar_cambio(tipo, item_id, _txt(previo), _txt(record),
+                             record["responsible_name"], record.get("notes", ""),
+                             dataset)
 
 
 def reset_item(item_id: str, lang: str | None = None) -> bool:

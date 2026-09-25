@@ -80,6 +80,15 @@ def _write(data: dict) -> None:
 def save_agreement(dataset: str, signed_by: str, role: str) -> None:
     """Firma (documenta) el acuerdo del contrato de un producto de datos."""
     data = _load()
+    previo = data["agreements"].get(dataset)
+    if signed_by.strip():
+        # Firmar o re-firmar un contrato es un cambio de criterio: queda en
+        # la auditoría del steward con quién firmaba antes y quién ahora.
+        from . import steward
+        steward.registrar_cambio(
+            "contrato", f"acuerdo:{dataset}",
+            f"{previo['signed_by']} ({previo['role']})" if previo else "borrador",
+            f"{signed_by.strip()} ({role.strip()})", signed_by, "", dataset)
     data["agreements"][dataset] = {
         "signed_by": signed_by.strip(),
         "role": role.strip(),

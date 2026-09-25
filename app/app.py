@@ -41,6 +41,7 @@ from mvdg import azure_discovery
 from mvdg import cobit_iso
 from mvdg import collibra_export
 from mvdg import collibra_pull
+from mvdg import contrato_esquema
 from mvdg import curation
 from mvdg import enforcement
 from mvdg import insights
@@ -49,6 +50,7 @@ from mvdg import interview
 from mvdg import meetings
 from mvdg import mip_labels
 from mvdg import orgchart
+from mvdg import steward
 from mvdg import dmbok
 from mvdg import doc_export
 from mvdg import mdm
@@ -387,10 +389,10 @@ if SOLO_PROPIOS:
     st.info(t("fuente_propia_aviso", lang).format(
         nombres=", ".join(fuente.nombres(_mis_datasets()))))
 
-(tab_ov, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
+(tab_ov, tab_stw, tab_lab, tab_dk, tab_cat, tab_mdm, tab_q, tab_lin, tab_con, tab_g, tab_cu, tab_resp,
  tab_p, tab_pr, tab_bi, tab_tz, tab_del, tab_pbi, tab_tab, tab_cl, tab_srv, tab_mtg,
  tab_ws, tab_h) = st.tabs([
-    t("tab_overview", lang), t("tab_lab", lang), t("tab_dmbok", lang),
+    t("tab_overview", lang), t("tab_steward", lang), t("tab_lab", lang), t("tab_dmbok", lang),
     t("tab_catalog", lang), t("tab_mdm", lang), t("tab_quality", lang),
     t("tab_lineage", lang), t("tab_contracts", lang), t("tab_glossary", lang), t("tab_curation", lang),
     t("tab_responsibles", lang), t("tab_policies", lang), t("tab_profiler", lang),
@@ -1362,6 +1364,230 @@ with tab_resp:
                 st.session_state["rs_asg"] = asg_edit
                 st.success(t("rs_asg_saved", lang))
     st.caption(t("rs_local_note", lang))
+
+# ------------------------------------------------------------ Data Steward
+# El lugar del Data Steward: ficha por dataset, certificación, cola de
+# incidentes, contrato de esquema y auditoría de cambios de criterio. Todo
+# sobre la fuente activa: con datos propios, SOLO los propios.
+def _stw_error(exc: Exception) -> None:
+    """El motivo, traducido: el motor dice POR QUÉ no se pudo (falta quién,
+    transición no permitida, certificar sin dueño...) con una clave."""
+    clave = getattr(exc, "clave", None)
+    motivo = t(f"stw_err_{clave}", lang) if clave else t("err_generico", lang)
+    st.error(f"{t('stw_error', lang)} {motivo}")
+
+
+with tab_stw:
+    st.info(t("stw_intro", lang))
+    _stw_cat = _catalogo()
+    _stw_fichas = steward.fichas(_stw_cat, results, _diccionario())
+    # Cada regla que falla abre su incidente (idempotente: sólo escribe si
+    # hay algo nuevo, y cierra solo lo que volvió a cumplir).
+    steward.sincronizar_incidentes(results, _stw_fichas)
+    _stw_inc = steward.incidentes_df(results, _stw_fichas)
+    # Lo cargado en esta sesión está fresco aunque el catálogo no lo sepa.
+    _stw_carga = ({n: pd.Timestamp.now(tz="UTC").isoformat()
+                   for n in fuente.nombres(_mis_datasets())} if SOLO_PROPIOS else None)
+    _stw_k = steward.kpis(_stw_fichas, _stw_inc)
+    _k1, _k2, _k3, _k4, _k5, _k6 = st.columns(6)
+    _k1.metric(t("stw_kpi_datasets", lang), _stw_k["datasets"])
+    _k2.metric(t("stw_kpi_owner", lang), f"{_stw_k['pct_con_dueno']} %")
+    _k3.metric(t("stw_kpi_cert", lang), f"{_stw_k['pct_certificados']} %")
+    _k4.metric(t("stw_kpi_open", lang), _stw_k["incidentes_abiertos"])
+    _k5.metric(t("stw_kpi_overdue", lang), _stw_k["incidentes_vencidos"])
+    _k6.metric(t("stw_kpi_mttr", lang),
+               "—" if _stw_k["mttr_horas"] is None else f"{_stw_k['mttr_horas']} h")
+    if _stw_k["abiertos_por_dominio"]:
+        st.caption(t("stw_by_domain", lang) + ": " + " · ".join(
+            f"{d}: {n}" for d, n in _stw_k["abiertos_por_dominio"].items()))
+
+    _STW_CERT = {e: t(f"stw_cert_{e}", lang) for e in steward.ESTADOS_CERT}
+    _STW_INC = {e: t(f"stw_inc_{e}", lang) for e in steward.ESTADOS_INC}
+    _STW_CRIT = {c: t(f"stw_crit_{c}", lang) for c in steward.CRITICIDADES}
+    _stw_quien = st.selectbox(t("stw_whoami", lang),
+                              [""] + steward.stewards(_stw_fichas),
+                              format_func=lambda s: s or t("stw_all", lang),
+                              key="stw_whoami")
+    _stw_ds_list = [f["dataset"] for f in _stw_fichas]
+    sb1, sb2, sb3, sb4, sb5 = st.tabs([
+        t("stw_sub_board", lang), t("stw_sub_sheet", lang),
+        t("stw_sub_incidents", lang), t("stw_sub_contract", lang),
+        t("stw_sub_audit", lang)])
+
+    with sb1:
+        _stw_tab = steward.tablero(_stw_fichas, _stw_inc, _stw_quien or None,
+                                   ultima_carga=_stw_carga)
+        for _clave, _titulo in (("mis_datasets", "stw_mine"),
+                                ("pendientes_certificacion", "stw_pending_cert"),
+                                ("incidentes_abiertos", "stw_open_inc"),
+                                ("sin_dueno", "stw_no_owner"),
+                                ("vencimientos", "stw_due")):
+            _df = _stw_tab[_clave]
+            st.markdown(f"**{t(_titulo, lang)}** ({len(_df)})")
+            if len(_df):
+                if "estado_cert" in _df.columns:
+                    _df = _df.assign(estado_cert=_df["estado_cert"].map(_STW_CERT))
+                st.dataframe(_df, width="stretch", hide_index=True)
+            else:
+                st.caption(t("stw_none", lang))
+        st.caption(t("stw_actions_hint", lang))
+
+    with sb2:
+        _stw_ds = st.selectbox(t("stw_pick_ds", lang), _stw_ds_list, key="stw_ds")
+        _stw_f = next(f for f in _stw_fichas if f["dataset"] == _stw_ds)
+        st.caption(t("stw_sheet_state", lang).format(
+            version=_stw_f.get("version", 0), estado=_STW_CERT[_stw_f["estado_cert"]],
+            por=_stw_f.get("cert_por") or "—", en=_stw_f.get("cert_en") or "—"))
+        f1, f2, f3 = st.columns(3)
+        _v_owner = f1.text_input(t("stw_owner", lang), _stw_f["dueno_negocio"],
+                                 key=f"stw_own_{_stw_ds}")
+        _v_stew = f2.text_input(t("stw_steward", lang), _stw_f["data_steward"],
+                                key=f"stw_stw_{_stw_ds}")
+        _v_cust = f3.text_input(t("stw_custodian", lang), _stw_f["custodio_tecnico"],
+                                key=f"stw_cus_{_stw_ds}")
+        f4, f5, f6 = st.columns(3)
+        _v_dom = f4.text_input(t("stw_domain", lang), _stw_f["dominio"],
+                               key=f"stw_dom_{_stw_ds}")
+        _v_crit = f5.selectbox(t("stw_criticality", lang), list(steward.CRITICIDADES),
+                               index=list(steward.CRITICIDADES).index(_stw_f["criticidad"]),
+                               format_func=lambda c: _STW_CRIT[c], key=f"stw_crit_{_stw_ds}")
+        _v_fresh = f6.number_input(t("stw_sla_fresh", lang), min_value=0,
+                                   value=int(_stw_f["sla_frescura_h"]), step=1,
+                                   key=f"stw_fr_{_stw_ds}")
+        st.markdown(f"**{t('stw_sla_quality', lang)}**")
+        _qcols = st.columns(len(steward.DIMENSIONES))
+        _v_sla = {d: float(_qcols[i].number_input(
+            _DIM_LABEL[d], min_value=0.0, max_value=100.0,
+            value=float(_stw_f["sla_calidad"].get(d, steward.SLA_CALIDAD_DEFAULT)),
+            step=0.5, key=f"stw_q_{d}_{_stw_ds}"))
+            for i, d in enumerate(steward.DIMENSIONES)}
+        f7, f8 = st.columns(2)
+        _v_pii = f7.checkbox(t("stw_pii", lang), bool(_stw_f["pii"]), key=f"stw_pii_{_stw_ds}")
+        _v_conf = f8.checkbox(t("stw_conf", lang), bool(_stw_f["confidencial"]),
+                              key=f"stw_conf_{_stw_ds}")
+        g1, g2 = st.columns(2)
+        _v_who = g1.text_input(t("stw_who", lang), _stw_quien, key=f"stw_who_{_stw_ds}")
+        _v_why = g2.text_input(t("stw_reason", lang), key=f"stw_why_{_stw_ds}")
+        if st.button(t("stw_save_sheet", lang), type="primary", key="stw_save_sheet"):
+            try:
+                steward.guardar_ficha(_stw_ds, {
+                    "dueno_negocio": _v_owner.strip(), "data_steward": _v_stew.strip(),
+                    "custodio_tecnico": _v_cust.strip(), "dominio": _v_dom.strip(),
+                    "criticidad": _v_crit, "sla_frescura_h": int(_v_fresh),
+                    "sla_calidad": _v_sla, "pii": bool(_v_pii),
+                    "confidencial": bool(_v_conf)}, _v_who, _v_why, base=_stw_f)
+                st.success(t("stw_saved", lang))
+                st.rerun()
+            except ValueError as exc:
+                _stw_error(exc)
+
+        st.markdown(f"**{t('stw_cert_title', lang)}**")
+        _nexts = steward.TRANSICIONES_CERT[_stw_f["estado_cert"]]
+        if not _nexts:
+            st.caption(t("stw_cert_terminal", lang))
+        else:
+            c1, c2 = st.columns(2)
+            _v_next = c1.selectbox(t("stw_cert_next", lang), list(_nexts),
+                                   format_func=lambda e: _STW_CERT[e],
+                                   key=f"stw_next_{_stw_ds}")
+            _v_cwho = c2.text_input(t("stw_who", lang), _stw_quien,
+                                    key=f"stw_cwho_{_stw_ds}")
+            if st.button(t("stw_cert_btn", lang), key="stw_cert_btn"):
+                try:
+                    steward.cambiar_certificacion(_stw_ds, _v_next, _v_cwho, _v_why,
+                                                  base=_stw_f)
+                    st.success(t("stw_cert_ok", lang))
+                    st.rerun()
+                except ValueError as exc:
+                    _stw_error(exc)
+        _hist = steward.historial_ficha(_stw_ds)
+        if _hist:
+            st.markdown(f"**{t('stw_history', lang)}**")
+            st.dataframe(steward.fichas_df(_hist).drop(columns=["origen",
+                                                                 "ultima_actualizacion"]),
+                         width="stretch", hide_index=True)
+
+    with sb3:
+        st.caption(t("stw_inc_note_sync", lang))
+        _inc_view = _stw_inc if not _stw_quien else _stw_inc[
+            _stw_inc["responsable"] == _stw_quien]
+        if len(_inc_view):
+            st.dataframe(_inc_view.assign(estado=_inc_view["estado"].map(_STW_INC)),
+                         width="stretch", hide_index=True)
+            _ids = [i for i in _inc_view["id"].tolist() if i]
+            if _ids:
+                i1, i2 = st.columns(2)
+                _v_inc = i1.selectbox(t("stw_inc_pick", lang), _ids, key="stw_inc_pick")
+                _actual = _inc_view.set_index("id").loc[_v_inc, "estado"]
+                _v_ist = i2.selectbox(t("stw_inc_next", lang),
+                                      list(steward.TRANSICIONES_INC[_actual]),
+                                      format_func=lambda e: _STW_INC[e], key="stw_inc_next")
+                i3, i4 = st.columns(2)
+                _v_iwho = i3.text_input(t("stw_who", lang), _stw_quien, key="stw_inc_who")
+                _v_inote = i4.text_input(t("stw_inc_comment", lang), key="stw_inc_comment")
+                if st.button(t("stw_inc_btn", lang), key="stw_inc_btn"):
+                    try:
+                        steward.actualizar_incidente(_v_inc, _v_ist, _v_iwho, _v_inote)
+                        st.success(t("stw_inc_ok", lang))
+                        st.rerun()
+                    except ValueError as exc:
+                        _stw_error(exc)
+        else:
+            st.success(t("stw_inc_none", lang))
+
+    with sb4:
+        st.caption(t("stw_con_intro", lang))
+        _con_ds_opts = [d for d in _stw_ds_list if d in tables]
+        if not _con_ds_opts:
+            st.caption(t("stw_none", lang))
+        else:
+            _v_cds = st.selectbox(t("stw_pick_ds", lang), _con_ds_opts, key="stw_con_ds")
+            _con = contrato_esquema.contrato_para(_v_cds, tables[_v_cds])
+            st.caption(t("stw_con_origin", lang).format(
+                origen=_con.get("origen", ""), version=_con.get("version", 0)))
+            _con_edit = st.data_editor(
+                pd.DataFrame([{**c, "accepted_values": ", ".join(
+                    map(str, c.get("accepted_values") or []))} for c in _con["columns"]]),
+                width="stretch", hide_index=True, key=f"stw_con_ed_{_v_cds}",
+                column_config={"type": st.column_config.SelectboxColumn(
+                    options=list(contrato_esquema.TIPOS))})
+            _viol = contrato_esquema.validar_contrato(tables[_v_cds], _con)
+            st.markdown(f"**{t('stw_con_viol', lang)}** ({len(_viol)})")
+            if _viol:
+                st.dataframe(pd.DataFrame(_viol), width="stretch", hide_index=True)
+            else:
+                st.success(t("stw_con_ok", lang))
+            k1, k2 = st.columns(2)
+            _v_kwho = k1.text_input(t("stw_who", lang), _stw_quien, key="stw_con_who")
+            _v_kwhy = k2.text_input(t("stw_reason", lang), key="stw_con_why")
+            if st.button(t("stw_con_save", lang), key="stw_con_save"):
+                try:
+                    _cols = []
+                    for _r in _con_edit.to_dict("records"):
+                        _vals = [v.strip() for v in str(_r.get("accepted_values") or "")
+                                 .split(",") if v.strip()]
+                        _cols.append({"name": str(_r["name"]), "type": _r["type"],
+                                      "nullable": bool(_r["nullable"]),
+                                      "key": bool(_r["key"]),
+                                      "accepted_values": _vals or None})
+                    contrato_esquema.guardar_contrato(
+                        {"dataset": _v_cds, "columns": _cols}, _v_kwho, _v_kwhy)
+                    st.success(t("stw_con_saved", lang))
+                    st.rerun()
+                except ValueError as exc:
+                    _stw_error(exc)
+            st.download_button(t("stw_con_yaml", lang), contrato_esquema.a_yaml(_con),
+                               f"contrato_{_v_cds}.yml", "application/yaml",
+                               key="stw_con_yaml")
+
+    with sb5:
+        st.caption(t("stw_audit_intro", lang))
+        _camb = steward.cambios_df(_stw_ds_list, incluir_generales=not SOLO_PROPIOS)
+        if len(_camb):
+            st.dataframe(_camb, width="stretch", hide_index=True)
+        else:
+            st.caption(t("stw_audit_none", lang))
+    st.caption(t("stw_local_note", lang))
 
 # --------------------------------------------------------------- Políticas
 with tab_p:

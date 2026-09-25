@@ -1067,6 +1067,51 @@ async def reuniones_transcribir(archivo: UploadFile = _ARCHIVO,
     return resultado
 
 
+STEWARD_VIEWS = ["steward", "contratos", "incidentes", "cambios_criterio", "kpis"]
+
+
+def _steward_demo(lang: str) -> dict:
+    """Las tablas del Data Steward sobre el universo de la API (la demo).
+    Sólo lectura: consultar la API no abre incidentes ni escribe nada."""
+    from mvdg import steward
+    from mvdg.exporters import steward_sheets
+    gov = governance_tables(lang)
+    hojas = steward_sheets(gov)
+    lista = steward.fichas(gov["catalog"], gov["quality_results"], gov["dictionary"])
+    hojas["kpis"] = steward.kpis_df(steward.kpis(lista, hojas["incidentes"]))
+    return hojas
+
+
+@app.get("/api/steward/contrato/{dataset}", tags=["steward"])
+def get_steward_contract(dataset: str,
+                         format: str = Query("json", pattern="^(json|yaml)$")):
+    """Contrato de esquema de una tabla (el vigente, o el generado desde el
+    perfilado), con sus violaciones de hoy. ``format=yaml`` lo da estilo dbt."""
+    from mvdg import contrato_esquema
+    from mvdg.demo_data import load_demo_tables
+    tablas = load_demo_tables()
+    if dataset not in tablas:
+        raise HTTPException(404, f"Dataset desconocido: {dataset}. "
+                                 f"Disponibles: {sorted(tablas)}")
+    con = contrato_esquema.contrato_para(dataset, tablas[dataset])
+    if format == "yaml":
+        return PlainTextResponse(contrato_esquema.a_yaml(con),
+                                 media_type="application/yaml; charset=utf-8")
+    return {"contract": con,
+            "violations": contrato_esquema.validar_contrato(tablas[dataset], con)}
+
+
+@app.get("/api/steward/{view}", tags=["steward"])
+def get_steward_view(view: str,
+                     lang: str = Query("es", pattern="^(es|en|pt)$"),
+                     format: str = Query("json", pattern="^(json|csv)$")):
+    """Espacio del Data Steward: fichas (``steward``), contratos de esquema,
+    cola de incidentes, registro de cambios de criterio y KPIs."""
+    if view not in STEWARD_VIEWS:
+        raise HTTPException(404, f"Vista desconocida: {view}. Disponibles: {STEWARD_VIEWS}")
+    return _serve(_steward_demo(lang)[view], view, lang, format)
+
+
 @app.get("/api/{table}", tags=["governance"])
 def get_table(
     table: str,

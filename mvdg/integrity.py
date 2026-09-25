@@ -27,6 +27,7 @@ _CANARY_I18N: tuple[str, ...] = (
     "cu_bulk_title",                                     # validación masiva de curaduría
     "mcp_title", "mcp_expose_title",                     # MCP (servidor propio)
     "mcp_tab_title", "mcp_tab_verified",                 # MCP de Tableau
+    "tab_steward", "stw_intro",                          # espacio del Data Steward
 )
 
 # (módulo, atributo) que app.py invoca; si el motor está viejo, no existen.
@@ -36,6 +37,8 @@ _CANARY_ATTRS: tuple[tuple[str, str], ...] = (
     ("mvdg.contracts", "contracts_df"),
     ("mvdg.contracts", "alerts_df"),
     ("mvdg.scope", "combined_results"),
+    ("mvdg.steward", "tablero"),
+    ("mvdg.contrato_esquema", "validar_contrato"),
 )
 
 
