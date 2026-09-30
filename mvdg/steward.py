@@ -46,6 +46,8 @@ DIMENSIONES = ("completeness", "uniqueness", "validity", "consistency",
                "timeliness", "accuracy")
 CRITICIDADES = ("alta", "media", "baja")
 ESTADOS_CERT = ("borrador", "en_revision", "certificado", "deprecado")
+#: La clave interna sigue siendo «deprecado» para no romper historiales ya
+#: guardados; en pantalla se lee «Dado de baja (no usar)».
 #: Qué estado puede seguir a cuál. Deprecado es terminal: un dataset que se
 #: retiró no vuelve a certificarse, se da de alta otro.
 TRANSICIONES_CERT = {
@@ -234,6 +236,54 @@ def _sla_calidad_base(dataset: str, results: pd.DataFrame | None) -> dict:
             if dim in sla:
                 sla[dim] = float(umbral)
     return sla
+
+
+#: Meta de calidad según qué tan crítico es el dataset: lo que se le exige
+#: cuando ya está sano. Y el piso: nunca se sugiere un umbral más bajo,
+#: por mal que esté hoy.
+META_POR_CRITICIDAD = {"alta": 99.0, "media": 97.0, "baja": 95.0}
+PISO_POR_CRITICIDAD = {"alta": 90.0, "media": 85.0, "baja": 80.0}
+
+
+def sugerir_umbrales(dataset: str, results: pd.DataFrame | None,
+                     criticidad: str = "media") -> dict[str, dict]:
+    """Los umbrales de calidad que conviene poner, sin tener que saberlos.
+
+    Por dimensión devuelve ``{"umbral", "medido", "meta", "motivo"}``:
+
+    * **Sin reglas medidas** → la meta de su criticidad (alta 99, media 97,
+      baja 95). Motivo ``sin_medicion``.
+    * **Hoy ya cumple la meta** → la meta. No se baja a lo que mide hoy:
+      el umbral es para enterarse si EMPEORA. Motivo ``cumple``.
+    * **Hoy está por debajo** → lo que mide hoy (redondeado hacia abajo al
+      medio punto), sin bajar del piso. Así no queda en rojo para siempre
+      y avisa si empeora; se sube hacia la meta a medida que se corrige.
+      Motivo ``escalon``.
+
+    El medido es el PEOR score de las reglas de esa dimensión: el umbral
+    tiene que aguantar la regla más floja, no el promedio.
+    """
+    crit = criticidad if criticidad in META_POR_CRITICIDAD else "media"
+    meta, piso = META_POR_CRITICIDAD[crit], PISO_POR_CRITICIDAD[crit]
+    medidos: dict[str, float] = {}
+    if results is not None and len(results) and "score" in results.columns:
+        sub = results[results["dataset"] == dataset]
+        if "medible" in sub.columns:
+            sub = sub[sub["medible"].fillna(True).astype(bool)]
+        sub = sub.dropna(subset=["score"])
+        medidos = {d: float(s) for d, s in sub.groupby("dimension")["score"].min().items()}
+    salida = {}
+    for dim in DIMENSIONES:
+        medido = medidos.get(dim)
+        if medido is None:
+            umbral, motivo = meta, "sin_medicion"
+        elif medido >= meta:
+            umbral, motivo = meta, "cumple"
+        else:
+            umbral, motivo = max(piso, int(medido * 2) / 2), "escalon"
+        salida[dim] = {"umbral": float(umbral), "medido": medido,
+                       "meta": meta, "motivo": motivo}
+    return salida
 
 
 def ficha_base(fila_catalogo: dict, results: pd.DataFrame | None = None,

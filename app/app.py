@@ -50,7 +50,7 @@ from mvdg import interview
 from mvdg import meetings
 from mvdg import mip_labels
 from mvdg import orgchart
-from mvdg import steward
+from mvdg import compliance, steward
 from mvdg import dmbok
 from mvdg import doc_export
 from mvdg import mdm
@@ -1377,6 +1377,105 @@ def _stw_error(exc: Exception) -> None:
     st.error(f"{t('stw_error', lang)} {motivo}")
 
 
+def _leer_tabla(up):
+    """Un CSV o un Excel subido, o None con el error explicado."""
+    if up is None:
+        return None
+    try:
+        return (pd.read_csv(up, sep=None, engine="python")
+                if up.name.lower().endswith(".csv") else pd.read_excel(up))
+    except Exception as exc:  # archivo corrupto / formato raro
+        _error(exc, lang, "generico")
+        return None
+
+
+def _registros_compliance() -> None:
+    """Los registros de Compliance por ficha (ver `mvdg/compliance.py`).
+
+    Arriba la metodología (el perfil de la organización), después la ficha
+    de cada registro, las reglas y, con el export del sistema de RR. HH. y
+    el maestro de colaboradores, quién no cumple y qué pedirle."""
+    st.info(t("cmp_intro", lang))
+    perfil = compliance.perfil_activo()
+    if perfil.get("aviso"):
+        st.warning(t("cmp_perfil_aviso", lang).format(aviso=perfil["aviso"]))
+    with st.expander(t("cmp_perfil_titulo", lang), expanded=perfil.get("generico", True)):
+        st.caption(t("cmp_perfil_ayuda", lang))
+        _up_p = st.file_uploader(t("cmp_perfil_subir", lang), type=["json"],
+                                 key="cmp_perfil_up")
+        if _up_p is not None:
+            try:
+                _ruta_p = compliance.guardar_perfil(json.loads(_up_p.getvalue()
+                                                               .decode("utf-8")))
+                st.success(t("cmp_perfil_guardado", lang).format(ruta=_ruta_p))
+                perfil = compliance.perfil_activo()
+            except (ValueError, UnicodeDecodeError) as exc:
+                st.error(t("cmp_perfil_invalido", lang).format(motivo=exc))
+        st.json(perfil, expanded=False)
+
+    _tipo = st.radio(t("cmp_elegir", lang), list(compliance.TIPOS), horizontal=True,
+                     format_func=lambda x: t(f"cmp_{x}_nombre", lang), key="cmp_tipo")
+    st.markdown(f"##### {t('cmp_ficha', lang)}")
+    st.dataframe(compliance.ficha(_tipo, perfil, lang), width="stretch",
+                 hide_index=True)
+    with st.expander(t("cmp_reglas", lang)):
+        st.dataframe(compliance.reglas_df(_tipo, lang), width="stretch",
+                     hide_index=True)
+
+    st.markdown(f"##### {t('cmp_datos', lang)}")
+    _demo_cmp = st.toggle(t("cmp_usar_demo", lang), value=True, key="cmp_demo")
+    if _demo_cmp:
+        _d = compliance.demo()
+        _reg, _mae = _d[_tipo], _d["maestro"]
+        _corte = "2026-09-30"
+    else:
+        _c1, _c2 = st.columns(2)
+        _reg = _leer_tabla(_c1.file_uploader(t("cmp_up_registros", lang),
+                                             type=["csv", "xlsx", "xls"],
+                                             key=f"cmp_up_{_tipo}"))
+        _mae = _leer_tabla(_c2.file_uploader(t("cmp_up_maestro", lang),
+                                             type=["csv", "xlsx", "xls"],
+                                             key="cmp_up_maestro"))
+        _corte = None
+    _res = None
+    if _reg is not None and len(_reg):
+        _validar = (compliance.validar_coi if _tipo == "coi"
+                    else compliance.validar_licenciantes)
+        _res = _validar(_reg, _mae, perfil, corte=_corte, lang=lang)
+        with st.expander(t("cmp_mapeo", lang)):
+            st.json(_res["mapeo"])
+        _k = compliance.resumen(_res)
+        _m1, _m2, _m3, _m4 = st.columns(4)
+        _m1.metric(t("cmp_kpi_ok", lang), f"{_k['reglas_ok']}/{_k['reglas'] - _k['no_medibles']}")
+        _m2.metric(t("cmp_kpi_nm", lang), _k["no_medibles"])
+        _m3.metric(t("cmp_kpi_contactar", lang), _k["colaboradores_a_contactar"])
+        _m4.metric(t("cmp_kpi_hallazgos", lang), _k["hallazgos"])
+        for _nota in _res["notas"]:
+            st.caption("ⓘ " + _nota)
+        _r = _res["resultados"]
+        if len(_r):
+            st.dataframe(_r.assign(status=_r["status"].map(_STATUS_LABEL),
+                                   dimension=_r["dimension"].map(_DIM_LABEL))
+                         .drop(columns=["dataset", "medible"]),
+                         width="stretch", hide_index=True)
+            # Cada regla que falla abre (o cierra) su incidente en la cola.
+            # Sólo con los exports REALES: la demo sintética no ensucia la
+            # cola de incidentes de la organización.
+            if not _demo_cmp:
+                steward.sincronizar_incidentes(
+                    _r[_r["medible"]], [compliance.ficha_steward(_tipo, perfil)])
+                st.caption(t("cmp_incidentes", lang))
+        st.markdown(f"##### {t('cmp_hallazgos', lang)}")
+        if len(_res["hallazgos"]):
+            st.dataframe(_res["hallazgos"], width="stretch", hide_index=True)
+        else:
+            st.success(t("cmp_sin_hallazgos", lang))
+    st.download_button(t("cmp_descargar", lang),
+                       compliance.a_excel(_tipo, _res, perfil, lang),
+                       file_name=f"{compliance.DATASET[_tipo]}.xlsx",
+                       key="cmp_xlsx")
+
+
 with tab_stw:
     st.info(t("stw_intro", lang))
     _stw_cat = _catalogo()
@@ -1409,10 +1508,10 @@ with tab_stw:
                               format_func=lambda s: s or t("stw_all", lang),
                               key="stw_whoami")
     _stw_ds_list = [f["dataset"] for f in _stw_fichas]
-    sb1, sb2, sb3, sb4, sb5 = st.tabs([
+    sb1, sb2, sb3, sb4, sb5, sb6 = st.tabs([
         t("stw_sub_board", lang), t("stw_sub_sheet", lang),
         t("stw_sub_incidents", lang), t("stw_sub_contract", lang),
-        t("stw_sub_audit", lang)])
+        t("stw_sub_audit", lang), t("cmp_sub", lang)])
 
     with sb1:
         _stw_tab = steward.tablero(_stw_fichas, _stw_inc, _stw_quien or None,
@@ -1455,12 +1554,26 @@ with tab_stw:
                                    value=int(_stw_f["sla_frescura_h"]), step=1,
                                    key=f"stw_fr_{_stw_ds}")
         st.markdown(f"**{t('stw_sla_quality', lang)}**")
+        st.caption(t("stw_sla_help", lang))
+        _sug = steward.sugerir_umbrales(_stw_ds, results, _v_crit)
+
+        def _aplicar_sugeridos(ds=_stw_ds, sug=_sug):
+            for d, s in sug.items():
+                st.session_state[f"stw_q_{d}_{ds}"] = s["umbral"]
+
+        st.button(t("stw_sug_btn", lang), key=f"stw_sug_{_stw_ds}",
+                  on_click=_aplicar_sugeridos, help=t("stw_sug_help", lang))
         _qcols = st.columns(len(steward.DIMENSIONES))
         _v_sla = {d: float(_qcols[i].number_input(
             _DIM_LABEL[d], min_value=0.0, max_value=100.0,
             value=float(_stw_f["sla_calidad"].get(d, steward.SLA_CALIDAD_DEFAULT)),
             step=0.5, key=f"stw_q_{d}_{_stw_ds}"))
             for i, d in enumerate(steward.DIMENSIONES)}
+        for i, d in enumerate(steward.DIMENSIONES):
+            _s = _sug[d]
+            _qcols[i].caption(t(f"stw_sug_{_s['motivo']}", lang).format(
+                umbral=f"{_s['umbral']:g}", meta=f"{_s['meta']:g}",
+                medido="—" if _s["medido"] is None else f"{_s['medido']:.1f}"))
         f7, f8 = st.columns(2)
         _v_pii = f7.checkbox(t("stw_pii", lang), bool(_stw_f["pii"]), key=f"stw_pii_{_stw_ds}")
         _v_conf = f8.checkbox(t("stw_conf", lang), bool(_stw_f["confidencial"]),
@@ -1482,6 +1595,7 @@ with tab_stw:
                 _stw_error(exc)
 
         st.markdown(f"**{t('stw_cert_title', lang)}**")
+        st.caption(t("stw_cert_ayuda", lang))
         _nexts = steward.TRANSICIONES_CERT[_stw_f["estado_cert"]]
         if not _nexts:
             st.caption(t("stw_cert_terminal", lang))
@@ -1587,6 +1701,8 @@ with tab_stw:
             st.dataframe(_camb, width="stretch", hide_index=True)
         else:
             st.caption(t("stw_audit_none", lang))
+    with sb6:
+        _registros_compliance()
     st.caption(t("stw_local_note", lang))
 
 # --------------------------------------------------------------- Políticas

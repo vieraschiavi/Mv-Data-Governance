@@ -376,3 +376,50 @@ def test_la_pestania_del_steward_con_datos_propios_no_muestra_la_demo(monkeypatc
     assert at.selectbox(key="stw_con_ds").options == ["mis_ventas"]
     incs = steward.leer_registros("steward_incidentes.json")
     assert incs and {e["dataset"] for e in incs if "dataset" in e} == {"mis_ventas"}
+
+
+# ---------------------------------------------------------------------------
+# Umbrales sugeridos: nadie tiene que saber de memoria qué número poner.
+# ---------------------------------------------------------------------------
+def _res(filas):
+    return pd.DataFrame(filas, columns=["dataset", "dimension", "score", "threshold"])
+
+
+def test_sin_mediciones_sugiere_la_meta_de_la_criticidad():
+    for crit, meta in steward.META_POR_CRITICIDAD.items():
+        sug = steward.sugerir_umbrales("x", None, crit)
+        assert {s["umbral"] for s in sug.values()} == {meta}
+        assert {s["motivo"] for s in sug.values()} == {"sin_medicion"}
+        assert set(sug) == set(steward.DIMENSIONES)
+
+
+def test_si_ya_cumple_queda_la_meta_y_no_lo_que_mide_hoy():
+    sug = steward.sugerir_umbrales("x", _res([("x", "completeness", 99.8, 95)]), "alta")
+    assert sug["completeness"] == {"umbral": 99.0, "medido": 99.8, "meta": 99.0,
+                                   "motivo": "cumple"}
+
+
+def test_debajo_de_la_meta_arranca_en_lo_que_mide_con_piso_y_toma_la_peor_regla():
+    r = _res([("x", "validity", 96.7, 95), ("x", "validity", 93.4, 95),
+              ("x", "uniqueness", 40.0, 95), ("otro", "validity", 10.0, 95)])
+    sug = steward.sugerir_umbrales("x", r, "alta")
+    assert sug["validity"]["umbral"] == 93.0 and sug["validity"]["motivo"] == "escalon"
+    assert sug["validity"]["medido"] == 93.4          # la peor, no el promedio
+    assert sug["uniqueness"]["umbral"] == steward.PISO_POR_CRITICIDAD["alta"]
+    # Criticidad desconocida no explota: cae en media.
+    assert steward.sugerir_umbrales("x", None, "rara")["accuracy"]["umbral"] == 97.0
+
+
+def test_la_sugerencia_pasa_la_validacion_de_la_ficha():
+    r = _res([("x", "timeliness", 12.0, 95)])
+    for crit in steward.CRITICIDADES:
+        sug = steward.sugerir_umbrales("x", r, crit)
+        assert all(0 <= s["umbral"] <= 100 for s in sug.values())
+
+
+def test_deprecado_se_lee_claro_en_los_tres_idiomas():
+    from mvdg.i18n import t
+    for lang in ("es", "en", "pt"):
+        texto = t("stw_cert_deprecado", lang).lower()
+        assert "deprec" not in texto and "depreci" not in texto
+    assert t("stw_cert_deprecado", "es") == "Dado de baja (no usar)"
