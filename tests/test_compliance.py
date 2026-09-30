@@ -230,3 +230,18 @@ def test_el_boton_sugerir_llena_los_umbrales_de_la_ficha(tmp_path, monkeypatch):
     assert not at.exception, [str(e.value)[:300] for e in at.exception]
     valores = {d: at.number_input(key=f"stw_q_{d}_{ds}").value for d in steward.DIMENSIONES}
     assert all(v >= min(steward.PISO_POR_CRITICIDAD.values()) for v in valores.values()), valores
+
+
+def test_sin_fecha_de_fin_9999_se_entiende_en_pandas_2_y_3():
+    """9999-12-31 desbordaba el Timestamp de pandas 2 y la regla LIC-07
+    no se medía (CI en Python 3.10 lo agarró)."""
+    f = compliance._fecha(pd.Series(["9999-12-31", "31/12/9999", "2026-06-30", None]))
+    assert f.iloc[0] == f.iloc[1] == pd.Timestamp(compliance.FECHA_SIN_FIN)
+    assert f.iloc[2] == pd.Timestamp("2026-06-30") and pd.isna(f.iloc[3])
+    d = compliance.demo()
+    import copy
+    perfil = copy.deepcopy(compliance.PERFIL_GENERICO)
+    perfil["licenciantes"]["fecha_fin_default"] = "9999-12-31"
+    res = compliance.validar_licenciantes(d["licenciantes"], d["maestro"], perfil=perfil,
+                                          corte=CORTE)
+    assert _por_regla(res)["LIC-07"] == {"C001"}

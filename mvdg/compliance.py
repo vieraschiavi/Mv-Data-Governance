@@ -219,11 +219,32 @@ def mapear(df: pd.DataFrame, campos: tuple[str, ...]) -> dict[str, str | None]:
     return salida
 
 
+#: «Sin fin»: el último día que pandas 2 puede representar sin desbordar.
+FECHA_SIN_FIN = "2262-04-11"
+_ANIO_TOPE = 2262
+
+
+def _sin_fin(v):
+    """Un año más allá del tope de pandas (9999-12-31, 31/12/9999) es «sin
+    fin»: se reemplaza por `FECHA_SIN_FIN` antes de parsear."""
+    if isinstance(v, str):
+        m = re.search(r"(?<!\d)(\d{4})(?!\d)", v)
+        if m and int(m.group(1)) > _ANIO_TOPE:
+            return FECHA_SIN_FIN
+    return v
+
+
 def _fecha(serie: pd.Series) -> pd.Series:
     """ISO primero (2026-09-10) y después día/mes/año (10/09/2026), que es
     como exporta un sistema configurado en español. Con `dayfirst=True`
     sobre todo, pandas daba vuelta día y mes de las fechas ISO y las
-    declaraciones salían vencidas sin estarlo."""
+    declaraciones salían vencidas sin estarlo.
+
+    «Sin fecha de fin» suele venir como 9999-12-31, que en pandas 2 queda
+    fuera del rango de Timestamp y se volvía NaT: la regla de la fecha de
+    fin no se medía. Todo año posterior al tope se fija en `FECHA_SIN_FIN`,
+    igual en los datos y en el valor por defecto, así se comparan bien."""
+    serie = pd.Series(serie).astype("object").map(_sin_fin)
     iso = pd.to_datetime(serie, errors="coerce", format="ISO8601")
     resto = serie[iso.isna()]
     if len(resto):
@@ -549,7 +570,7 @@ def _lic_fechas(ac: _Acum, df, mapeo: dict, lic_cfg: dict, corte) -> None:
     ff = _fecha(df[mapeo["fecha_fin"]]) if mapeo["fecha_fin"] else None
     if ff is not None and ff.notna().any():
         default = lic_cfg.get("fecha_fin_default") or ""
-        valor_def = pd.to_datetime(default, errors="coerce") if default else ff.mode().iloc[0]
+        valor_def = _fecha(pd.Series([default])).iloc[0] if default else ff.mode().iloc[0]
         if not default:
             ac.notas.append(t("cmp_nota_fin_moda", ac.lang).format(fecha=valor_def.date()))
         modificada = ff.notna() & (ff != valor_def)
