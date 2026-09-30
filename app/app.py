@@ -1554,12 +1554,26 @@ with tab_stw:
                                    value=int(_stw_f["sla_frescura_h"]), step=1,
                                    key=f"stw_fr_{_stw_ds}")
         st.markdown(f"**{t('stw_sla_quality', lang)}**")
+        st.caption(t("stw_sla_help", lang))
+        _sug = steward.sugerir_umbrales(_stw_ds, results, _v_crit)
+
+        def _aplicar_sugeridos(ds=_stw_ds, sug=_sug):
+            for d, s in sug.items():
+                st.session_state[f"stw_q_{d}_{ds}"] = s["umbral"]
+
+        st.button(t("stw_sug_btn", lang), key=f"stw_sug_{_stw_ds}",
+                  on_click=_aplicar_sugeridos, help=t("stw_sug_help", lang))
         _qcols = st.columns(len(steward.DIMENSIONES))
         _v_sla = {d: float(_qcols[i].number_input(
             _DIM_LABEL[d], min_value=0.0, max_value=100.0,
             value=float(_stw_f["sla_calidad"].get(d, steward.SLA_CALIDAD_DEFAULT)),
             step=0.5, key=f"stw_q_{d}_{_stw_ds}"))
             for i, d in enumerate(steward.DIMENSIONES)}
+        for i, d in enumerate(steward.DIMENSIONES):
+            _s = _sug[d]
+            _qcols[i].caption(t(f"stw_sug_{_s['motivo']}", lang).format(
+                umbral=f"{_s['umbral']:g}", meta=f"{_s['meta']:g}",
+                medido="—" if _s["medido"] is None else f"{_s['medido']:.1f}"))
         f7, f8 = st.columns(2)
         _v_pii = f7.checkbox(t("stw_pii", lang), bool(_stw_f["pii"]), key=f"stw_pii_{_stw_ds}")
         _v_conf = f8.checkbox(t("stw_conf", lang), bool(_stw_f["confidencial"]),
@@ -1581,6 +1595,7 @@ with tab_stw:
                 _stw_error(exc)
 
         st.markdown(f"**{t('stw_cert_title', lang)}**")
+        st.caption(t("stw_cert_ayuda", lang))
         _nexts = steward.TRANSICIONES_CERT[_stw_f["estado_cert"]]
         if not _nexts:
             st.caption(t("stw_cert_terminal", lang))

@@ -215,3 +215,18 @@ def test_la_subpestania_de_compliance_se_dibuja_con_la_demo(monkeypatch):
     # La demo sintética no abre incidentes en la cola real.
     incs = steward.leer_registros("steward_incidentes.json")
     assert not {e.get("dataset") for e in incs} & set(compliance.DATASET.values())
+
+
+def test_el_boton_sugerir_llena_los_umbrales_de_la_ficha(tmp_path, monkeypatch):
+    """«No entiendo qué umbrales poner»: un clic y quedan cargados."""
+    monkeypatch.setenv("MVDG_DATA_DIR", str(tmp_path))
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(os.path.join(RAIZ, "app", "app.py"), default_timeout=300)
+    at.run()
+    ds = at.selectbox(key="stw_ds").value
+    for d in steward.DIMENSIONES:
+        at.number_input(key=f"stw_q_{d}_{ds}").set_value(1.0)
+    at.button(key=f"stw_sug_{ds}").click().run()
+    assert not at.exception, [str(e.value)[:300] for e in at.exception]
+    valores = {d: at.number_input(key=f"stw_q_{d}_{ds}").value for d in steward.DIMENSIONES}
+    assert all(v >= min(steward.PISO_POR_CRITICIDAD.values()) for v in valores.values()), valores
