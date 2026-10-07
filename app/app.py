@@ -23,7 +23,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from mvdg import APP_NAME, BRAND, __version__
-from mvdg import dataeng
+from mvdg import conector_aas, dataeng
 from mvdg.catalog import catalog_df, dictionary_df, dataset_names, pii_columns
 from mvdg.clients import (BI_TOOLS, IT_RESTRICTIONS, STATUSES, clients_df,
                           data_dir, delete_client, load_clients,
@@ -1869,6 +1869,76 @@ def _avisar_recorte(profile, df, limit, lang, *, table=None, sql=None, password=
         st.warning(t("db_recorte", lang).format(n=len(df), total=total))
 
 
+def _aas_error(exc: "conector_aas.ErrorAAS") -> None:
+    st.error(t(exc.codigo, lang) + (f" — {exc.detalle}" if exc.detalle else ""))
+
+
+def _mis_datos_aas() -> None:
+    """«Mis datos» desde Azure Analysis Services (el MDW): cada tabla del modelo pasa a ser un dataset gobernado.
+    Lo lee el conector de la suite (ADOMD.NET); suelto, el programa dice que hay que abrirlo desde la suite."""
+    st.caption(t("aas_intro", lang))
+    srv = st.text_input(t("aas_servidor", lang), key="aas_srv",
+                        placeholder="asazure://region.asazure.windows.net/servidor")
+    auth = st.selectbox(t("aas_auth", lang), conector_aas.AUTENTICACIONES, key="aas_auth",
+                        format_func=lambda a: t(f"aas_auth_{a}", lang))
+    usu = cla = tok = ""
+    if auth == "usuario":
+        c3, c4 = st.columns(2)
+        usu = c3.text_input(t("aas_usuario", lang), key="aas_usr")
+        cla = c4.text_input(t("aas_clave", lang), type="password", key="aas_clave")
+    elif auth == "token":
+        tok = st.text_input(t("aas_token", lang), type="password", key="aas_tok")
+    cred = {"auth": auth, "usuario": usu, "clave": cla, "token": tok}
+    # El modelo se ELIGE de los que el servidor muestra para esta cuenta: no hay que saberse el nombre.
+    if st.button(t("aas_ver_modelos", lang), key="aas_ver_modelos"):
+        try:
+            st.session_state["_aas_modelos"] = conector_aas.listar_modelos(srv, **cred)
+            st.session_state.pop("_aas_tablas", None)
+        except conector_aas.ErrorAAS as exc:
+            _aas_error(exc)
+    if st.session_state.get("_aas_modelos"):
+        mod = st.selectbox(t("aas_modelo_lista", lang), st.session_state["_aas_modelos"], key="aas_mod_lista")
+    else:
+        mod = st.text_input(t("aas_modelo", lang), key="aas_mod", placeholder=t("aas_modelo_mano", lang))
+    if st.session_state.get("_aas_tablas_de") not in (None, mod):     # otro modelo: sus tablas son otras
+        st.session_state.pop("_aas_tablas", None)
+    tope = int(st.number_input(t("aas_tope", lang), 0, 10_000_000, conector_aas.TOPE_DEFAULT, step=10_000,
+                               key="aas_tope"))
+    if st.button(t("aas_ver_tablas", lang), key="aas_ver"):
+        try:
+            st.session_state["_aas_tablas"] = conector_aas.listar_tablas(srv, mod, **cred)
+            st.session_state["_aas_tablas_de"] = mod
+        except conector_aas.ErrorAAS as exc:
+            _aas_error(exc)
+    elegidas = st.multiselect(t("aas_tablas", lang), st.session_state.get("_aas_tablas", []), key="aas_sel")
+    if st.button(t("aas_conectar", lang), key="aas_conectar", type="primary"):
+        try:
+            with st.spinner("…"):
+                datos, avisos = conector_aas.leer(srv, mod, tablas=elegidas, limite=tope or None, **cred)
+        except conector_aas.ErrorAAS as exc:
+            _aas_error(exc)
+        else:
+            st.session_state["_aas_traidas"] = (mod.strip(), list(datos), avisos)
+            vistos = st.session_state.setdefault("_mvdg_user_vistos", set())
+            for nombre, df in datos.items():          # todas juntas y UN rerun (no uno por tabla)
+                _mis_datasets()[nombre] = df
+                vistos.add((nombre, len(df), len(df.columns)))
+            primera = next(iter(datos))
+            st.session_state["current_dataset"] = datos[primera]
+            st.session_state["current_dataset_name"] = primera
+            st.rerun()
+    traidas = st.session_state.get("_aas_traidas")
+    if traidas:
+        modelo, nombres, avisos = traidas
+        st.success(t("aas_traidas", lang).format(n=len(nombres), modelo=modelo))
+        for a in avisos:
+            st.caption("ℹ️ " + str(a))
+        presentes = [n for n in nombres if n in _mis_datasets()]
+        if presentes:
+            n = st.selectbox(t("aas_perfilar", lang), presentes, key="aas_perfilar")
+            _render_profile(_mis_datasets()[n], n)
+
+
 def _render_profile(user_df, dataset_name: str | None = None):
     """Perfila y muestra un DataFrame (venga de archivo o de base de datos).
     Además lo deja disponible en session_state para guardarlo en el proyecto
@@ -1959,11 +2029,11 @@ def _render_profile(user_df, dataset_name: str | None = None):
 with tab_pr:
     st.info(t("pr_intro", lang))
     _SRC_LABEL = {"example": t("pr_src_example", lang),
-                  "file": t("pr_src_file", lang), "db": t("pr_src_db", lang)}
+                  "file": t("pr_src_file", lang), "db": t("pr_src_db", lang), "aas": t("pr_src_aas", lang)}
     # Con datos propios cargados, los casos de ejemplo no se ofrecen: el
     # perfilador sirve para sumar otra fuente tuya, no para volver a la demo
     # por la puerta de atrás (para eso está «Volver a la demo»).
-    _pr_opts = ["file", "db"] if SOLO_PROPIOS else ["example", "file", "db"]
+    _pr_opts = ["file", "db", "aas"] if SOLO_PROPIOS else ["example", "file", "db", "aas"]
     if st.session_state.get("pr_source") not in _pr_opts:
         st.session_state["pr_source"] = _pr_opts[0]
     source = st.radio(t("pr_source", lang),
@@ -2075,6 +2145,8 @@ with tab_pr:
             # suelta de una pestaña. "ventas_2026" es un dataset;
             # "ventas_2026.xlsx" es un archivo.
             _render_profile(user_df, dataset_name=os.path.splitext(up.name)[0])
+    elif source == "aas":
+        _mis_datos_aas()
     else:
         st.markdown(t("db_intro", lang))
         existing = load_connections()

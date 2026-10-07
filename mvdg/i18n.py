@@ -1165,6 +1165,81 @@ _T: dict[str, dict[str, str]] = {
     "pr_source": {"es": "Fuente de datos", "en": "Data source", "pt": "Fonte de dados"},
     "pr_src_file": {"es": "Archivo (CSV/Excel)", "en": "File (CSV/Excel)", "pt": "Arquivo (CSV/Excel)"},
     "pr_src_db": {"es": "Base de datos", "en": "Database", "pt": "Banco de dados"},
+    "pr_src_aas": {"es": "Azure Analysis Services (MDW)", "en": "Azure Analysis Services (MDW)",
+                   "pt": "Azure Analysis Services (MDW)"},
+    "aas_intro": {
+        "es": "Se leen las tablas del modelo en solo lectura (sólo EVALUATE, con un tope de filas por tabla) y cada "
+              "una pasa a ser un dataset gobernado: catálogo, calidad, linaje, glosario y BI.",
+        "en": "The model's tables are read in read-only mode (EVALUATE only, with a row cap per table) and each one "
+              "becomes a governed dataset: catalog, quality, lineage, glossary and BI.",
+        "pt": "As tabelas do modelo são lidas somente leitura (só EVALUATE, com limite de linhas por tabela) e cada "
+              "uma vira um dataset governado: catálogo, qualidade, linhagem, glossário e BI."},
+    "aas_servidor": {"es": "Servidor", "en": "Server", "pt": "Servidor"},
+    "aas_modelo": {"es": "Modelo (base del MDW)", "en": "Model (MDW database)", "pt": "Modelo (base do MDW)"},
+    "aas_auth": {"es": "Cómo entrar", "en": "How to sign in", "pt": "Como entrar"},
+    "aas_auth_usuario": {"es": "Usuario y contraseña de la empresa", "en": "Company user and password",
+                         "pt": "Usuário e senha da empresa"},
+    "aas_auth_ventana": {"es": "Ventana de inicio de sesión de Microsoft (MFA)",
+                         "en": "Microsoft sign-in window (MFA)", "pt": "Janela de login da Microsoft (MFA)"},
+    "aas_auth_token": {"es": "Token de acceso", "en": "Access token", "pt": "Token de acesso"},
+    "aas_usuario": {"es": "Usuario (tu mail de la empresa)", "en": "User (your company email)",
+                    "pt": "Usuário (seu e-mail da empresa)"},
+    "aas_clave": {"es": "Contraseña", "en": "Password", "pt": "Senha"},
+    "aas_token": {"es": "Token", "en": "Token", "pt": "Token"},
+    "aas_tope": {"es": "Tope de filas por tabla (0 = sin tope)", "en": "Row cap per table (0 = no cap)",
+                 "pt": "Limite de linhas por tabela (0 = sem limite)"},
+    "aas_ver_tablas": {"es": "Ver las tablas del modelo", "en": "List the model's tables",
+                       "pt": "Ver as tabelas do modelo"},
+    "aas_tablas": {"es": "Tablas a traer (vacío = todas)", "en": "Tables to bring (empty = all)",
+                   "pt": "Tabelas a trazer (vazio = todas)"},
+    "aas_conectar": {"es": "Conectar a Analysis Services", "en": "Connect to Analysis Services",
+                     "pt": "Conectar ao Analysis Services"},
+    "aas_traidas": {"es": "{n} tabla(s) del modelo «{modelo}» quedaron como datasets gobernados.",
+                    "en": "{n} table(s) from model «{modelo}» are now governed datasets.",
+                    "pt": "{n} tabela(s) do modelo «{modelo}» viraram datasets governados."},
+    "aas_perfilar": {"es": "Tabla a perfilar", "en": "Table to profile", "pt": "Tabela a perfilar"},
+    "aas_err_servidor": {"es": "El servidor empieza con asazure:// (o powerbi:// para un modelo de Power BI Premium).",
+                         "en": "The server starts with asazure:// (or powerbi:// for a Power BI Premium model).",
+                         "pt": "O servidor começa com asazure:// (ou powerbi:// para um modelo do Power BI Premium)."},
+    "aas_err_modelo": {"es": "Falta el modelo: tocá «Ver los modelos del servidor» y elegilo de la lista.",
+                       "en": "The model is missing: click «List the server's models» and pick it from the list.",
+                       "pt": "Falta o modelo: clique em «Ver os modelos do servidor» e escolha na lista."},
+    "aas_err_sin_modelos": {
+        "es": "El servidor no devolvió modelos para esta cuenta (revisá el permiso de lectura, o escribí el nombre "
+              "a mano).",
+        "en": "The server returned no models for this account (check read permission, or type the name in).",
+        "pt": "O servidor não devolveu modelos para esta conta (revise a permissão de leitura, ou digite o nome)."},
+    "aas_ver_modelos": {"es": "Ver los modelos del servidor", "en": "List the server's models",
+                        "pt": "Ver os modelos do servidor"},
+    "aas_modelo_lista": {"es": "Modelo (base del MDW): elegilo de la lista",
+                         "en": "Model (MDW database): pick it from the list",
+                         "pt": "Modelo (base do MDW): escolha na lista"},
+    "aas_modelo_mano": {"es": "…o escribilo a mano", "en": "…or type it in", "pt": "…ou digite à mão"},
+    "aas_err_auth": {"es": "Forma de entrar desconocida.", "en": "Unknown sign-in method.",
+                     "pt": "Forma de entrar desconhecida."},
+    "aas_err_usuario": {"es": "Falta el usuario (tu mail de la empresa) o la contraseña.",
+                        "en": "The user (your company email) or the password is missing.",
+                        "pt": "Falta o usuário (seu e-mail da empresa) ou a senha."},
+    "aas_err_token": {"es": "Falta el token.", "en": "The token is missing.", "pt": "Falta o token."},
+    "aas_err_suelto": {
+        "es": "Analysis Services se lee con el conector de Microsoft (ADOMD.NET) que trae Adium All in One. Abrí "
+              "MV Data Governance desde la suite y conectate acá mismo.",
+        "en": "Analysis Services is read with Microsoft's connector (ADOMD.NET) bundled with Adium All in One. Open "
+              "MV Data Governance from the suite and connect right here.",
+        "pt": "O Analysis Services é lido com o conector da Microsoft (ADOMD.NET) que vem no Adium All in One. Abra "
+              "o MV Data Governance pela suíte e conecte aqui mesmo."},
+    "aas_err_librerias": {
+        "es": "Faltan librerías para hablar con Analysis Services. En la suite: Pipeline → «Traer los módulos que "
+              "faltan».",
+        "en": "Libraries to talk to Analysis Services are missing. In the suite: Pipeline → «Bring the missing "
+              "modules».",
+        "pt": "Faltam bibliotecas para falar com o Analysis Services. Na suíte: Pipeline → «Trazer os módulos que "
+              "faltam»."},
+    "aas_err_conector": {"es": "Analysis Services no respondió.", "en": "Analysis Services did not respond.",
+                         "pt": "O Analysis Services não respondeu."},
+    "aas_err_vacio": {"es": "El modelo no devolvió tablas con datos (revisá los permisos sobre el modelo).",
+                      "en": "The model returned no tables with data (check your permissions on the model).",
+                      "pt": "O modelo não devolveu tabelas com dados (revise as permissões sobre o modelo)."},
     "pr_src_example": {"es": "Dataset de ejemplo (real)", "en": "Example dataset (real)", "pt": "Dataset de exemplo (real)"},
     "pr_example_missing": {
         "es": "No se encontró el dataset de ejemplo en el paquete.",
