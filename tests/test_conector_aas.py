@@ -1,3 +1,5 @@
+# © 2026 Martín Viera. Todos los derechos reservados.
+# Software propietario. Ver LICENSE — prohibida su redistribución.
 """«Mis datos» desde Azure Analysis Services (el MDW): el conector de la suite, simulado."""
 from __future__ import annotations
 
