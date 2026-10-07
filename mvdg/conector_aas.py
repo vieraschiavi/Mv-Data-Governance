@@ -44,6 +44,20 @@ def motor_suite():
     return analysis_services
 
 
+def validar_conexion(servidor: str, auth: str, usuario: str = "", clave: str = "", token: str = "") -> str:
+    """Lo que hace falta para entrar al servidor (sin modelo: los modelos se listan después)."""
+    servidor = (servidor or "").strip()
+    if not _ASAZURE.match(servidor):
+        raise ErrorAAS("aas_err_servidor")
+    if auth not in AUTENTICACIONES:
+        raise ErrorAAS("aas_err_auth", auth)
+    if auth == "usuario" and not ((usuario or "").strip() and clave):
+        raise ErrorAAS("aas_err_usuario")
+    if auth == "token" and not (token or "").strip():
+        raise ErrorAAS("aas_err_token")
+    return servidor
+
+
 def validar(servidor: str, modelo: str, auth: str, usuario: str = "", clave: str = "",
             token: str = "") -> tuple[str, str]:
     servidor = (servidor or "").strip()
@@ -77,6 +91,21 @@ def _preparar(AS, servidor: str, auth: str, usuario: str, clave: str) -> None:
         AS.usar_ventana(servidor, auth == "ventana")
     except Exception as e:  # noqa: BLE001 — p. ej. un usuario que no es un mail: el conector dice qué corregir
         raise ErrorAAS("aas_err_conector", str(e)) from e
+
+
+def listar_modelos(servidor: str, auth: str = "usuario", usuario: str = "", clave: str = "", token: str = "",
+                   AS=None) -> list[str]:
+    """Los modelos (bases del MDW) que la cuenta puede ver en el servidor: así no hay que saberse el nombre."""
+    servidor = validar_conexion(servidor, auth, usuario, clave, token)
+    AS = _motor(AS)
+    _preparar(AS, servidor, auth, usuario, clave)
+    try:
+        modelos = list(AS.listar_modelos(servidor, token if auth == "token" else ""))
+    except Exception as e:  # noqa: BLE001
+        raise ErrorAAS("aas_err_conector", str(e)) from e
+    if not modelos:
+        raise ErrorAAS("aas_err_sin_modelos")
+    return modelos
 
 
 def listar_tablas(servidor: str, modelo: str, auth: str = "usuario", usuario: str = "", clave: str = "",

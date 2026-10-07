@@ -51,6 +51,12 @@ class _AS:
     def usar_ventana(self, servidor, si):
         self.llamadas.append(("ventana", si))
 
+    modelos: tuple = ("Venta Interna", "IQVIA")
+
+    def listar_modelos(self, servidor, token=""):
+        self.llamadas.append(("modelos", servidor))
+        return list(self.modelos)
+
     def tablas_del_modelo(self, servidor, modelo, token=""):
         return ["Venta", "Producto"]
 
@@ -93,6 +99,20 @@ def test_errores_que_explican_que_hacer():
     assert e.value.codigo == "aas_err_conector" and "mail" in e.value.detalle
 
 
+def test_los_modelos_del_servidor_se_listan_para_elegirlos():
+    """«No aparecen modelos ni nada»: no hay que saberse el nombre del modelo."""
+    AS = _AS()
+    assert C.listar_modelos(SRV, usuario="persona@empresa.com", clave="x", AS=AS) == ["Venta Interna", "IQVIA"]
+    assert ("modelos", SRV) in AS.llamadas
+    with pytest.raises(C.ErrorAAS) as e:
+        C.listar_modelos(SRV, usuario="persona@empresa.com", clave="", AS=AS)
+    assert e.value.codigo == "aas_err_usuario"
+    vacio = _AS(modelos=())
+    with pytest.raises(C.ErrorAAS) as e:
+        C.listar_modelos(SRV, auth="ventana", AS=vacio)
+    assert e.value.codigo == "aas_err_sin_modelos"
+
+
 def test_suelto_dice_que_se_abre_desde_la_suite(monkeypatch):
     monkeypatch.setitem(sys.modules, "adium_allinone", None)
     assert C.motor_suite() is None
@@ -116,9 +136,12 @@ def test_mis_datos_ofrece_analysis_services_y_las_tablas_quedan_gobernadas(monke
     assert "Azure Analysis Services (MDW)" in fuente.options
     at = fuente.set_value("aas").run()
     at = [x for x in at.text_input if x.key == "aas_srv"][0].set_value(SRV).run()
-    at = [x for x in at.text_input if x.key == "aas_mod"][0].set_value("MDW").run()
     at = [x for x in at.text_input if x.key == "aas_usr"][0].set_value("persona@empresa.com").run()
     at = [x for x in at.text_input if x.key == "aas_clave"][0].set_value("x").run()
+    at = [b for b in at.button if b.key == "aas_ver_modelos"][0].click().run()
+    lista = [x for x in at.selectbox if x.key == "aas_mod_lista"][0]
+    assert lista.options == ["Venta Interna", "IQVIA"]                       # se elige, no se escribe
+    at = lista.set_value("IQVIA").run()
     at = [b for b in at.button if b.key == "aas_ver"][0].click().run()
     assert [m for m in at.multiselect if m.key == "aas_sel"][0].options == ["Venta", "Producto"]
     at = [b for b in at.button if b.key == "aas_conectar"][0].click().run()

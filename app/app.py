@@ -1877,10 +1877,8 @@ def _mis_datos_aas() -> None:
     """«Mis datos» desde Azure Analysis Services (el MDW): cada tabla del modelo pasa a ser un dataset gobernado.
     Lo lee el conector de la suite (ADOMD.NET); suelto, el programa dice que hay que abrirlo desde la suite."""
     st.caption(t("aas_intro", lang))
-    c1, c2 = st.columns(2)
-    srv = c1.text_input(t("aas_servidor", lang), key="aas_srv",
+    srv = st.text_input(t("aas_servidor", lang), key="aas_srv",
                         placeholder="asazure://region.asazure.windows.net/servidor")
-    mod = c2.text_input(t("aas_modelo", lang), key="aas_mod")
     auth = st.selectbox(t("aas_auth", lang), conector_aas.AUTENTICACIONES, key="aas_auth",
                         format_func=lambda a: t(f"aas_auth_{a}", lang))
     usu = cla = tok = ""
@@ -1890,12 +1888,26 @@ def _mis_datos_aas() -> None:
         cla = c4.text_input(t("aas_clave", lang), type="password", key="aas_clave")
     elif auth == "token":
         tok = st.text_input(t("aas_token", lang), type="password", key="aas_tok")
+    cred = {"auth": auth, "usuario": usu, "clave": cla, "token": tok}
+    # El modelo se ELIGE de los que el servidor muestra para esta cuenta: no hay que saberse el nombre.
+    if st.button(t("aas_ver_modelos", lang), key="aas_ver_modelos"):
+        try:
+            st.session_state["_aas_modelos"] = conector_aas.listar_modelos(srv, **cred)
+            st.session_state.pop("_aas_tablas", None)
+        except conector_aas.ErrorAAS as exc:
+            _aas_error(exc)
+    if st.session_state.get("_aas_modelos"):
+        mod = st.selectbox(t("aas_modelo_lista", lang), st.session_state["_aas_modelos"], key="aas_mod_lista")
+    else:
+        mod = st.text_input(t("aas_modelo", lang), key="aas_mod", placeholder=t("aas_modelo_mano", lang))
+    if st.session_state.get("_aas_tablas_de") not in (None, mod):     # otro modelo: sus tablas son otras
+        st.session_state.pop("_aas_tablas", None)
     tope = int(st.number_input(t("aas_tope", lang), 0, 10_000_000, conector_aas.TOPE_DEFAULT, step=10_000,
                                key="aas_tope"))
-    cred = {"auth": auth, "usuario": usu, "clave": cla, "token": tok}
     if st.button(t("aas_ver_tablas", lang), key="aas_ver"):
         try:
             st.session_state["_aas_tablas"] = conector_aas.listar_tablas(srv, mod, **cred)
+            st.session_state["_aas_tablas_de"] = mod
         except conector_aas.ErrorAAS as exc:
             _aas_error(exc)
     elegidas = st.multiselect(t("aas_tablas", lang), st.session_state.get("_aas_tablas", []), key="aas_sel")
